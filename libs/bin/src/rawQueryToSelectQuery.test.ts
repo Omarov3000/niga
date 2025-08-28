@@ -1,138 +1,7 @@
-type Column =
-  | { type: "column"; name: string; table?: string; alias?: string }
-  | { type: "star" };
-
-type Table = { type: "table"; name: string; alias?: string };
-
-type Literal =
-  | { type: "literal"; value: string | number | null }
-  | { type: "param"; index: number }; // e.g. "?" placeholders
-
-
-type SubqueryExpression =
-  | { type: "subquery"; query: SelectQuery } // scalar subquery
-  | { type: "in_subquery"; expr: Expression; query: SelectQuery }
-  | { type: "exists_subquery"; query: SelectQuery };
-
-type ComparisonOperator = "=" | "!=" | "<" | "<=" | ">" | ">=";
-type ComparisonExpression = {
-  type: "binary_expr";
-  operator: ComparisonOperator;
-  left: Expression;
-  right: Expression;
-};
-
-type LogicalOperator = "AND" | "OR";
-type LogicalExpression = {
-  type: "logical_expr";
-  operator: LogicalOperator;
-  left: Expression;
-  right: Expression;
-};
-
-type FunctionCall = {
-  type: "function_call";
-  name: string;
-  args: Expression[];
-  alias?: string;
-};
-
-type Expression =
-  | Column
-  | Literal
-  | ComparisonExpression
-  | LogicalExpression
-  | SubqueryExpression
-  | FunctionCall;
-
-type JoinType = "INNER" | "LEFT" | "RIGHT" | "CROSS";
-
-type Join = {
-  type: "join";
-  joinType: JoinType;
-  left: FromClause;
-  right: FromClause;
-  on?: Expression;
-};
-
-type FromSubquery = {
-  type: "from_subquery";
-  query: SelectQuery;
-  alias: string;
-};
-
-type FromClause = Table | Join | FromSubquery;
-
-type CTE = {
-  type: "cte";
-  name: string;
-  columns?: string[];
-  select: SelectQuery;
-};
-
-type WithClause = {
-  recursive: boolean;
-  ctes: CTE[];
-};
-
-type OrderByItem = {
-  expr: Expression;
-  direction?: "ASC" | "DESC";
-};
-
-type LimitClause = {
-  limit: number | Expression;
-  offset?: number | Expression;
-};
-
-type SelectStatement = {
-  type: "select";
-  with?: WithClause;
-  columns: Expression[];
-  from: FromClause;
-  where?: Expression;
-  groupBy?: Expression[];
-  having?: Expression;
-  orderBy?: OrderByItem[];
-  limit?: LimitClause;
-};
-
-type SetOperator = "UNION" | "UNION ALL" | "INTERSECT" | "EXCEPT";
-
-type CompoundSelect = {
-  type: "compound_select";
-  with?: WithClause;
-  left: SelectQuery;
-  operator: SetOperator;
-  right: SelectQuery;
-};
-
-type SelectQuery = SelectStatement | CompoundSelect;
-
-type SelectSql = { query: string; params: any[] }; // we get this as input
-
-function rawQueryToSelectQuery(sql: SelectSql): SelectQuery {}
-
-function sql(strings: TemplateStringsArray, ...values: any[]): SelectSql {
-  let query = "";
-  const params: any[] = [];
-
-  strings.forEach((part, i) => {
-    query += part;
-    if (i < values.length) {
-      query += "?"; // use ? as placeholder
-      params.push(values[i]);
-    }
-  });
-
-  return { query, params };
-}
-
 import { it, expect, describe } from "vitest";
+import { rawQueryToSelectQuery } from './rawQueryToSelectQuery';
+import { sql } from './sql';
 
-//
-// UNIT TESTS
-//
 describe("rawQueryToSelectQuery - unit tests", () => {
   describe("columns", () => {
     it("parses star column", () => {
@@ -657,9 +526,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
   });
 });
 
-//
-// INTEGRATION TESTS
-//
+
 describe("rawQueryToSelectQuery - integration tests", () => {
   it("parses query with join + where + group by + having + order by + limit", () => {
     const result = rawQueryToSelectQuery(sql`

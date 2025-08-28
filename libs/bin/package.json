@@ -7,8 +7,9 @@
   "scripts": {
     "tsc": "tsc",
     "tsc:watch": "tsc -w",
-    "test": "vitest run -c=vitest.project.ts",
-    "test:watch": "cd ../../.. && vitest --project=@w/utils",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "pnpm tsc && pnpm test",
     "lint1": "biome lint --write --unsafe --error-on-warnings src"
   },
   "dependencies": {
