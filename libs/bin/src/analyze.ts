@@ -2,14 +2,17 @@ import { ComparisonOperator, rawQueryToSelectQuery, SelectQuery } from './rawQue
 import { SelectSql } from './sql';
 
 // Flattened view of accessed tables for Simplified Analysis
+type SimplifiedFilter = {
+  column: string;
+  operator: ComparisonOperator;
+  value: string | number | null;
+};
+
 type AccessedTable = {
-  name: string; // original table name (not alias)
-  columns: string[]; // all accessed columns (original names, not aliases)
-  filter: {
-    column: string;
-    operator: ComparisonOperator;
-    value: string | number | null;
-  }[];
+  name: string; // original table name
+  columns: string[]; // all accessed columns
+  // Each branch is a conjunction (AND), array of branches = disjunction (OR)
+  filterBranches: SimplifiedFilter[][];
 };
 
 export type QueryAnalysis = {
@@ -29,7 +32,7 @@ export function analyze(sql: SelectSql): QueryAnalysis {
     }
 
     if (!tableMap.has(name)) {
-      const table: AccessedTable = { name, columns: [], filter: [] };
+      const table: AccessedTable = { name, columns: [], filterBranches: [[]] };
       tableMap.set(name, table);
       accessedTables.push(table);
     }
@@ -152,11 +155,16 @@ export function analyze(sql: SelectSql): QueryAnalysis {
             const table = getOrCreateTable(leftTableName);
             if (table) {
               const value = extractValue(expr.right, params);
-              table.filter.push({
+              const filter = {
                 column: expr.left.name,
                 operator: expr.operator,
                 value: value
-              });
+              };
+              // Add filter to first (and likely only) branch for JOIN conditions
+              if (table.filterBranches.length === 0) {
+                table.filterBranches.push([]);
+              }
+              table.filterBranches[0].push(filter);
             }
           }
         }
@@ -247,19 +255,19 @@ export function analyze(sql: SelectSql): QueryAnalysis {
             const table = getOrCreateTable(leftTableName);
             if (table) {
               const value = extractValue(expr.right, params);
-              table.filter.push({
+              const filter = {
                 column: expr.left.name,
                 operator: expr.operator,
                 value: value
-              });
+              };
+              addFilterToTable(table, filter);
             }
           }
         }
         break;
 
       case "logical_expr":
-        processExpression(expr.left, tableAliasMap, params, fromClause);
-        processExpression(expr.right, tableAliasMap, params, fromClause);
+        processLogicalExpression(expr, tableAliasMap, params, fromClause);
         break;
 
       case "function_call":
@@ -300,22 +308,24 @@ export function analyze(sql: SelectSql): QueryAnalysis {
             if (tableName) {
               const table = getOrCreateTable(tableName);
               if (table) {
-                table.filter.push({
+                const filter = {
                   column: arg.name,
                   operator: expr.operator,
                   value: value
-                });
+                };
+                addFilterToTable(table, filter);
               }
             }
           } else {
             // COUNT(*) - use the GROUP BY column (approximation)
             accessedTables.forEach(table => {
               if (table.columns.length > 0) {
-                table.filter.push({
+                const filter = {
                   column: table.columns[0],
                   operator: expr.operator,
                   value: value
-                });
+                };
+                addFilterToTable(table, filter);
               }
             });
           }
@@ -356,6 +366,150 @@ export function analyze(sql: SelectSql): QueryAnalysis {
 
   function isComparisonOperator(op: string): op is ComparisonOperator {
     return ["=", "!=", "<", "<=", ">", ">="].includes(op);
+  }
+
+  function addFilterToTable(table: AccessedTable, filter: SimplifiedFilter) {
+    // Add filter to the first branch (conjunction)
+    if (table.filterBranches.length === 0) {
+      table.filterBranches.push([]);
+    }
+    table.filterBranches[0].push(filter);
+  }
+
+  function processLogicalExpression(expr: any, tableAliasMap: Map<string, string>, params: any[], fromClause?: any) {
+    if (expr.operator === "AND") {
+      // For AND operations, process both sides in the same context
+      processExpression(expr.left, tableAliasMap, params, fromClause);
+      processExpression(expr.right, tableAliasMap, params, fromClause);
+    } else if (expr.operator === "OR") {
+      // For OR operations, we need to handle filter branching
+      // Process left side of OR
+      const leftFilters = collectFiltersFromExpression(expr.left, tableAliasMap, params, fromClause);
+      
+      // Process right side of OR
+      const rightFilters = collectFiltersFromExpression(expr.right, tableAliasMap, params, fromClause);
+
+      // Apply OR logic: create separate branches for left and right filters
+      // Group filters by table
+      const tableFilters = new Map<string, { left: SimplifiedFilter[], right: SimplifiedFilter[] }>();
+      
+      leftFilters.forEach(({ tableName, filter }) => {
+        if (!tableFilters.has(tableName)) {
+          tableFilters.set(tableName, { left: [], right: [] });
+        }
+        tableFilters.get(tableName)!.left.push(filter);
+      });
+
+      rightFilters.forEach(({ tableName, filter }) => {
+        if (!tableFilters.has(tableName)) {
+          tableFilters.set(tableName, { left: [], right: [] });
+        }
+        tableFilters.get(tableName)!.right.push(filter);
+      });
+
+      // Apply the filters to create separate branches
+      tableFilters.forEach(({ left, right }, tableName) => {
+        const table = getOrCreateTable(tableName);
+        if (table) {
+          // Clear existing filter branches for this OR operation
+          table.filterBranches = [];
+          
+          // Create branches for the OR operation
+          if (left.length > 0) {
+            table.filterBranches.push(left);
+          }
+          if (right.length > 0) {
+            table.filterBranches.push(right);
+          }
+          
+          // If no filters were found, ensure we have at least one empty branch
+          if (table.filterBranches.length === 0) {
+            table.filterBranches.push([]);
+          }
+        }
+      });
+
+      // Process expressions for column access (but skip filter extraction since we handled it above)
+      processExpressionForColumnsOnly(expr.left, tableAliasMap, params, fromClause);
+      processExpressionForColumnsOnly(expr.right, tableAliasMap, params, fromClause);
+    }
+  }
+
+  function collectFiltersFromExpression(expr: any, tableAliasMap: Map<string, string>, params: any[], fromClause?: any): { tableName: string, filter: SimplifiedFilter }[] {
+    const filters: { tableName: string, filter: SimplifiedFilter }[] = [];
+    
+    if (expr.type === "binary_expr" && isComparisonOperator(expr.operator) && expr.left.type === "column" && expr.right.type !== "column") {
+      const leftTableName = resolveTableName(expr.left.table, tableAliasMap, fromClause);
+      if (leftTableName) {
+        const value = extractValue(expr.right, params);
+        filters.push({
+          tableName: leftTableName,
+          filter: {
+            column: expr.left.name,
+            operator: expr.operator,
+            value: value
+          }
+        });
+      }
+    }
+    
+    return filters;
+  }
+
+  function processExpressionForColumnsOnly(expr: any, tableAliasMap: Map<string, string>, params: any[], fromClause?: any) {
+    if (!expr) return;
+
+    switch (expr.type) {
+      case "column":
+        const tableName = resolveTableName(expr.table, tableAliasMap, fromClause);
+        if (tableName) {
+          addColumnToTable(tableName, expr.name);
+        }
+        break;
+
+      case "binary_expr":
+        processExpressionForColumnsOnly(expr.left, tableAliasMap, params, fromClause);
+        processExpressionForColumnsOnly(expr.right, tableAliasMap, params, fromClause);
+
+        // For column = column comparisons, add column names to relevant tables in the current FROM context
+        if (isComparisonOperator(expr.operator) && expr.left.type === "column" && expr.right.type === "column") {
+          // In EXISTS subqueries, cross-table column references should add columns to the subquery's table context
+          if (fromClause && fromClause.type === "table") {
+            const contextTableName = fromClause.name;
+            // Add the right-side column name to the context table
+            if (expr.right.table !== contextTableName && expr.right.name === "id") {
+              const contextTable = getOrCreateTable(contextTableName);
+              if (contextTable && !contextTable.columns.includes(expr.right.name)) {
+                contextTable.columns.push(expr.right.name);
+              }
+            }
+          }
+        }
+        // Skip filter extraction for OR expressions
+        break;
+
+      case "logical_expr":
+        processExpressionForColumnsOnly(expr.left, tableAliasMap, params, fromClause);
+        processExpressionForColumnsOnly(expr.right, tableAliasMap, params, fromClause);
+        break;
+
+      case "function_call":
+        expr.args.forEach((arg: any) => processExpressionForColumnsOnly(arg, tableAliasMap, params, fromClause));
+        break;
+
+      case "subquery":
+        processSelectQuery(expr.query, tableAliasMap);
+        break;
+
+      case "in_subquery":
+        processExpressionForColumnsOnly(expr.expr, tableAliasMap, params, fromClause);
+        processSelectQuery(expr.query, tableAliasMap);
+        break;
+
+      case "exists_subquery":
+        processSelectQuery(expr.query, tableAliasMap);
+        break;
+    }
   }
 
   // Start processing

@@ -1,8 +1,6 @@
-
-
 import { describe, it, expect } from "vitest";
-import { sql } from './sql';
-import { analyze } from './analyze';
+import { sql } from "./sql";
+import { analyze } from "./analyze";
 
 describe("analyze - unit tests", () => {
   describe("columns & tables", () => {
@@ -10,7 +8,7 @@ describe("analyze - unit tests", () => {
       const result = analyze(sql`SELECT id, name FROM users`);
       expect(result).toEqual({
         accessedTables: [
-          { name: "users", columns: ["id", "name"], filter: [] },
+          { name: "users", columns: ["id", "name"], filterBranches: [[]] },
         ],
       });
     });
@@ -18,21 +16,21 @@ describe("analyze - unit tests", () => {
     it("extracts star column", () => {
       const result = analyze(sql`SELECT * FROM users`);
       expect(result).toEqual({
-        accessedTables: [{ name: "users", columns: [], filter: [] }],
+        accessedTables: [{ name: "users", columns: [], filterBranches: [[]] }],
       });
     });
 
     it("resolves column alias", () => {
       const result = analyze(sql`SELECT id AS user_id FROM users`);
       expect(result).toEqual({
-        accessedTables: [{ name: "users", columns: ["id"], filter: [] }],
+        accessedTables: [{ name: "users", columns: ["id"], filterBranches: [[]] }],
       });
     });
 
     it("resolves table alias", () => {
       const result = analyze(sql`SELECT u.id FROM users u`);
       expect(result).toEqual({
-        accessedTables: [{ name: "users", columns: ["id"], filter: [] }],
+        accessedTables: [{ name: "users", columns: ["id"], filterBranches: [[]] }],
       });
     });
   });
@@ -45,7 +43,7 @@ describe("analyze - unit tests", () => {
           {
             name: "users",
             columns: ["age"],
-            filter: [{ column: "age", operator: ">", value: 18 }],
+            filterBranches: [[{ column: "age", operator: ">", value: 18 }]],
           },
         ],
       });
@@ -58,7 +56,7 @@ describe("analyze - unit tests", () => {
           {
             name: "users",
             columns: ["name"],
-            filter: [{ column: "name", operator: "=", value: "bob" }],
+            filterBranches: [[{ column: "name", operator: "=", value: "bob" }]],
           },
         ],
       });
@@ -73,10 +71,10 @@ describe("analyze - unit tests", () => {
           {
             name: "users",
             columns: ["age", "active"],
-            filter: [
+            filterBranches: [[
               { column: "age", operator: ">=", value: 18 },
               { column: "active", operator: "=", value: 1 },
-            ],
+            ]],
           },
         ],
       });
@@ -91,9 +89,9 @@ describe("analyze - unit tests", () => {
           {
             name: "users",
             columns: ["age", "active"],
-            filter: [
-              { column: "age", operator: "<", value: 18 },
-              { column: "active", operator: "=", value: 1 },
+            filterBranches: [
+              [{ column: "age", operator: "<", value: 18 }],
+              [{ column: "active", operator: "=", value: 1 }],
             ],
           },
         ],
@@ -107,7 +105,7 @@ describe("analyze - unit tests", () => {
           {
             name: "users",
             columns: ["id"],
-            filter: [{ column: "id", operator: "=", value: 1 }],
+            filterBranches: [[{ column: "id", operator: "=", value: 1 }]],
           },
         ],
       });
@@ -121,8 +119,8 @@ describe("analyze - unit tests", () => {
       );
       expect(result).toEqual({
         accessedTables: [
-          { name: "users", columns: ["id"], filter: [] },
-          { name: "orders", columns: ["id", "user_id"], filter: [] },
+          { name: "users", columns: ["id"], filterBranches: [[]] },
+          { name: "orders", columns: ["id", "user_id"], filterBranches: [[]] },
         ],
       });
     });
@@ -133,20 +131,18 @@ describe("analyze - unit tests", () => {
       );
       expect(result).toEqual({
         accessedTables: [
-          { name: "users", columns: ["id"], filter: [] },
-          { name: "orders", columns: ["id", "user_id"], filter: [] },
+          { name: "users", columns: ["id"], filterBranches: [[]] },
+          { name: "orders", columns: ["id", "user_id"], filterBranches: [[]] },
         ],
       });
     });
 
     it("handles CROSS JOIN", () => {
-      const result = analyze(
-        sql`SELECT * FROM users CROSS JOIN roles`
-      );
+      const result = analyze(sql`SELECT * FROM users CROSS JOIN roles`);
       expect(result).toEqual({
         accessedTables: [
-          { name: "users", columns: [], filter: [] },
-          { name: "roles", columns: [], filter: [] },
+          { name: "users", columns: [], filterBranches: [[]] },
+          { name: "roles", columns: [], filterBranches: [[]] },
         ],
       });
     });
@@ -157,11 +153,11 @@ describe("analyze - unit tests", () => {
       );
       expect(result).toEqual({
         accessedTables: [
-          { name: "users", columns: ["id"], filter: [] },
+          { name: "users", columns: ["id"], filterBranches: [[]] },
           {
             name: "orders",
             columns: ["user_id", "active"],
-            filter: [{ column: "active", operator: "=", value: 1 }],
+            filterBranches: [[{ column: "active", operator: "=", value: 1 }]],
           },
         ],
       });
@@ -175,8 +171,8 @@ describe("analyze - unit tests", () => {
       );
       expect(result).toEqual({
         accessedTables: [
-          { name: "orders", columns: [], filter: [] },
-          { name: "users", columns: [], filter: [] },
+          { name: "orders", columns: [], filterBranches: [[]] },
+          { name: "users", columns: [], filterBranches: [[]] },
         ],
       });
     });
@@ -187,8 +183,8 @@ describe("analyze - unit tests", () => {
       );
       expect(result).toEqual({
         accessedTables: [
-          { name: "users", columns: ["id"], filter: [] },
-          { name: "orders", columns: ["user_id"], filter: [] },
+          { name: "users", columns: ["id"], filterBranches: [[]] },
+          { name: "orders", columns: ["user_id"], filterBranches: [[]] },
         ],
       });
     });
@@ -199,18 +195,16 @@ describe("analyze - unit tests", () => {
       );
       expect(result).toEqual({
         accessedTables: [
-          { name: "users", columns: [], filter: [] },
-          { name: "orders", columns: [], filter: [] },
+          { name: "users", columns: [], filterBranches: [[]] },
+          { name: "orders", columns: [], filterBranches: [[]] },
         ],
       });
     });
 
     it("handles subquery in FROM", () => {
-      const result = analyze(
-        sql`SELECT * FROM (SELECT id FROM users) sub`
-      );
+      const result = analyze(sql`SELECT * FROM (SELECT id FROM users) sub`);
       expect(result).toEqual({
-        accessedTables: [{ name: "users", columns: ["id"], filter: [] }],
+        accessedTables: [{ name: "users", columns: ["id"], filterBranches: [[]] }],
       });
     });
   });
@@ -222,7 +216,7 @@ describe("analyze - unit tests", () => {
       );
       expect(result).toEqual({
         accessedTables: [
-          { name: "orders", columns: ["user_id"], filter: [] },
+          { name: "orders", columns: ["user_id"], filterBranches: [[]] },
         ],
       });
     });
@@ -236,7 +230,7 @@ describe("analyze - unit tests", () => {
           {
             name: "orders",
             columns: ["user_id"],
-            filter: [{ column: "user_id", operator: ">", value: 1 }],
+            filterBranches: [[{ column: "user_id", operator: ">", value: 1 }]],
           },
         ],
       });
@@ -251,7 +245,7 @@ describe("analyze - unit tests", () => {
           {
             name: "orders",
             columns: ["user_id"],
-            filter: [{ column: "user_id", operator: ">", value: 2 }],
+            filterBranches: [[{ column: "user_id", operator: ">", value: 2 }]],
           },
         ],
       });
@@ -265,8 +259,8 @@ describe("analyze - unit tests", () => {
       );
       expect(result).toEqual({
         accessedTables: [
-          { name: "users", columns: ["id"], filter: [] },
-          { name: "admins", columns: ["id"], filter: [] },
+          { name: "users", columns: ["id"], filterBranches: [[]] },
+          { name: "admins", columns: ["id"], filterBranches: [[]] },
         ],
       });
     });
@@ -277,8 +271,8 @@ describe("analyze - unit tests", () => {
       );
       expect(result).toEqual({
         accessedTables: [
-          { name: "users", columns: ["id"], filter: [] },
-          { name: "admins", columns: ["id"], filter: [] },
+          { name: "users", columns: ["id"], filterBranches: [[]] },
+          { name: "admins", columns: ["id"], filterBranches: [[]] },
         ],
       });
     });
@@ -289,8 +283,8 @@ describe("analyze - unit tests", () => {
       );
       expect(result).toEqual({
         accessedTables: [
-          { name: "users", columns: ["id"], filter: [] },
-          { name: "admins", columns: ["id"], filter: [] },
+          { name: "users", columns: ["id"], filterBranches: [[]] },
+          { name: "admins", columns: ["id"], filterBranches: [[]] },
         ],
       });
     });
@@ -301,8 +295,8 @@ describe("analyze - unit tests", () => {
       );
       expect(result).toEqual({
         accessedTables: [
-          { name: "users", columns: ["id"], filter: [] },
-          { name: "banned_users", columns: ["id"], filter: [] },
+          { name: "users", columns: ["id"], filterBranches: [[]] },
+          { name: "banned_users", columns: ["id"], filterBranches: [[]] },
         ],
       });
     });
@@ -327,12 +321,12 @@ describe("analyze - integration tests", () => {
         {
           name: "users",
           columns: ["id", "active"],
-          filter: [{ column: "active", operator: "=", value: 1 }],
+          filterBranches: [[{ column: "active", operator: "=", value: 1 }]],
         },
         {
           name: "orders",
           columns: ["id", "user_id"],
-          filter: [{ column: "id", operator: ">", value: 2 }],
+          filterBranches: [[{ column: "id", operator: ">", value: 2 }]],
         },
       ],
     });
@@ -354,11 +348,13 @@ describe("analyze - integration tests", () => {
 
     expect(result).toEqual({
       accessedTables: [
-        { name: "users", columns: ["active"], filter: [
-          { column: "active", operator: "=", value: 1 }
-        ] },
-        { name: "admins", columns: ["id"], filter: [] },
-        { name: "roles", columns: ["user_id", "id"], filter: [] },
+        {
+          name: "users",
+          columns: ["active"],
+          filterBranches: [[{ column: "active", operator: "=", value: 1 }]],
+        },
+        { name: "admins", columns: ["id"], filterBranches: [[]] },
+        { name: "roles", columns: ["user_id", "id"], filterBranches: [[]] },
       ],
     });
   });
@@ -376,12 +372,12 @@ describe("analyze - integration tests", () => {
 
     expect(result).toEqual({
       accessedTables: [
-        { name: "users", columns: ["id"], filter: [] },
-        { name: "orders", columns: ["user_id", "order_id"], filter: [] },
+        { name: "users", columns: ["id"], filterBranches: [[]] },
+        { name: "orders", columns: ["user_id", "order_id"], filterBranches: [[]] },
         {
           name: "shipments",
           columns: ["id", "status"],
-          filter: [{ column: "status", operator: "=", value: "delivered" }],
+          filterBranches: [[{ column: "status", operator: "=", value: "delivered" }]],
         },
       ],
     });
@@ -401,13 +397,13 @@ describe("analyze - integration tests", () => {
         {
           name: "users",
           columns: ["id", "active"],
-          filter: [{ column: "active", operator: "=", value: 1 }],
+          filterBranches: [[{ column: "active", operator: "=", value: 1 }]],
         },
-        { name: "orders", columns: ["id", "user_id"], filter: [] },
+        { name: "orders", columns: ["id", "user_id"], filterBranches: [[]] },
         {
           name: "payments",
           columns: ["id", "order_id", "status"],
-          filter: [{ column: "status", operator: "=", value: "paid" }],
+          filterBranches: [[{ column: "status", operator: "=", value: "paid" }]],
         },
       ],
     });
