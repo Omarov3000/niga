@@ -1,0 +1,20 @@
+{
+  "name": "@w/bin",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "main": "src/index.ts",
+  "scripts": {
+    "tsc": "tsc",
+    "tsc:watch": "tsc -w",
+    "test": "vitest run -c=vitest.project.ts",
+    "test:watch": "cd ../../.. && vitest --project=@w/utils",
+    "lint1": "biome lint --write --unsafe --error-on-warnings src"
+  },
+  "dependencies": {
+    "sql-parser-cst": "^0.33.1"
+  },
+  "devDependencies": {
+
+  }
+}
