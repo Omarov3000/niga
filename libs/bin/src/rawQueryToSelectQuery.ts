@@ -14,7 +14,7 @@ type SubqueryExpression =
   | { type: "in_subquery"; expr: Expression; query: SelectQuery }
   | { type: "exists_subquery"; query: SelectQuery };
 
-type ComparisonOperator = "=" | "!=" | "<" | "<=" | ">" | ">=";
+export type ComparisonOperator = "=" | "!=" | "<" | "<=" | ">" | ">=";
 type ComparisonExpression = {
   type: "binary_expr";
   operator: ComparisonOperator;
@@ -109,7 +109,7 @@ type CompoundSelect = {
   limit?: LimitClause;
 };
 
-type SelectQuery = SelectStatement | CompoundSelect;
+export type SelectQuery = SelectStatement | CompoundSelect;
 
 import { parse } from "sql-parser-cst";
 import { SelectSql } from './sql';

@@ -23,3 +23,7 @@ expect(result).toMatchObject({
 Tests cannot interact with file system. Use in memory file generation (eg `makeBlackSquare32`).
 
 Write fewer longer tests.
+
+if you want to test or type-check a package first identify package folder name then cd to it and run `pnpm test OPTIONAL_TEST_FILE_PATH` or `pnpm tsc`. eg `cd libs/bin && pnpm test analyze.test.ts`
+
+if multiple tests fail, isolate them with `.only` and solve one at a time.
