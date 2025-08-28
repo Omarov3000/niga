@@ -1,0 +1,16 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "topo": { "dependsOn": ["^topo"] },
+    "lint1": { "dependsOn": ["topo"] },
+    "tsc1": { "dependsOn": ["topo"] },
+    "test1": { "dependsOn": ["topo"] },
+    "react-hooks-check": { "dependsOn": ["topo"] },
+    "test-unit": { "dependsOn": ["topo"] },
+    "deploy": { "dependsOn": ["topo"] },
+    "build:types": {
+      "dependsOn": ["^build:types"],
+      "cache": false
+    }
+  }
+}
