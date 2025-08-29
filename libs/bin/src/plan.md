@@ -24,15 +24,16 @@ column definition class methods
 __meta__: ColumnMetadata ✅
 __table__: { getName: () => string } // reference to parent ✅
 
-notNull ✅
-default ✅
+notNull ✅ (sets insertType='required')
+default ✅ (sets SQL default via encode if provided; keeps insertType='optional'; updates appDefault)
 unique ✅
 primaryKey ✅
 references(() => table.column) // foreign key ✅
 generatedAlwaysAs // virtual/derived column ✅
-$defaultFn(() => new Date()) // called when we insert a new row ⏭️
+$defaultFn(() => new Date()) // called when we insert a new row ✅ (keeps insertType='optional')
 $onUpdateFn(() => new Date()) // called when we update a row ⏭️
 $type<Type>() // override the ts type of the column ✅
+encode(fn) / decode(fn) // app<->sql transformation; default() uses encode for SQL default ✅
 ```
 
 schema example
@@ -85,7 +86,7 @@ interface SerializableColumnMetadata { // ✅ (non-generic)
   primaryKey?: boolean
   foreignKey?: string // `${table}.${column}` ✅
   unique?: boolean
-  default?: number | string | null
+  default?: number | string | boolean | null ✅
   appType?: ApplicationType
 }
 
@@ -94,8 +95,8 @@ interface ColumnMetadata extends SerializableColumnMetadata { // ✅ (non-generi
   insertType: InsertionType
   serverTime?: boolean
   appDefault?: (() => unknown) | unknown ✅
-  encode?: (data: unknown) => number | string
-  decode?: (data: number | string) => unknown
+  encode?: (data: unknown) => number | string ✅
+  decode?: (data: number | string) => unknown ✅
   aliasedFrom?: string
   definition?: string // eg COUNT(*) for virtual columns
 }
@@ -178,18 +179,24 @@ delete({
 
 as(alias: Name)
 
-selectionType: SelectableTableData<this>
-insertionType: InsertableTableData<this> // eg type InsertUser = db.users.insertionType
+__selectionType__: SelectableTableData<this> ✅
+__insertionType__: InsertableTableData<this> ✅ // eg type InsertUser = db.users.__insertionType__
 
 // where examples
 users.id.eq(inputData.id)
 sql`${users.id.eq(inputData.id)} AND ${users.age.gte(inputData.minAge)}`
 ```
 
-db object methods
+current builder decisions
 
 ```tsx
-// on db class instance all its table are accessable: db.users
+b.text()     // appDefault: '' ✅
+b.integer()  // appDefault: 0 ✅
+b.real()     // appDefault: 0 ✅
+b.date()     // appDefault: new Date() ✅ (stored as INTEGER)
+b.boolean()  // appDefault: false ✅
+b.json(zod)  // appDefault derived from schema ✅
+b.id()       // appDefault fn () => nanoid() ✅
 
 constructor(schema: Record<string, Table>, opts: { origin: 'client' | 'server'}){}
 
