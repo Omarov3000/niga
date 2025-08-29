@@ -30,7 +30,6 @@ unique
 primaryKey
 references(() => table.column) // foreign key
 generatedAlwaysAs
-serverTime // for date column, when db was instantiated with origin: server it should set current time on update / insert
 $defaultFn(() => new Date()) // called when we insert a new row
 $onUpdateFn(() => new Date()) // called when we update a row
 $type<Type>() // override the ts type of the column
