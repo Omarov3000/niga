@@ -1,158 +1,11 @@
-type Column =
-  | { type: "column"; name: string; table?: string; alias?: string }
-  | { type: "star" };
+import { Sql, ComparisonOperator, SelectQuery } from './sqlTypes';
 
-type Table = { type: "table"; name: string; alias?: string };
-
-type Literal =
-  | { type: "literal"; value: string | number | null }
-  | { type: "param"; index: number }; // e.g. "?" placeholders
-
-
-type SubqueryExpression =
-  | { type: "subquery"; query: SelectQuery } // scalar subquery
-  | { type: "in_subquery"; expr: Expression; query: SelectQuery }
-  | { type: "exists_subquery"; query: SelectQuery };
-
-export type ComparisonOperator = "=" | "!=" | "<" | "<=" | ">" | ">=";
-type ComparisonExpression = {
-  type: "binary_expr";
-  operator: ComparisonOperator;
-  left: Expression;
-  right: Expression;
-};
-
-type LogicalOperator = "AND" | "OR";
-type LogicalExpression = {
-  type: "logical_expr";
-  operator: LogicalOperator;
-  left: Expression;
-  right: Expression;
-};
-
-type FunctionCall = {
-  type: "function_call";
-  name: string;
-  args: Expression[];
-  alias?: string;
-};
-
-type Expression =
-  | Column
-  | Literal
-  | ComparisonExpression
-  | LogicalExpression
-  | SubqueryExpression
-  | FunctionCall;
-
-type JoinType = "INNER" | "LEFT" | "RIGHT" | "CROSS";
-
-type Join = {
-  type: "join";
-  joinType: JoinType;
-  left: FromClause;
-  right: FromClause;
-  on?: Expression;
-};
-
-type FromSubquery = {
-  type: "from_subquery";
-  query: SelectQuery;
-  alias: string;
-};
-
-type FromClause = Table | Join | FromSubquery;
-
-type CTE = {
-  type: "cte";
-  name: string;
-  columns?: string[];
-  select: SelectQuery;
-};
-
-type WithClause = {
-  recursive: boolean;
-  ctes: CTE[];
-};
-
-type OrderByItem = {
-  expr: Expression;
-  direction?: "ASC" | "DESC";
-};
-
-type LimitClause = {
-  limit: number | Expression;
-  offset?: number | Expression;
-};
-
-type SelectStatement = {
-  type: "select";
-  with?: WithClause;
-  columns: Expression[];
-  from: FromClause;
-  where?: Expression;
-  groupBy?: Expression[];
-  having?: Expression;
-  orderBy?: OrderByItem[];
-  limit?: LimitClause;
-};
-
-type SetOperator = "UNION" | "UNION ALL" | "INTERSECT" | "EXCEPT";
-
-type CompoundSelect = {
-  type: "compound_select";
-  with?: WithClause;
-  left: SelectQuery;
-  operator: SetOperator;
-  right: SelectQuery;
-  orderBy?: OrderByItem[];
-  limit?: LimitClause;
-};
-
-export type SelectQuery = SelectStatement | CompoundSelect;
-
-type InsertStatement = {
-  type: "insert";
-  with?: WithClause;
-  table: Table;
-  columns?: string[]; // optional, if omitted assume all columns
-  values?: Expression[][]; // multiple rows of values
-  select?: SelectQuery; // INSERT ... SELECT ...
-  returning?: Expression[]; // e.g. PostgreSQL RETURNING
-};
-
-type UpdateStatement = {
-  type: "update";
-  with?: WithClause;
-  table: Table;
-  set: {
-    column: string;
-    value: Expression;
-  }[];
-  from?: FromClause; // e.g. UPDATE ... FROM ...
-  where?: Expression;
-  returning?: Expression[];
-};
-
-type DeleteStatement = {
-  type: "delete";
-  with?: WithClause;
-  table: Table;
-  where?: Expression;
-  using?: FromClause; // e.g. DELETE ... USING ...
-  returning?: Expression[];
-};
-
-export type SQLQuery =
-  | SelectQuery
-  | InsertStatement
-  | UpdateStatement
-  | DeleteStatement;
+export type { ComparisonOperator, SelectQuery };
 
 import { parse } from "sql-parser-cst";
 import { SelectSql } from '../utils/sql';
 
-export function rawQueryToSelectQuery(sql: SelectSql): SelectQuery {
+export function rawQueryToSelectQuery(sql: SelectSql): Sql.SelectQuery {
   // Replace ? placeholders with unique placeholder values that we can track
   let processedQuery = sql.query;
   const paramMarkers: string[] = [];
@@ -189,14 +42,14 @@ export function rawQueryToSelectQuery(sql: SelectSql): SelectQuery {
   return transformSelectStatement(statement, sql.params, paramMarkers);
 }
 
-function transformSelectStatement(stmt: any, params: any[], paramMarkers: string[]): SelectQuery {
+function transformSelectStatement(stmt: any, params: any[], paramMarkers: string[]): Sql.SelectQuery {
   // Handle compound select (UNION, INTERSECT, EXCEPT)
   if (stmt.type === "compound_select_stmt") {
     return transformCompoundSelect(stmt, params, paramMarkers);
   }
 
   // Handle regular select statement
-  const result: SelectStatement = {
+  const result: Sql.SelectStatement = {
     type: "select",
     columns: [],
     from: { type: "table", name: "" }
@@ -240,19 +93,19 @@ function transformSelectStatement(stmt: any, params: any[], paramMarkers: string
   return result;
 }
 
-function transformCompoundSelect(stmt: any, params: any[], paramMarkers: string[]): CompoundSelect {
+function transformCompoundSelect(stmt: any, params: any[], paramMarkers: string[]): Sql.CompoundSelect {
   const operatorText = Array.isArray(stmt.operator)
     ? stmt.operator.map((op: any) => op.text || op).join(" ")
     : stmt.operator.text || stmt.operator;
 
   // Transform left and right sides
-  const leftResult = transformSelectStatement(stmt.left, params, paramMarkers) as SelectStatement;
-  const rightResult = transformSelectStatement(stmt.right, params, paramMarkers) as SelectStatement;
+  const leftResult = transformSelectStatement(stmt.left, params, paramMarkers) as Sql.SelectStatement;
+  const rightResult = transformSelectStatement(stmt.right, params, paramMarkers) as Sql.SelectStatement;
 
-  const result: CompoundSelect = {
+  const result: Sql.CompoundSelect = {
     type: "compound_select",
     left: leftResult,
-    operator: operatorText as SetOperator,
+    operator: operatorText as Sql.SetOperator,
     right: rightResult
   };
 
@@ -290,14 +143,14 @@ function transformCompoundSelect(stmt: any, params: any[], paramMarkers: string[
   return result;
 }
 
-function transformWithClause(clause: any, params: any[], paramMarkers: string[]): WithClause {
+function transformWithClause(clause: any, params: any[], paramMarkers: string[]): Sql.WithClause {
   return {
     recursive: !!clause.recursiveKw,
     ctes: clause.tables.items.map((cte: any) => transformCTE(cte, params, paramMarkers))
   };
 }
 
-function transformCTE(cte: any, params: any[], paramMarkers: string[]): CTE {
+function transformCTE(cte: any, params: any[], paramMarkers: string[]): Sql.CTE {
   return {
     type: "cte",
     name: cte.table.name,
@@ -306,17 +159,17 @@ function transformCTE(cte: any, params: any[], paramMarkers: string[]): CTE {
   };
 }
 
-function transformSelectClause(clause: any, params: any[], paramMarkers: string[]): Expression[] {
+function transformSelectClause(clause: any, params: any[], paramMarkers: string[]): Sql.Expression[] {
   if (!clause.columns) return [];
 
   return clause.columns.items.map((item: any) => transformExpression(item, params, paramMarkers));
 }
 
-function transformFromClause(clause: any, params: any[], paramMarkers: string[]): FromClause {
+function transformFromClause(clause: any, params: any[], paramMarkers: string[]): Sql.FromClause {
   return transformTableExpression(clause.expr, params, paramMarkers);
 }
 
-function transformTableExpression(expr: any, params: any[], paramMarkers: string[]): FromClause {
+function transformTableExpression(expr: any, params: any[], paramMarkers: string[]): Sql.FromClause {
   if (expr.type === "join_expr") {
     return transformJoinExpression(expr, params, paramMarkers);
   }
@@ -348,8 +201,8 @@ function transformTableExpression(expr: any, params: any[], paramMarkers: string
   };
 }
 
-function transformJoinExpression(expr: any, params: any[], paramMarkers: string[]): Join {
-  const joinTypes: Record<string, JoinType> = {
+function transformJoinExpression(expr: any, params: any[], paramMarkers: string[]): Sql.Join {
+  const joinTypes: Record<string, Sql.JoinType> = {
     "INNER JOIN": "INNER",
     "LEFT JOIN": "LEFT",
     "RIGHT JOIN": "RIGHT",
@@ -370,7 +223,7 @@ function transformJoinExpression(expr: any, params: any[], paramMarkers: string[
   };
 }
 
-function transformExpression(expr: any, params: any[], paramMarkers: string[]): Expression {
+function transformExpression(expr: any, params: any[], paramMarkers: string[]): Sql.Expression {
   if (!expr) return { type: "literal", value: null };
 
 
@@ -467,7 +320,7 @@ function transformExpression(expr: any, params: any[], paramMarkers: string[]): 
   return { type: "literal", value: null };
 }
 
-function transformBinaryExpression(expr: any, params: any[], paramMarkers: string[]): Expression {
+function transformBinaryExpression(expr: any, params: any[], paramMarkers: string[]): Sql.Expression {
   const operatorText = Array.isArray(expr.operator)
     ? expr.operator.map((op: any) => op.text || op).join(" ")
     : expr.operator.text || expr.operator;
@@ -485,7 +338,7 @@ function transformBinaryExpression(expr: any, params: any[], paramMarkers: strin
   if (operatorText === "AND" || operatorText === "OR") {
     return {
       type: "logical_expr",
-      operator: operatorText as LogicalOperator,
+      operator: operatorText as Sql.LogicalOperator,
       left: transformExpression(expr.left, params, paramMarkers),
       right: transformExpression(expr.right, params, paramMarkers)
     };
@@ -511,7 +364,7 @@ function transformBinaryExpression(expr: any, params: any[], paramMarkers: strin
   };
 }
 
-function transformFunctionCall(expr: any, params: any[], paramMarkers: string[]): FunctionCall {
+function transformFunctionCall(expr: any, params: any[], paramMarkers: string[]): Sql.FunctionCall {
   const name = expr.name.name || expr.name.text;
   // Function arguments are nested: args.expr.args.items
   const args = expr.args?.expr?.args?.items?.map((arg: any) => transformExpression(arg, params, paramMarkers)) || [];
@@ -523,13 +376,13 @@ function transformFunctionCall(expr: any, params: any[], paramMarkers: string[])
   };
 }
 
-function transformGroupByClause(clause: any, params: any[], paramMarkers: string[]): Expression[] {
+function transformGroupByClause(clause: any, params: any[], paramMarkers: string[]): Sql.Expression[] {
   return clause.columns.items.map((item: any) => transformExpression(item, params, paramMarkers));
 }
 
-function transformOrderByClause(clause: any, params: any[], paramMarkers: string[]): OrderByItem[] {
+function transformOrderByClause(clause: any, params: any[], paramMarkers: string[]): Sql.OrderByItem[] {
   return clause.specifications.items.map((spec: any) => {
-    const result: OrderByItem = {
+    const result: Sql.OrderByItem = {
       expr: transformExpression(spec.expr || spec, params, paramMarkers)
     };
 
@@ -541,10 +394,10 @@ function transformOrderByClause(clause: any, params: any[], paramMarkers: string
   });
 }
 
-function transformLimitClause(clause: any, params: any[], paramMarkers: string[]): LimitClause {
+function transformLimitClause(clause: any, params: any[], paramMarkers: string[]): Sql.LimitClause {
   const limitExpr = transformExpression(clause.count, params, paramMarkers);
 
-  const result: LimitClause = {
+  const result: Sql.LimitClause = {
     limit: limitExpr.type === 'literal' && typeof limitExpr.value === 'number' ? limitExpr.value : limitExpr
   };
 

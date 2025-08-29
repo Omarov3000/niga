@@ -1,5 +1,6 @@
 export type SelectSql = { query: string; params: any[] }; // we get this as input
 import { Column } from '../column';
+import { Sql } from '../security/sqlTypes';
 
 export function sql(strings: TemplateStringsArray, ...values: any[]): SelectSql {
   let query = "";
@@ -87,4 +88,10 @@ export class FilterObject extends SqlPart {
     this.left = left;
     this.right = right;
   }
+}
+
+export interface BinSql {
+  query: Sql.SqlQuery
+  sql: string
+  params: any[]
 }
