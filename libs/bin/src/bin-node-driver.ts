@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
 import { BinDriver } from './types';
-import { SelectSql } from './utils/sql';
+import { RawSql } from './utils/sql';
 
 function safeSplit(sql: string, delimiter: string): string[] {
   return sql.split(delimiter).filter(s => s.trim().length > 0);
@@ -17,9 +17,9 @@ export class BinNodeDriver implements BinDriver {
     safeSplit(sql, ';').forEach((s) => this.db.exec(s));
   };
 
-  run = ({ query, params }: SelectSql) => {
+  run = ({ query, params }: RawSql) => {
     const q = this.db.prepare(query);
-    if (query.startsWith('SELECT')) return q.all(params);
+    if (query.trim().toUpperCase().startsWith('SELECT')) return q.all(params);
     q.run(params);
     return [];
   };

@@ -2,6 +2,7 @@ import type { BinDriver, TableMetadata } from './types';
 import type { ZodTypeAny } from 'zod';
 import { sql } from './utils/sql';
 import type { Table } from './table';
+import { rawQueryToSelectQuery } from './security/rawQueryToSelectQuery';
 
 export interface DbConstructorOptions {
   schema: Record<string, { __meta__: TableMetadata }>;
@@ -38,11 +39,15 @@ export class Db {
     return {
       execute: async <T extends ZodTypeAny>(zodSchema: T) => {
         const driver = ensureDriver();
+        // Parse for security analysis but use raw SQL for execution
+        rawQueryToSelectQuery({ query, params }); // Security analysis
         const rows = await Promise.resolve(driver.run({ query, params }));
         return zodSchema.array().parse(rows) as ReturnType<T['array']>['_output'];
       },
       executeAndTakeFirst: async <T extends ZodTypeAny>(zodSchema: T) => {
         const driver = ensureDriver();
+        // Parse for security analysis but use raw SQL for execution
+        rawQueryToSelectQuery({ query, params }); // Security analysis
         const rows = await Promise.resolve(driver.run({ query, params }));
         if (!rows || rows.length === 0) throw new Error('No rows returned');
         return zodSchema.parse(rows[0]) as ReturnType<T['parse']>;

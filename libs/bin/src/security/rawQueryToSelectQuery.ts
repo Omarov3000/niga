@@ -1,11 +1,11 @@
-import { Sql, ComparisonOperator, SelectQuery } from './sqlTypes';
+import { Sql, ComparisonOperator, SelectQuery, SqlQuery } from './sqlTypes';
 
-export type { ComparisonOperator, SelectQuery };
+export type { ComparisonOperator, SelectQuery, SqlQuery };
 
 import { parse } from "sql-parser-cst";
-import { SelectSql } from '../utils/sql';
+import { RawSql } from '../utils/sql';
 
-export function rawQueryToSelectQuery(sql: SelectSql): Sql.SelectQuery {
+export function rawQueryToSelectQuery(sql: RawSql): Sql.SqlQuery {
   // Replace ? placeholders with unique placeholder values that we can track
   let processedQuery = sql.query;
   const paramMarkers: string[] = [];
@@ -27,19 +27,24 @@ export function rawQueryToSelectQuery(sql: SelectSql): Sql.SelectQuery {
   const statement = ast.statements[0];
 
   if (!statement) {
-    throw new Error("Expected SELECT statement");
+    throw new Error("Expected SQL statement");
   }
 
-  // Handle compound selects
-  if (statement.type === "compound_select_stmt") {
-    return transformCompoundSelect(statement, sql.params, paramMarkers);
+  // Handle different statement types
+  switch (statement.type) {
+    case "compound_select_stmt":
+      return transformCompoundSelect(statement, sql.params, paramMarkers);
+    case "select_stmt":
+      return transformSelectStatement(statement, sql.params, paramMarkers);
+    case "insert_stmt":
+      return transformInsertStatement(statement, sql.params, paramMarkers);
+    case "update_stmt":
+      return transformUpdateStatement(statement, sql.params, paramMarkers);
+    case "delete_stmt":
+      return transformDeleteStatement(statement, sql.params, paramMarkers);
+    default:
+      throw new Error(`Unsupported statement type: ${statement.type}`);
   }
-
-  if (statement.type !== "select_stmt") {
-    throw new Error("Expected SELECT statement");
-  }
-
-  return transformSelectStatement(statement, sql.params, paramMarkers);
 }
 
 function transformSelectStatement(stmt: any, params: any[], paramMarkers: string[]): Sql.SelectQuery {
@@ -404,6 +409,111 @@ function transformLimitClause(clause: any, params: any[], paramMarkers: string[]
   if (clause.offset) {
     const offsetExpr = transformExpression(clause.offset, params, paramMarkers);
     result.offset = offsetExpr.type === 'literal' && typeof offsetExpr.value === 'number' ? offsetExpr.value : offsetExpr;
+  }
+
+  return result;
+}
+
+function transformInsertStatement(stmt: any, params: any[], paramMarkers: string[]): Sql.InsertStatement {
+  const result: Sql.InsertStatement = {
+    type: "insert",
+    table: { type: "table", name: "" }
+  };
+
+  // Process clauses
+  for (const clause of stmt.clauses) {
+    switch (clause.type) {
+      case "with_clause":
+        result.with = transformWithClause(clause, params, paramMarkers);
+        break;
+      case "insert_clause":
+        result.table = { type: "table", name: clause.table.name };
+        if (clause.columns?.expr?.items) {
+          result.columns = clause.columns.expr.items.map((col: any) => col.name);
+        }
+        break;
+      case "values_clause":
+        result.values = clause.values.items.map((row: any) =>
+          row.expr.items.map((val: any) => transformExpression(val, params, paramMarkers))
+        );
+        break;
+      case "select_stmt":
+        // This is INSERT ... SELECT - the clause is already a complete select statement
+        result.select = transformSelectStatement(clause, params, paramMarkers) as Sql.SelectStatement;
+        break;
+      case "returning_clause":
+        result.returning = clause.columns.items.map((item: any) => transformExpression(item, params, paramMarkers));
+        break;
+    }
+  }
+
+  return result;
+}
+
+function transformUpdateStatement(stmt: any, params: any[], paramMarkers: string[]): Sql.UpdateStatement {
+  const result: Sql.UpdateStatement = {
+    type: "update",
+    table: { type: "table", name: "" },
+    set: []
+  };
+
+  // Process clauses
+  for (const clause of stmt.clauses) {
+    switch (clause.type) {
+      case "with_clause":
+        result.with = transformWithClause(clause, params, paramMarkers);
+        break;
+      case "update_clause":
+        // UPDATE clause has tables.items array, take first one
+        result.table = { type: "table", name: clause.tables.items[0].name };
+        break;
+      case "set_clause":
+        result.set = clause.assignments.items.map((assignment: any) => ({
+          column: assignment.column.name,
+          value: transformExpression(assignment.expr, params, paramMarkers)
+        }));
+        break;
+      case "from_clause":
+        result.from = transformFromClause(clause, params, paramMarkers);
+        break;
+      case "where_clause":
+        result.where = transformExpression(clause.expr, params, paramMarkers);
+        break;
+      case "returning_clause":
+        result.returning = clause.columns.items.map((item: any) => transformExpression(item, params, paramMarkers));
+        break;
+    }
+  }
+
+  return result;
+}
+
+function transformDeleteStatement(stmt: any, params: any[], paramMarkers: string[]): Sql.DeleteStatement {
+  const result: Sql.DeleteStatement = {
+    type: "delete",
+    table: { type: "table", name: "" }
+  };
+
+  // Process clauses
+  for (const clause of stmt.clauses) {
+    switch (clause.type) {
+      case "with_clause":
+        result.with = transformWithClause(clause, params, paramMarkers);
+        break;
+      case "delete_clause":
+        // DELETE clause has tables.items array, take first one
+        result.table = { type: "table", name: clause.tables.items[0].name };
+        break;
+      case "using_clause":
+        result.using = transformFromClause(clause, params, paramMarkers);
+        break;
+      case "where_clause":
+        result.where = transformExpression(clause.expr, params, paramMarkers);
+        break;
+      case "returning_clause":
+        result.returning = clause.columns.items.map((item: any) => transformExpression(item, params, paramMarkers));
+        break;
+    }
   }
 
   return result;

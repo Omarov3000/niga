@@ -1,5 +1,5 @@
-import { ComparisonOperator, rawQueryToSelectQuery, SelectQuery } from './rawQueryToSelectQuery';
-import { SelectSql } from '../utils/sql';
+import { ComparisonOperator, rawQueryToSelectQuery, SelectQuery, SqlQuery } from './rawQueryToSelectQuery';
+import { RawSql } from '../utils/sql';
 
 // Flattened view of accessed tables for Simplified Analysis
 type SimplifiedFilter = {
@@ -19,8 +19,8 @@ export type QueryAnalysis = {
   accessedTables: AccessedTable[];
 };
 
-export function analyze(sql: SelectSql): QueryAnalysis {
-  const selectQuery = rawQueryToSelectQuery(sql);
+export function analyze(sql: RawSql): QueryAnalysis {
+  const sqlQuery = rawQueryToSelectQuery(sql);
   const accessedTables: AccessedTable[] = [];
   const tableMap = new Map<string, AccessedTable>();
   const cteNames = new Set<string>();
@@ -512,8 +512,20 @@ export function analyze(sql: SelectSql): QueryAnalysis {
     }
   }
 
-  // Start processing
-  processSelectQuery(selectQuery);
+  // Start processing based on query type
+  if (sqlQuery.type === "select" || sqlQuery.type === "compound_select") {
+    processSelectQuery(sqlQuery);
+  } else {
+    // For INSERT/UPDATE/DELETE queries, we can analyze table access differently
+    // For now, just extract the main table name
+    switch (sqlQuery.type) {
+      case "insert":
+      case "update":  
+      case "delete":
+        getOrCreateTable(sqlQuery.table.name);
+        break;
+    }
+  }
 
   return { accessedTables };
 }

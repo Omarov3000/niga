@@ -1,5 +1,6 @@
 import { Column } from './column';
 import type { IndexDefinition, TableMetadata, SerializableColumnMetadata, BinDriver } from './types';
+import { Sql } from './security/sqlTypes';
 
 type ColumnLike = Column<any, any, any>;
 
@@ -116,8 +117,10 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
       throw new Error('No columns to insert');
     }
 
-    const placeholders = columnNames.map(() => '?').join(', ');
+    // Generate raw SQL INSERT statement
+    const placeholders = params.map(() => '?').join(', ');
     const query = `INSERT INTO ${this.__meta__.name} (${columnNames.join(', ')}) VALUES (${placeholders})`;
+
     driver.run({ query, params });
 
     return model;

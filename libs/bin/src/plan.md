@@ -229,9 +229,11 @@ import * as schema from 'schema'
 const db = b.db({
   schema,
   // advanced security rules (note this db should run queiries without security checks to avoid dead locks
-}).secure(async (db) => (query, user: { id: string }) => {
+})
+
+db.users.secure(async (table) => (query, user: { id: string }) => {
     const { type } = db.query`select ${db.groups.type} from ${db.groups} where ${db.groups.userId.eq(user.id)}`.executeAndTakeFirst({ type: z.enum(['moderators']) })
-    if (type == 'moderators') return true
+    if (type == 'moderators') return true // only moderators can access this table
     return false
   })
 ```

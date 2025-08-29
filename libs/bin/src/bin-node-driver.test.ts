@@ -38,10 +38,7 @@ describe('insert', () => {
       age: 20,
     });
 
-    const rows = driver.run({
-      query: 'SELECT id, name, email, age FROM users WHERE id = ?',
-      params: ['test-123'],
-    });
+    const rows = driver.db.prepare('SELECT id, name, email, age FROM users WHERE id = ?').all(['test-123']);
 
     expect(rows).toMatchObject([
       { id: 'test-123', name: 'John Doe', email: 'john@example.com', age: 20 },
@@ -65,10 +62,7 @@ describe('insert', () => {
       views: 42,
     });
 
-    const rows = driver.run({
-      query: 'SELECT id, title, published, views FROM posts WHERE id = ?',
-      params: ['post-123'],
-    });
+    const rows = driver.db.prepare('SELECT id, title, published, views FROM posts WHERE id = ?').all(['post-123']);
 
     expect(rows).toMatchObject([
       { id: 'post-123', title: 'Test Post', published: 1, views: 42 },
@@ -87,10 +81,7 @@ describe('insert', () => {
 
     expect(returned).toMatchObject({ id: 'user-123', name: 'Alice' });
 
-    const rows = driver.run({
-      query: 'SELECT id, name FROM users WHERE id = ?',
-      params: ['user-123'],
-    });
+    const rows = driver.db.prepare('SELECT id, name FROM users WHERE id = ?').all(['user-123']);
 
     expect(rows).toMatchObject([{ id: 'user-123', name: 'Alice' }]);
   });
@@ -112,10 +103,7 @@ describe('insert', () => {
 
     expect(model).toMatchObject({ id: 'type-safe-test', name: 'Type Safe User', age: 30 });
 
-    const rows = driver.run({
-      query: 'SELECT name, age FROM users WHERE id = ?',
-      params: ['type-safe-test'],
-    });
+    const rows = driver.db.prepare('SELECT name, age FROM users WHERE id = ?').all(['type-safe-test']);
 
     expect(rows).toMatchObject([{ name: 'Type Safe User', age: 30 }]);
   });
@@ -158,8 +146,8 @@ describe('select', () => {
     const db = await prepareForTest({ users });
 
     // Seed some rows directly
-    driver.run({ query: 'INSERT INTO users (id, name, age) VALUES (?, ?, ?)', params: ['u1', 'Alice', 30] });
-    driver.run({ query: 'INSERT INTO users (id, name, age) VALUES (?, ?, ?)', params: ['u2', 'Bob', 25] });
+    driver.db.prepare('INSERT INTO users (id, name, age) VALUES (?, ?, ?)').run(['u1', 'Alice', 30]);
+    driver.db.prepare('INSERT INTO users (id, name, age) VALUES (?, ?, ?)').run(['u2', 'Bob', 25]);
 
     const rows = await db
       .query`SELECT ${db.users.id}, ${db.users.name}, ${db.users.age} FROM users WHERE ${db.users.age.gte(25)}`
@@ -173,7 +161,7 @@ describe('select', () => {
     const users = b.table('users', { id: b.id(), name: b.text() });
     const db = await prepareForTest({ users });
 
-    driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: ['u1', 'Alice'] });
+    driver.db.prepare('INSERT INTO users (id, name) VALUES (?, ?)').run(['u1', 'Alice']);
 
     const row = await db
       .query`SELECT ${db.users.id}, ${db.users.name} FROM users WHERE ${db.users.id.eq('u1')}`
@@ -194,7 +182,7 @@ describe('select', () => {
     const db = await prepareForTest({ users });
 
     const now = new Date(1700000000000);
-    driver.run({ query: 'INSERT INTO users (id, createdAt, isActive, role, profile) VALUES (?, ?, ?, ?, ?)', params: ['u1', now.getTime(), 1, 0, JSON.stringify({ bio: 'Dev' })] });
+    driver.db.prepare('INSERT INTO users (id, createdAt, isActive, role, profile) VALUES (?, ?, ?, ?, ?)').run(['u1', now.getTime(), 1, 0, JSON.stringify({ bio: 'Dev' })]);
 
     const row = await db
       .query`SELECT ${db.users.id}, ${db.users.createdAt}, ${db.users.isActive}, ${db.users.role}, ${db.users.profile} FROM users WHERE ${db.users.createdAt.gte(now)} AND ${db.users.isActive.eq(true)} AND ${db.users.role.eq('admin')}`
@@ -221,9 +209,9 @@ describe('select', () => {
     });
     const db = await prepareForTest({ items });
 
-    driver.run({ query: 'INSERT INTO items (id, price, name) VALUES (?, ?, ?)', params: ['i1', 10, 'A'] });
-    driver.run({ query: 'INSERT INTO items (id, price, name) VALUES (?, ?, ?)', params: ['i2', 20, 'B'] });
-    driver.run({ query: 'INSERT INTO items (id, price, name) VALUES (?, ?, ?)', params: ['i3', 30, null] });
+    driver.db.prepare('INSERT INTO items (id, price, name) VALUES (?, ?, ?)').run(['i1', 10, 'A']);
+    driver.db.prepare('INSERT INTO items (id, price, name) VALUES (?, ?, ?)').run(['i2', 20, 'B']);
+    driver.db.prepare('INSERT INTO items (id, price, name) VALUES (?, ?, ?)').run(['i3', 30, null]);
 
     const rows = await db
       .query`SELECT ${db.items.id}, ${db.items.price} FROM items WHERE ${db.items.price.between(10, 25)} AND ${db.items.id.inArray(['i1','i2'])} AND ${db.items.name.isNull()}`

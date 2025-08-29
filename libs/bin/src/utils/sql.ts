@@ -1,8 +1,8 @@
-export type SelectSql = { query: string; params: any[] }; // we get this as input
+export type RawSql = { query: string; params: any[] }; // we get this as input
 import { Column } from '../column';
 import { Sql } from '../security/sqlTypes';
 
-export function sql(strings: TemplateStringsArray, ...values: any[]): SelectSql {
+export function sql(strings: TemplateStringsArray, ...values: any[]): RawSql {
   let query = "";
   const params: any[] = [];
 
@@ -90,8 +90,3 @@ export class FilterObject extends SqlPart {
   }
 }
 
-export interface BinSql {
-  query: Sql.SqlQuery
-  sql: string
-  params: any[]
-}

@@ -1,5 +1,5 @@
 import type { ZodTypeAny } from 'zod';
-import { SelectSql } from './utils/sql';
+import { RawSql } from './utils/sql';
 
 export type ColumnType = 'integer' | 'real' | 'text' | 'blob';
 
@@ -50,5 +50,5 @@ export interface TableMetadata extends SerializableTableMetadata {
 
 export interface BinDriver {
   exec: (sql: string) => any;
-  run: (sql: SelectSql) => any;
+  run: (sql: RawSql) => any;
 }
