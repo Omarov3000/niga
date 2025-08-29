@@ -7,26 +7,22 @@ export interface TableConstructorOptions<Name extends string, TCols extends Reco
   indexes?: IndexDefinition[];
 }
 
-type ColumnsMeta<TCols extends Record<string, Column<any, any>>> = {
-  [K in keyof TCols & string]: SerializableColumnMetadata<K, TCols[K]['__meta__']['type'], TCols[K]['__meta__']['appType']>;
-};
-
 export class Table<Name extends string, TCols extends Record<string, Column<any, any>>> {
-  readonly __meta__: TableMetadata<Name, ColumnsMeta<TCols>>;
+  readonly __meta__: TableMetadata;
 
   constructor(options: TableConstructorOptions<Name, TCols>) {
     const columnMetadata: Record<string, any> = {};
     Object.entries(options.columns).forEach(([key, col]) => {
       col.__table__ = { getName: () => options.name };
       (this as any)[key] = col;
-      columnMetadata[key] = { ...col.__meta__, name: key } as SerializableColumnMetadata<any, any, any>;
+      columnMetadata[key] = { ...col.__meta__, name: key } as SerializableColumnMetadata;
     });
 
     this.__meta__ = {
       name: options.name,
-      columns: columnMetadata as ColumnsMeta<TCols>,
+      columns: columnMetadata as Record<string, SerializableColumnMetadata>,
       indexes: options.indexes ?? [],
-    } as TableMetadata<Name, ColumnsMeta<TCols>>;
+    } as TableMetadata;
   }
 }
 

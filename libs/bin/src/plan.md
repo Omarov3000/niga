@@ -1,6 +1,6 @@
 # Overview
 
-we need to build a typesafe orm for sqlite. This is very crude draft on how it should look like
+we need to build a typesafe orm for sqlite. This refined plan stays in sync with the current code and highlights what's done vs next.
 
 ```tsx
 columns:
@@ -8,8 +8,8 @@ columns:
   text
   integer
   real
-  date: Date // js date that is serialized to unix timestamp
-  enum: 'a' | 'b' | 'c'. enum: <const T extends s>(arr: readonly T[], default_: NoInfer<T>) // in db we store integer
+  date: Date // js date serialized to unix timestamp (stored as integer)
+  enum: 'a' | 'b' | 'c' // stored as integer
   json
   boolean
 constrains:
@@ -18,21 +18,21 @@ constrains:
   index
 ```
 
-column definition class methods:
+column definition class methods
 
 ```tsx
-__meta__: ColumnMetadata
-__table__: { getName: () => string} // reference to parent
+__meta__: ColumnMetadata ✅
+__table__: { getName: () => string } // reference to parent ✅
 
-notNull
-default
-unique
-primaryKey
-references(() => table.column) // foreign key
-generatedAlwaysAs
-$defaultFn(() => new Date()) // called when we insert a new row
-$onUpdateFn(() => new Date()) // called when we update a row
-$type<Type>() // override the ts type of the column
+notNull ✅
+default ✅
+unique ✅
+primaryKey ✅
+references(() => table.column) // foreign key ✅
+generatedAlwaysAs // virtual/derived column ✅
+$defaultFn(() => new Date()) // called when we insert a new row ⏭️
+$onUpdateFn(() => new Date()) // called when we update a row ⏭️
+$type<Type>() // override the ts type of the column ✅
 ```
 
 schema example
@@ -40,24 +40,24 @@ schema example
 ```tsx
 const table = b.table('table',
   {
-	  id: b.id(),
-	  name: b.text(),
-	  age: b.integer(),
-	  height: b.double(),
-	  generatedName: b.text().generatedAlwaysAs(
-	    (): Sql => sql`hi, ${table.name}!`
-	  ),
-	},
+    id: b.id(),
+    name: b.text(),
+    age: b.integer(),
+    height: b.real(),
+    generatedName: b.text().generatedAlwaysAs(
+      (): Sql => sql`hi, ${table.name}!`
+    ),
+  },
   (table) => [index().on(table.name, table.age)],
   // simple security checks
- ).secure((table, checks) => (query, user: { id: string; role: 'admin' }) => {
-	  switch query.type
-	    case 'delete':
-	      if (user.role === 'admin') return true // RBAC
-	      return false
-	    case 'update':
-	    case 'insert':
-	    case 'select':
+).secure((table, checks) => (query, user: { id: string; role: 'admin' }) => {
+    switch query.type
+      case 'delete':
+        if (user.role === 'admin') return true // RBAC
+        return false
+      case 'update':
+      case 'insert':
+      case 'select':
         if (checks.hasWhereClauseCheck(query.accessedTables, table.id.equalityCheck(user.id))) return true // ABAC
 
     return false
@@ -69,40 +69,35 @@ class Sql { query: string; params: any[] }
 column metadata
 
 ```tsx
-type ColumnType = 'integer' | 'real' | 'text',
-type ApplicationType = 'json' | 'date' | 'ulid'
-type InsertionType = 'required' | 'optional' | 'virtual' // virtual: eg MAX(name)
+// runtime storage type used by SQLite. camelCase in TS; SQL uses UPPERCASE on emission
+type ColumnType = 'integer' | 'real' | 'text' | 'blob'
+// application-level interpretation of stored value
+type ApplicationType = 'json' | 'date' | 'ulid' | 'boolean' | 'enum' | undefined
+// insertion type classification
+type InsertionType = 'required' | 'optional' | 'virtual'
 
-interface SerializableColumnMetadata<
-  Name extends string,
-  Type extends ColumnType,
-  AppType extends ApplicationType
-> {
-  name: Name
-  type: Type
+// Serializable on-disk/in-SQL metadata (no functions)
+interface SerializableColumnMetadata { // ✅ (non-generic)
+  name: string
+  type: ColumnType
   notNull?: boolean
-  generatedAlwaysAs?: string
+  generatedAlwaysAs?: string // SQL expression string ✅
   primaryKey?: boolean
-  foreingKey?: string
+  foreignKey?: string // `${table}.${column}` ✅
   unique?: boolean
-  default?: number | string
-  appType?: AppType
+  default?: number | string | null
+  appType?: ApplicationType
 }
 
-interface ColumnMetadata<
-  TableName extends string,
-  Name extends string,
-  Type extends ColumnType,
-  AppType extends ApplicationType,
-  InsertType extends InsertionType
-> extends SerializableColumnMetadata<Name, Type, AppType>
-  insertType: InsertType
+// In-memory metadata (superset of serializable)
+interface ColumnMetadata extends SerializableColumnMetadata { // ✅ (non-generic)
+  insertType: InsertionType
   serverTime?: boolean
-  appDefault: (() => Type) | Type
-  encode?: (data: NonNullable<Type>) => n | s // to db
-  decode?: (data: n | s) => Type // from db
+  appDefault?: (() => unknown) | unknown ✅
+  encode?: (data: unknown) => number | string
+  decode?: (data: number | string) => unknown
   aliasedFrom?: string
-  definition?: string // eg COUNT(*) - for virtual columns in queries
+  definition?: string // eg COUNT(*) for virtual columns
 }
 ```
 
@@ -160,8 +155,10 @@ interface TableMetadata extends SerializableTableMetadata {
 table class methods
 
 ```tsx
-__meta__: TableMetadata
-__db__: { getDriver: () => BinDriver } // parent reference
+__meta__: TableMetadata ✅
+__db__: { getDriver: () => BinDriver }
+
+make(overrides: Partial<InsertableTableData<this>>): SelectableTableData<this>
 
 // on table class instance all its columns are accessable: users.age
 insert({
@@ -200,19 +197,19 @@ transaction: (cb: () => void): Promise<void>
 query(strings: TemplateStringsArray, ...values: any[]): { execute: (zodSchema: T) => Promise<infer<T>> }
 
 _connectDriver: (driver: BinDriver) => Promise<void>
-_getSchemaDefinition
-_getSchemaSnapshot(prev?: SchemaSnapshot)
-_clear
+getSchemaDefinition: () => string // emits CREATE TABLE + INDEX ✅
+_getSchemaSnapshot(prev?: SchemaSnapshot) ⏭️
+_clear ⏭️
 
 interface SchemaSnapshot {
   id: string // timestamp-randomSuffix
   name: string
-  tables:{
-	  name: string
-	  columns: Record<string, SerializableColumnMetadata>
-	  indexes?: string[][]
-	  constrains?: string[][]
-	}
+  tables: {
+    name: string
+    columns: Record<string, SerializableColumnMetadata>
+    indexes?: string[][]
+    constrains?: string[][]
+  }
 }
 
 interface BinDriver {
@@ -230,10 +227,9 @@ const db = b.db({
     if (type == 'moderators') return true
     return false
   })
-
 ```
 
-node driver
+node driver (illustrative)
 
 ```tsx
 import Database from 'better-sqlite3'
@@ -256,128 +252,4 @@ export class BinNodeDriver implements BinDriver {
     return []
   }
 }
-
 ```
-
-# Phase 1
-
-## 🎯 Phase 1 Goals
-- Implement **core schema definition**:
-  - `Column` class with metadata
-  - `Table` class with metadata
-  - `Db` class with `_getSchemaDefinition()`
-- Support **basic column types** (`integer`, `real`, `text`, `date`, `json`, `boolean`, `enum`)
-- Support **constraints** (`primaryKey`, `unique`, `index`)
-- Implement **serialization** of schema into a string (for snapshot/testing)
-- Write **tests with Vitest** that:
-  - Define a schema
-  - Call `_getSchemaDefinition()`
-  - Compare against expected string using `dedent`
-
----
-
-## 🏗 Implementation Plan
-
-### 1. Column Definition
-- Create a `Column` class that stores:
-  - `name`
-  - `type` (SQLite type: `INTEGER`, `REAL`, `TEXT`, `BLOB`)
-  - `appType` (optional: `date`, `json`, `boolean`, `enum`)
-  - constraints: `notNull`, `primaryKey`, `unique`, `default`, `references`
-- Provide builder functions in `b` object:
-  ```ts
-  b.text()
-  b.integer()
-  b.real()
-  b.date()
-  b.json()
-  b.boolean()
-  b.enum(['a', 'b', 'c'], 'a')
-  b.id() // shorthand for primary key text/uuid
-  ```
-
-### 2. Table Definition
-- `Table` class:
-  - Holds `name`
-  - Holds `columns` (map of `Column`)
-  - Holds `indexes` and `constraints`
-- Builder:
-  ```ts
-  const users = b.table("users", {
-    id: b.id(),
-    name: b.text().notNull(),
-    age: b.integer(),
-  }, (t) => [
-    b.index().on(t.name)
-  ])
-  ```
-
-### 3. Schema Definition
-- `Db` class:
-  - Accepts schema (map of tables)
-  - Implements `_getSchemaDefinition()`:
-    - Iterates over tables
-    - Serializes each table into a `CREATE TABLE` statement
-    - Serializes indexes
-- Example output:
-  ```sql
-  CREATE TABLE users (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    age INTEGER
-  );
-
-  CREATE INDEX users_name_idx ON users(name);
-  ```
-
-### 4. Testing Strategy
-- Use **Vitest** + **dedent** for snapshot-like tests
-- Example test:
-  ```ts
-  import { describe, it, expect } from "vitest"
-  import dedent from "dedent"
-  import { b } from "../src/builder"
-
-  describe("schema definition", () => {
-    it("should generate schema for users table", () => {
-      const users = b.table("users", {
-        id: b.id(),
-        name: b.text().notNull(),
-        age: b.integer(),
-      })
-
-      const db = b.db({ schema: { users } })
-      expect(db._getSchemaDefinition()).toBe(dedent`
-        CREATE TABLE users (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          age INTEGER
-        );
-      `)
-    })
-  })
-  ```
-
----
-
-## 📂 Phase 1 File Structure
-
-```
-src/
-  builder.ts        // entry point with b.table, b.text, etc.
-  column.ts         // Column class + metadata
-  table.ts          // Table class + metadata
-  db.ts             // Db class + schema serialization
-  types.ts          // shared types
-tests/
-  schema.test.ts    // Vitest tests for schema definition
-```
-
----
-
-## ✅ Deliverables for Phase 1
-- [ ] `Column` class with metadata + builder functions
-- [ ] `Table` class with metadata + builder
-- [ ] `Db` class with `_getSchemaDefinition()`
-- [ ] Serialization to SQL string
-- [ ] Vitest tests with `dedent`

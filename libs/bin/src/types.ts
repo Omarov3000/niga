@@ -1,38 +1,32 @@
+import type { ZodTypeAny } from 'zod';
+
 export type ColumnType = 'integer' | 'real' | 'text' | 'blob';
 
 export type ApplicationType = 'json' | 'date' | 'boolean' | 'enum' | 'ulid' | undefined;
 
 export type InsertionType = 'required' | 'optional' | 'virtual';
 
-export interface SerializableColumnMetadata<
-  Name extends string,
-  Type extends ColumnType,
-  AppType extends ApplicationType
-> {
-  name: Name;
-  type: Type;
+export interface SerializableColumnMetadata {
+  name: string;
+  type: ColumnType;
   notNull?: boolean;
   generatedAlwaysAs?: string;
   primaryKey?: boolean;
   foreignKey?: string;
   unique?: boolean;
   default?: number | string | null;
-  appType?: AppType;
+  appType?: ApplicationType;
 }
 
-export interface ColumnMetadata<
-  Name extends string,
-  Type extends ColumnType,
-  AppType extends ApplicationType,
-  InsertType extends InsertionType
-> extends SerializableColumnMetadata<Name, Type, AppType> {
-  insertType: InsertType;
+export interface ColumnMetadata extends SerializableColumnMetadata {
+  insertType: InsertionType;
   serverTime?: boolean;
-  appDefault?: (() => any) | any;
-  encode?: (data: any) => number | string;
-  decode?: (data: number | string) => any;
+  appDefault?: (() => unknown) | unknown;
+  encode?: (data: unknown) => number | string;
+  decode?: (data: number | string) => unknown;
   aliasedFrom?: string;
   definition?: string;
+  jsonSchema?: ZodTypeAny;
 }
 
 export interface IndexDefinition {
@@ -41,12 +35,13 @@ export interface IndexDefinition {
   unique?: boolean;
 }
 
-export interface TableMetadata<
-  Name extends string = string,
-  Columns extends Record<string, SerializableColumnMetadata<any, any, any>> = Record<string, SerializableColumnMetadata<any, any, any>>
-> {
-  name: Name;
-  columns: Columns;
-  indexes: IndexDefinition[];
+export interface SerializableTableMetadata {
+  name: string;
+  columns: Record<string, SerializableColumnMetadata>;
+  indexes?: IndexDefinition[];
   constrains?: string[][];
+}
+
+export interface TableMetadata extends SerializableTableMetadata {
+  aliasedFrom?: string;
 }

@@ -14,7 +14,8 @@
   },
   "dependencies": {
     "sql-parser-cst": "^0.33.1",
-    "nanoid": "^5.1.5"
+    "nanoid": "^5.1.5",
+    "zod": "^4.1.5"
   },
   "devDependencies": {
     "oxlint": "^1.13.0",

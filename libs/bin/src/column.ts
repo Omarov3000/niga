@@ -5,67 +5,72 @@ export class Column<
   Type = unknown,
   InsertType extends InsertionType = 'optional'
 > {
-  readonly __meta__: ColumnMetadata<Name, ColumnType, ApplicationType, InsertType>;
+  readonly __meta__: ColumnMetadata;
   __table__?: { getName: () => string };
   private _valueSample?: Type | (() => Type);
 
-  constructor(options: { name: Name; type: ColumnType; appType?: ApplicationType; appDefault?: Type | (() => Type) }) {
-    this.__meta__ = {
-      name: options.name,
-      type: options.type,
-      appType: options.appType,
-      insertType: 'optional',
-      appDefault: options.appDefault,
-    } as ColumnMetadata<Name, ColumnType, ApplicationType, InsertType>;
-    this._valueSample = options.appDefault;
+  private static makeMeta(base: ColumnMetadata, partial?: Partial<ColumnMetadata>): ColumnMetadata {
+    return { ...base, ...(partial || {}) } as ColumnMetadata;
+  }
+
+  constructor(init:
+    | { kind: 'public'; name: Name; type: ColumnType; appType?: ApplicationType; appDefault?: Type | (() => Type) }
+    | { kind: 'internal'; meta: ColumnMetadata; table?: { getName: () => string }; valueSample?: Type | (() => Type) }
+  ) {
+    if (init.kind === 'public') {
+      this.__meta__ = {
+        name: init.name,
+        type: init.type,
+        appType: init.appType,
+        insertType: 'optional',
+        appDefault: init.appDefault,
+      } as ColumnMetadata;
+      this._valueSample = init.appDefault;
+    } else {
+      this.__meta__ = init.meta;
+      this.__table__ = init.table;
+      this._valueSample = init.valueSample;
+    }
+  }
+
+  private cloneMeta<M extends InsertionType = InsertType>(partial?: Partial<ColumnMetadata> & { insertType?: M }): Column<Name, Type, M> {
+    return new Column<Name, Type, M>({
+      kind: 'internal',
+      meta: Column.makeMeta(this.__meta__, partial),
+      table: this.__table__,
+      valueSample: this._valueSample,
+    });
   }
 
   $type<T>(): Column<Name, T, InsertType> {
-    const c = new Column<Name, T, InsertType>({
-      name: this.__meta__.name as Name,
-      type: this.__meta__.type,
-      appType: this.__meta__.appType,
-      appDefault: this.__meta__.appDefault as any,
-    });
-    c.__table__ = this.__table__;
-    Object.assign(c.__meta__, this.__meta__);
-    return c;
+    return new Column<Name, T, InsertType>({ kind: 'internal', meta: this.__meta__, table: this.__table__ });
   }
 
-  private cloneWith(partial: Partial<ColumnMetadata<Name, ColumnType, ApplicationType, InsertType>>): Column<Name, Type, InsertType> {
-    const c = new Column<Name, Type, InsertType>({
-      name: this.__meta__.name as Name,
-      type: this.__meta__.type,
-      appType: this.__meta__.appType,
-      appDefault: this.__meta__.appDefault as any,
-    });
-    c.__table__ = this.__table__;
-    Object.assign(c.__meta__, this.__meta__, partial);
-    return c;
+  // create a virtual/generated column
+  generatedAlwaysAs(expression: string): Column<Name, Type, 'virtual'> {
+    return this.cloneMeta<'virtual'>({ generatedAlwaysAs: expression, insertType: 'virtual' });
   }
 
   notNull(): Column<Name, Type, InsertType> {
-    return this.cloneWith({ notNull: true });
+    return this.cloneMeta({ notNull: true });
   }
 
   primaryKey(): Column<Name, Type, InsertType> {
-    return this.cloneWith({ primaryKey: true });
+    return this.cloneMeta({ primaryKey: true });
   }
 
   unique(): Column<Name, Type, InsertType> {
-    return this.cloneWith({ unique: true });
+    return this.cloneMeta({ unique: true });
   }
 
   default(value: number | string | null): Column<Name, Type, InsertType> {
-    return this.cloneWith({ default: value });
+    return this.cloneMeta({ default: value });
   }
 
   references(get: () => Column<any, any, any>): Column<Name, Type, InsertType> {
     const target = get();
     const tableName = target.__table__?.getName();
-    if (!tableName) {
-      return this.cloneWith({});
-    }
-    return this.cloneWith({ foreignKey: `${tableName}.${target.__meta__.name}` });
+    if (!tableName) return this.cloneMeta();
+    return this.cloneMeta({ foreignKey: `${tableName}.${target.__meta__.name}` });
   }
 }
