@@ -136,4 +136,13 @@ describe('schema generation', () => {
       );
     `);
   });
+
+  it('tables are accessible on db instance', () => {
+    const users = b.table('users', { id: b.id(), name: b.text() });
+    const posts = b.table('posts', { id: b.id(), title: b.text() });
+    const db = b.db({ schema: { users, posts } });
+    
+    expect(db.users).toBeDefined();
+    expect(db.posts).toBeDefined();
+  });
 });

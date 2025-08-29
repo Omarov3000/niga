@@ -111,6 +111,44 @@ type CompoundSelect = {
 
 export type SelectQuery = SelectStatement | CompoundSelect;
 
+type InsertStatement = {
+  type: "insert";
+  with?: WithClause;
+  table: Table;
+  columns?: string[]; // optional, if omitted assume all columns
+  values?: Expression[][]; // multiple rows of values
+  select?: SelectQuery; // INSERT ... SELECT ...
+  returning?: Expression[]; // e.g. PostgreSQL RETURNING
+};
+
+type UpdateStatement = {
+  type: "update";
+  with?: WithClause;
+  table: Table;
+  set: {
+    column: string;
+    value: Expression;
+  }[];
+  from?: FromClause; // e.g. UPDATE ... FROM ...
+  where?: Expression;
+  returning?: Expression[];
+};
+
+type DeleteStatement = {
+  type: "delete";
+  with?: WithClause;
+  table: Table;
+  where?: Expression;
+  using?: FromClause; // e.g. DELETE ... USING ...
+  returning?: Expression[];
+};
+
+export type SQLQuery =
+  | SelectQuery
+  | InsertStatement
+  | UpdateStatement
+  | DeleteStatement;
+
 import { parse } from "sql-parser-cst";
 import { SelectSql } from '../utils/sql';
 

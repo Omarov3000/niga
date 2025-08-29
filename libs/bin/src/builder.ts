@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid';
-import type { ZodTypeAny, infer as zInfer } from 'zod';
+import { z, type ZodTypeAny, infer as zInfer } from 'zod';
 import { Column } from './column';
 import { Db } from './db';
 import { IndexBuilder, Table } from './table';
@@ -9,11 +9,11 @@ const text = () => new Column({ kind: 'public', name: 'text', type: 'text', appD
 const integer = () => new Column({ kind: 'public', name: 'integer', type: 'integer', appDefault: 0 });
 const real = () => new Column({ kind: 'public', name: 'real', type: 'real', appDefault: 0 });
 const date = () => {
-  return new Column({ 
-    kind: 'public', 
-    name: 'date', 
-    type: 'integer', 
-    appType: 'date', 
+  return new Column({
+    kind: 'public',
+    name: 'date',
+    type: 'integer',
+    appType: 'date',
     appDefault: new Date(),
     encode: (date: Date) => date.getTime(),
     decode: (data: number | string) => {
@@ -27,11 +27,11 @@ const date = () => {
 };
 
 function json<TSchema extends ZodTypeAny>(schema: TSchema) {
-  const col = new Column<'json', zInfer<TSchema>>({ 
-    kind: 'public', 
-    name: 'json', 
-    type: 'text', 
-    appType: 'json', 
+  const col = new Column<'json', zInfer<TSchema>>({
+    kind: 'public',
+    name: 'json',
+    type: 'text',
+    appType: 'json',
     appDefault: getDefaultValueFromZodSchema(schema),
     encode: (data: zInfer<TSchema>) => JSON.stringify(data),
     decode: (data: number | string) => {
@@ -47,11 +47,11 @@ function json<TSchema extends ZodTypeAny>(schema: TSchema) {
 }
 
 const boolean = () => {
-  return new Column({ 
-    kind: 'public', 
-    name: 'boolean', 
-    type: 'integer', 
-    appType: 'boolean', 
+  return new Column({
+    kind: 'public',
+    name: 'boolean',
+    type: 'integer',
+    appType: 'boolean',
     appDefault: false,
     encode: (bool: boolean) => bool ? 1 : 0,
     decode: (data: number | string) => {
@@ -65,11 +65,11 @@ const boolean = () => {
 };
 
 function enum_<const T extends string>(values: readonly T[], _default: NoInfer<T>) {
-  const col = new Column<'enum', T, 'required'>({ 
-    kind: 'public', 
-    name: 'enum', 
-    type: 'integer', 
-    appType: 'enum', 
+  const col = new Column<'enum', T, 'required'>({
+    kind: 'public',
+    name: 'enum',
+    type: 'integer',
+    appType: 'enum',
     appDefault: _default,
     encode: (enumValue: T) => values.indexOf(enumValue),
     decode: (data: number | string) => {
@@ -110,9 +110,66 @@ function table<Name extends string, TCols extends Record<string, Column<any, any
 
 const index = () => new IndexBuilder();
 
-function db(opts: { schema: Record<string, Table<any, any>> }) {
-  return new Db({ schema: opts.schema as any });
+function db<TSchema extends Record<string, Table<any, any>>>(opts: { schema: TSchema }): Db & TSchema {
+  const instance = new Db({ schema: opts.schema as any });
+  Object.entries(opts.schema).forEach(([key, table]) => {
+    (instance as any)[key] = table;
+  });
+  return instance as Db & TSchema;
 }
+
+const zText = () => z.string();
+
+const zInteger = () => z.number().int();
+
+const zReal = () => z.number();
+
+const zDate = () => z.codec(
+  z.number(),
+  z.date(),
+  {
+    decode: (timestamp: number) => new Date(timestamp),
+    encode: (date: Date) => date.getTime(),
+  }
+);
+
+function zJson<TSchema extends ZodTypeAny>(schema: TSchema) {
+  return z.codec(
+    z.string(),
+    schema,
+    {
+      decode: (jsonString: string) => JSON.parse(jsonString),
+      encode: (data) => JSON.stringify(data),
+    }
+  );
+}
+
+const zBoolean = () => z.codec(
+  z.number(),
+  z.boolean(),
+  {
+    decode: (num: number) => num === 1,
+    encode: (bool: boolean) => bool ? 1 : 0,
+  }
+);
+
+function zEnum<const T extends string>(values: readonly T[], _default: NoInfer<T>) {
+  return z.codec(
+    z.number(),
+    z.enum(values as any),
+    {
+      decode: (index: number) => {
+        if (index < 0 || index >= values.length) {
+          throw new Error(`Enum index ${index} out of range for values: [${values.join(', ')}]`);
+        }
+        return values[index] as T;
+      },
+      encode: (enumValue: T) => values.indexOf(enumValue),
+    }
+  );
+}
+
+const zId = () => z.string().default(() => nanoid());
 
 export const b = {
   text,
@@ -126,4 +183,15 @@ export const b = {
   table,
   index,
   db,
+  z: {
+    text: zText,
+    integer: zInteger,
+    real: zReal,
+    date: zDate,
+    json: zJson,
+    boolean: zBoolean,
+    enum: zEnum,
+    id: zId,
+    object: z.object,
+  },
 };

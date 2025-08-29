@@ -1,4 +1,5 @@
 import type { ApplicationType, ColumnType, InsertionType, ColumnMetadata } from './types';
+import { FilterObject } from './utils/sql';
 
 export class Column<
   Name extends string = string,
@@ -97,5 +98,125 @@ export class Column<
     const tableName = target.__table__?.getName();
     if (!tableName) return this.cloneMeta();
     return this.cloneMeta({ foreignKey: `${tableName}.${target.__meta__.name}` });
+  }
+
+  eq(value: Type) {
+    const encoded = this.__meta__.encode ? this.__meta__.encode(value as unknown as any) : value;
+    return new FilterObject(
+      "=",
+      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
+      { type: "literal", value: encoded }
+    );
+  }
+
+  ne(value: Type) {
+    const encoded = this.__meta__.encode ? this.__meta__.encode(value as unknown as any) : value;
+    return new FilterObject(
+      "!=",
+      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
+      { type: "literal", value: encoded }
+    );
+  }
+
+  like(value: string) {
+    return new FilterObject(
+      "LIKE",
+      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
+      { type: "literal", value }
+    );
+  }
+
+  notLike(value: string) {
+    return new FilterObject(
+      "NOT LIKE",
+      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
+      { type: "literal", value }
+    );
+  }
+
+  gt(value: Type) {
+    const encoded = this.__meta__.encode ? this.__meta__.encode(value as unknown as any) : value;
+    return new FilterObject(
+      ">",
+      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
+      { type: "literal", value: encoded }
+    );
+  }
+
+  gte(value: Type) {
+    const encoded = this.__meta__.encode ? this.__meta__.encode(value as unknown as any) : value;
+    return new FilterObject(
+      ">=",
+      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
+      { type: "literal", value: encoded }
+    );
+  }
+
+  lt(value: Type) {
+    const encoded = this.__meta__.encode ? this.__meta__.encode(value as unknown as any) : value;
+    return new FilterObject(
+      "<",
+      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
+      { type: "literal", value: encoded }
+    );
+  }
+
+  lte(value: Type) {
+    const encoded = this.__meta__.encode ? this.__meta__.encode(value as unknown as any) : value;
+    return new FilterObject(
+      "<=",
+      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
+      { type: "literal", value: encoded }
+    );
+  }
+
+  between(value1: Type, value2: Type) {
+    const enc = (v: any) => (this.__meta__.encode ? this.__meta__.encode(v) : v);
+    return new FilterObject(
+      "BETWEEN",
+      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
+      { type: "literal", value: [enc(value1), enc(value2)] }
+    );
+  }
+
+  notBetween(value1: Type, value2: Type) {
+    const enc = (v: any) => (this.__meta__.encode ? this.__meta__.encode(v) : v);
+    return new FilterObject(
+      "NOT BETWEEN",
+      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
+      { type: "literal", value: [enc(value1), enc(value2)] }
+    );
+  }
+
+  isNull() {
+    return new FilterObject(
+      "IS NULL",
+      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() }
+    );
+  }
+
+  isNotNull() {
+    return new FilterObject(
+      "IS NOT NULL",
+      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() }
+    );
+  }
+
+  inArray(values: Type[]) {
+    const encValues = (values as any[]).map((v) => (this.__meta__.encode ? this.__meta__.encode(v) : v));
+    return new FilterObject(
+      "IN",
+      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
+      { type: "literal", value: encValues }
+    );
+  }
+
+  notInArray(values: Type[]) {
+    const encValues = (values as any[]).map((v) => (this.__meta__.encode ? this.__meta__.encode(v) : v));
+    return new FilterObject(
+      "NOT IN",
+      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
+      { type: "literal", value: encValues }
+    );
   }
 }

@@ -1,4 +1,7 @@
 import type { BinDriver, TableMetadata } from './types';
+import type { ZodTypeAny } from 'zod';
+import { sql } from './utils/sql';
+import type { Table } from './table';
 
 export interface DbConstructorOptions {
   schema: Record<string, { __meta__: TableMetadata }>;
@@ -7,10 +10,44 @@ export interface DbConstructorOptions {
 export class Db {
   private driver?: BinDriver;
 
-  constructor(private options: DbConstructorOptions) {}
+  constructor(private options: DbConstructorOptions) {
+    // expose tables on the db instance and wire driver access for table methods
+    Object.entries(this.options.schema).forEach(([name, table]) => {
+      (this as any)[name] = table;
+      // attach driver getter to table for methods like insert()
+      (table as any).__db__ = {
+        getDriver: () => {
+          if (!this.driver) throw new Error('No driver connected. Call _connectDriver first.');
+          return this.driver;
+        },
+      };
+    });
+  }
 
   async _connectDriver(driver: BinDriver): Promise<void> {
     this.driver = driver;
+  }
+
+  query(strings: TemplateStringsArray, ...values: any[]) {
+    const { query, params } = sql(strings, ...values);
+    const ensureDriver = () => {
+      if (!this.driver) throw new Error('No driver connected. Call _connectDriver first.');
+      return this.driver;
+    };
+
+    return {
+      execute: async <T extends ZodTypeAny>(zodSchema: T) => {
+        const driver = ensureDriver();
+        const rows = await Promise.resolve(driver.run({ query, params }));
+        return zodSchema.array().parse(rows) as ReturnType<T['array']>['_output'];
+      },
+      executeAndTakeFirst: async <T extends ZodTypeAny>(zodSchema: T) => {
+        const driver = ensureDriver();
+        const rows = await Promise.resolve(driver.run({ query, params }));
+        if (!rows || rows.length === 0) throw new Error('No rows returned');
+        return zodSchema.parse(rows[0]) as ReturnType<T['parse']>;
+      },
+    };
   }
 
   getSchemaDefinition(): string {
