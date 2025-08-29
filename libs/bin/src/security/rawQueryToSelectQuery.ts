@@ -112,7 +112,7 @@ type CompoundSelect = {
 export type SelectQuery = SelectStatement | CompoundSelect;
 
 import { parse } from "sql-parser-cst";
-import { SelectSql } from './sql';
+import { SelectSql } from '../utils/sql';
 
 export function rawQueryToSelectQuery(sql: SelectSql): SelectQuery {
   // Replace ? placeholders with unique placeholder values that we can track

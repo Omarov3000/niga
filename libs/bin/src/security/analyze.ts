@@ -1,5 +1,5 @@
 import { ComparisonOperator, rawQueryToSelectQuery, SelectQuery } from './rawQueryToSelectQuery';
-import { SelectSql } from './sql';
+import { SelectSql } from '../utils/sql';
 
 // Flattened view of accessed tables for Simplified Analysis
 type SimplifiedFilter = {
@@ -385,14 +385,14 @@ export function analyze(sql: SelectSql): QueryAnalysis {
       // For OR operations, we need to handle filter branching
       // Process left side of OR
       const leftFilters = collectFiltersFromExpression(expr.left, tableAliasMap, params, fromClause);
-      
+
       // Process right side of OR
       const rightFilters = collectFiltersFromExpression(expr.right, tableAliasMap, params, fromClause);
 
       // Apply OR logic: create separate branches for left and right filters
       // Group filters by table
       const tableFilters = new Map<string, { left: SimplifiedFilter[], right: SimplifiedFilter[] }>();
-      
+
       leftFilters.forEach(({ tableName, filter }) => {
         if (!tableFilters.has(tableName)) {
           tableFilters.set(tableName, { left: [], right: [] });
@@ -413,7 +413,7 @@ export function analyze(sql: SelectSql): QueryAnalysis {
         if (table) {
           // Clear existing filter branches for this OR operation
           table.filterBranches = [];
-          
+
           // Create branches for the OR operation
           if (left.length > 0) {
             table.filterBranches.push(left);
@@ -421,7 +421,7 @@ export function analyze(sql: SelectSql): QueryAnalysis {
           if (right.length > 0) {
             table.filterBranches.push(right);
           }
-          
+
           // If no filters were found, ensure we have at least one empty branch
           if (table.filterBranches.length === 0) {
             table.filterBranches.push([]);
@@ -437,7 +437,7 @@ export function analyze(sql: SelectSql): QueryAnalysis {
 
   function collectFiltersFromExpression(expr: any, tableAliasMap: Map<string, string>, params: any[], fromClause?: any): { tableName: string, filter: SimplifiedFilter }[] {
     const filters: { tableName: string, filter: SimplifiedFilter }[] = [];
-    
+
     if (expr.type === "binary_expr" && isComparisonOperator(expr.operator) && expr.left.type === "column" && expr.right.type !== "column") {
       const leftTableName = resolveTableName(expr.left.table, tableAliasMap, fromClause);
       if (leftTableName) {
@@ -452,7 +452,7 @@ export function analyze(sql: SelectSql): QueryAnalysis {
         });
       }
     }
-    
+
     return filters;
   }
 
