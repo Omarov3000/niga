@@ -189,6 +189,23 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     
     driver.run({ query, params });
   }
+
+  async delete<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf>>(
+    this: TSelf,
+    options: {
+      where: RawSql;
+    }
+  ): Promise<void> {
+    const driver = this.__db__.getDriver();
+
+    const query = `DELETE FROM ${this.__meta__.name} WHERE ${options.where.query}`;
+    const params = [...options.where.params];
+
+    // Parse for security analysis (same as db.query method)
+    rawQueryToSelectQuery({ query, params });
+
+    driver.run({ query, params });
+  }
 }
 
 export class IndexBuilder {

@@ -441,3 +441,191 @@ describe('update', () => {
     })).rejects.toThrow();
   });
 });
+
+describe('delete', () => {
+  it('should delete data with WHERE clause', async () => {
+    const users = b.table('users', {
+      id: b.id(),
+      name: b.text(),
+      age: b.integer(),
+    });
+
+    const db = await prepareForTest({ users });
+
+    // Insert test data
+    await users.insertMany([
+      { id: 'user-1', name: 'John Doe', age: 25 },
+      { id: 'user-2', name: 'Jane Smith', age: 30 },
+      { id: 'user-3', name: 'Bob Johnson', age: 35 },
+    ]);
+
+    // Delete user-2
+    await users.delete({
+      where: sql`${users.id.eq('user-2')}`,
+    });
+
+    // Verify user-2 was deleted
+    const remainingUsers = driver.db.prepare('SELECT id, name FROM users ORDER BY id').all();
+    expect(remainingUsers).toMatchObject([
+      { id: 'user-1', name: 'John Doe' },
+      { id: 'user-3', name: 'Bob Johnson' },
+    ]);
+  });
+
+  it('should delete multiple rows with WHERE clause', async () => {
+    const users = b.table('users', {
+      id: b.id(),
+      name: b.text(),
+      age: b.integer(),
+      status: b.text().default('active'),
+    });
+
+    const db = await prepareForTest({ users });
+
+    // Insert test data
+    await users.insertMany([
+      { id: 'user-1', name: 'John', age: 25, status: 'active' },
+      { id: 'user-2', name: 'Jane', age: 30, status: 'inactive' },
+      { id: 'user-3', name: 'Bob', age: 35, status: 'inactive' },
+      { id: 'user-4', name: 'Alice', age: 28, status: 'active' },
+    ]);
+
+    // Delete all inactive users
+    await users.delete({
+      where: sql`${users.status.eq('inactive')}`,
+    });
+
+    // Verify only active users remain
+    const remainingUsers = driver.db.prepare('SELECT id, name, status FROM users ORDER BY id').all();
+    expect(remainingUsers).toMatchObject([
+      { id: 'user-1', name: 'John', status: 'active' },
+      { id: 'user-4', name: 'Alice', status: 'active' },
+    ]);
+  });
+
+  it('should delete with complex WHERE conditions', async () => {
+    const posts = b.table('posts', {
+      id: b.id(),
+      title: b.text(),
+      views: b.integer().default(0),
+      published: b.boolean().default(false),
+    });
+
+    const db = await prepareForTest({ posts });
+
+    // Insert test data
+    await posts.insertMany([
+      { id: 'post-1', title: 'Draft 1', views: 5, published: false },
+      { id: 'post-2', title: 'Published 1', views: 100, published: true },
+      { id: 'post-3', title: 'Draft 2', views: 2, published: false },
+      { id: 'post-4', title: 'Published 2', views: 50, published: true },
+    ]);
+
+    // Delete unpublished posts with low views
+    await posts.delete({
+      where: sql`${posts.published.eq(false)} AND ${posts.views.lt(10)}`,
+    });
+
+    // Verify only published posts and high-view drafts remain
+    const remainingPosts = driver.db.prepare('SELECT id, title, views, published FROM posts ORDER BY id').all();
+    expect(remainingPosts).toMatchObject([
+      { id: 'post-2', title: 'Published 1', views: 100, published: 1 },
+      { id: 'post-4', title: 'Published 2', views: 50, published: 1 },
+    ]);
+  });
+
+  it('should handle delete with IN clause', async () => {
+    const users = b.table('users', {
+      id: b.id(),
+      name: b.text(),
+    });
+
+    const db = await prepareForTest({ users });
+
+    // Insert test data
+    await users.insertMany([
+      { id: 'user-1', name: 'John' },
+      { id: 'user-2', name: 'Jane' },
+      { id: 'user-3', name: 'Bob' },
+      { id: 'user-4', name: 'Alice' },
+    ]);
+
+    // Delete specific users by ID
+    await users.delete({
+      where: sql`${users.id.inArray(['user-1', 'user-3'])}`,
+    });
+
+    // Verify only user-2 and user-4 remain
+    const remainingUsers = driver.db.prepare('SELECT id, name FROM users ORDER BY id').all();
+    expect(remainingUsers).toMatchObject([
+      { id: 'user-2', name: 'Jane' },
+      { id: 'user-4', name: 'Alice' },
+    ]);
+  });
+
+  it('should parse DELETE query for security analysis', async () => {
+    const users = b.table('users', {
+      id: b.id(),
+      name: b.text(),
+    });
+
+    const db = await prepareForTest({ users });
+
+    await users.insert({
+      id: 'user-1',
+      name: 'John',
+    });
+
+    // This should not throw - security parsing should succeed for valid DELETE
+    await expect(users.delete({
+      where: sql`${users.id.eq('user-1')}`,
+    })).resolves.not.toThrow();
+
+    // Verify the delete actually worked
+    const remainingUsers = driver.db.prepare('SELECT id FROM users').all();
+    expect(remainingUsers).toHaveLength(0);
+  });
+
+  it('should handle malformed DELETE queries in security parsing', async () => {
+    const users = b.table('users', {
+      id: b.id(),
+      name: b.text(),
+    });
+
+    const db = await prepareForTest({ users });
+
+    // Create a malformed RawSql object that should trigger parsing errors
+    const malformedSql: any = {
+      query: 'id = ? AND INVALID SYNTAX',
+      params: ['user-1']
+    };
+
+    // The security parsing should catch malformed SQL
+    await expect(users.delete({
+      where: malformedSql,
+    })).rejects.toThrow();
+  });
+
+  it('should delete no rows when WHERE clause matches nothing', async () => {
+    const users = b.table('users', {
+      id: b.id(),
+      name: b.text(),
+    });
+
+    const db = await prepareForTest({ users });
+
+    await users.insertMany([
+      { id: 'user-1', name: 'John' },
+      { id: 'user-2', name: 'Jane' },
+    ]);
+
+    // Delete non-existent user
+    await users.delete({
+      where: sql`${users.id.eq('user-999')}`,
+    });
+
+    // Verify no users were deleted
+    const remainingUsers = driver.db.prepare('SELECT id FROM users').all();
+    expect(remainingUsers).toHaveLength(2);
+  });
+});
