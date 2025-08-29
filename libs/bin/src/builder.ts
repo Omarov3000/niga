@@ -18,36 +18,29 @@ function json<TSchema extends ZodTypeAny>(schema: TSchema) {
 
 const boolean = () => new Column({ kind: 'public', name: 'boolean', type: 'integer', appType: 'boolean', appDefault: false });
 
-const enum_ = <T extends readonly string[]>(values: T, _default: T[number]) => {
-  return new Column({ kind: 'public', name: 'enum', type: 'integer', appType: 'enum', appDefault: _default });
-};
+function enum_<const T extends string>(values: readonly T[], _default: NoInfer<T>) {
+  return new Column<'enum', T, 'required'>({ kind: 'public', name: 'enum', type: 'integer', appType: 'enum', appDefault: _default });
+}
 
-const id = () => new Column({ kind: 'public', name: 'id', type: 'text', appDefault: () => nanoid() }).primaryKey();
+const id = () => new Column<'id', string, 'required'>({ kind: 'public', name: 'id', type: 'text', appDefault: () => nanoid() }).primaryKey();
 
-function table<Name extends string, TCols extends Record<string, Column<any, any>>>(
+function table<Name extends string, TCols extends Record<string, Column<any, any, any>>>(
   name: Name,
   columns: TCols,
   indexesBuilder?: (t: { [K in keyof TCols]: TCols[K] }) => any[]
 ): Table<Name, TCols> & TCols {
-  const fixed: Record<string, Column> = {};
+  // Assign canonical column names on provided columns to match object keys
   Object.entries(columns).forEach(([key, col]) => {
-    const clone = new Column({
-      kind: 'public',
-      name: key as any,
-      type: col.__meta__.type,
-      appType: col.__meta__.appType,
-    });
-    Object.assign(clone.__meta__, col.__meta__, { name: key });
-    fixed[key] = clone;
+    (col as any).__meta__.name = key as any;
   });
 
-  const indexes = (indexesBuilder ? indexesBuilder(fixed as any) : []) as any[];
+  const indexes = (indexesBuilder ? indexesBuilder(columns as any) : []) as any[];
   const normalizedIndexes = indexes.map((idx: any) => idx);
-  const instance = new Table<Name, any>({ name, columns: fixed as any, indexes: normalizedIndexes }) as any;
-  Object.entries(fixed).forEach(([key, col]) => {
+  const instance = new Table<Name, TCols>({ name, columns: columns as any, indexes: normalizedIndexes }) as any;
+  Object.entries(columns).forEach(([key, col]) => {
     instance[key] = col;
   });
-  return instance as Table<Name, any> & TCols;
+  return instance as Table<Name, TCols> & TCols;
 }
 
 const index = () => new IndexBuilder();

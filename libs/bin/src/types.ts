@@ -14,7 +14,7 @@ export interface SerializableColumnMetadata {
   primaryKey?: boolean;
   foreignKey?: string;
   unique?: boolean;
-  default?: number | string | null;
+  default?: number | string | boolean | null;
   appType?: ApplicationType;
 }
 

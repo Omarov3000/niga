@@ -51,8 +51,8 @@ export class Column<
     return this.cloneMeta<'virtual'>({ generatedAlwaysAs: expression, insertType: 'virtual' });
   }
 
-  notNull(): Column<Name, Type, InsertType> {
-    return this.cloneMeta({ notNull: true });
+  notNull(): Column<Name, Type, 'required'> {
+    return this.cloneMeta<'required'>({ notNull: true, insertType: 'required' });
   }
 
   primaryKey(): Column<Name, Type, InsertType> {
@@ -63,8 +63,31 @@ export class Column<
     return this.cloneMeta({ unique: true });
   }
 
-  default(value: number | string | null): Column<Name, Type, InsertType> {
-    return this.cloneMeta({ default: value });
+  encode(fn: (data: unknown) => number | string): Column<Name, Type, InsertType> {
+    return this.cloneMeta({ encode: fn });
+  }
+
+  decode(fn: (data: number | string) => unknown): Column<Name, Type, InsertType> {
+    return this.cloneMeta({ decode: fn });
+  }
+
+  default(value: number | string | boolean | null): Column<Name, Type, 'required'> {
+    const encodedDefault = this.__meta__.encode ? this.__meta__.encode(value as unknown) : value;
+    return new Column<Name, Type, 'required'>({
+      kind: 'internal',
+      meta: Column.makeMeta(this.__meta__, { default: encodedDefault as any, appDefault: value, insertType: 'optional' }),
+      table: this.__table__,
+      valueSample: (this._valueSample ?? (value as any)) as any,
+    });
+  }
+
+  $defaultFn(fn: () => Type): Column<Name, Type, 'required'> {
+    return new Column<Name, Type, 'required'>({
+      kind: 'internal',
+      meta: Column.makeMeta(this.__meta__, { appDefault: fn, insertType: 'optional' }),
+      table: this.__table__,
+      valueSample: fn as any,
+    });
   }
 
   references(get: () => Column<any, any, any>): Column<Name, Type, InsertType> {
