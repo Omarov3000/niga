@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import dedent from 'dedent';
 import { z } from 'zod';
-import { b } from '../builder';
+import { b } from './builder';
 
 describe('schema generation', () => {
   it('built-ins (id, text, integer, real) and an index', () => {
