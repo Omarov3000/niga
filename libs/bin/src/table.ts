@@ -78,23 +78,61 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
 
   async insert<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf>>(
     this: TSelf,
-    options: {
-      data: InsertableForCols<TSelfCols>;
-      returning?: '*';
-    }
-  ): Promise<any> {
+    data: InsertableForCols<TSelfCols>
+  ): Promise<SelectableForCols<TSelfCols>> {
     const driver = this.__db__.getDriver();
 
-    // Dummy implementation - just pass dummy SQL and params to driver
-    const dummySql = `INSERT INTO ${this.__meta__.name} (id, name) VALUES (?, ?)`;
-    const dummyParams = ['dummy-id', 'dummy-name'];
+    // build full app-level object using defaults
+    const model = this.make(data as any) as SelectableForCols<TSelfCols>;
 
-    const result = driver.run({
-      query: dummySql,
-      params: dummyParams
-    });
+    const colsMeta = this.__meta__.columns as Record<string, SerializableColumnMetadata>;
+    const columnNames: string[] = [];
+    const params: any[] = [];
 
-    return result;
+    for (const [key] of Object.entries(colsMeta)) {
+      const col = (this as any)[key] as Column<any, any, any> | undefined;
+      if (!col || col.__meta__.insertType === 'virtual') continue;
+
+      const value = (model as any)[key];
+      if (value === undefined) continue; // omit undefined to allow DB defaults
+      const encoded = col.__meta__.encode ? col.__meta__.encode(value as any) : value;
+      columnNames.push(key);
+      params.push(encoded);
+    }
+
+    // Validate missing required columns
+    const missingRequired: string[] = [];
+    for (const [key] of Object.entries(colsMeta)) {
+      const col = (this as any)[key] as Column<any, any, any> | undefined;
+      if (!col || col.__meta__.insertType !== 'required') continue;
+      const value = (model as any)[key];
+      if (value === undefined) missingRequired.push(key);
+    }
+    if (missingRequired.length > 0) {
+      throw new Error(`Missing required columns: ${missingRequired.join(', ')}`);
+    }
+
+    if (columnNames.length === 0) {
+      throw new Error('No columns to insert');
+    }
+
+    const placeholders = columnNames.map(() => '?').join(', ');
+    const query = `INSERT INTO ${this.__meta__.name} (${columnNames.join(', ')}) VALUES (${placeholders})`;
+    driver.run({ query, params });
+
+    return model;
+  }
+
+  async insertMany<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf>>(
+    this: TSelf,
+    data: InsertableForCols<TSelfCols>[]
+  ): Promise<SelectableForCols<TSelfCols>[]> {
+    const results: SelectableForCols<TSelfCols>[] = [] as any;
+    for (const datum of data) {
+      const inserted = await this.insert(datum);
+      results.push(inserted as any);
+    }
+    return results;
   }
 }
 
