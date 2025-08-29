@@ -1,5 +1,5 @@
 import { Column } from './column';
-import type { IndexDefinition, TableMetadata, SerializableColumnMetadata } from './types';
+import type { IndexDefinition, TableMetadata, SerializableColumnMetadata, BinDriver } from './types';
 
 type ColumnLike = Column<any, any, any>;
 
@@ -26,6 +26,7 @@ export interface TableConstructorOptions<Name extends string, TCols extends Reco
 
 export class Table<Name extends string, TCols extends Record<string, Column<any, any, any>>> {
   readonly __meta__: TableMetadata;
+  readonly __db__!: { getDriver: () => BinDriver };
   // type helpers exposed on instance for precise typing
   readonly __selectionType__!: SelectableForCols<TCols>;
   readonly __insertionType__!: InsertableForCols<TCols>;
@@ -73,6 +74,27 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     }
 
     return result as any;
+  }
+
+  async insert<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf>>(
+    this: TSelf,
+    options: {
+      data: InsertableForCols<TSelfCols>;
+      returning?: '*';
+    }
+  ): Promise<any> {
+    const driver = this.__db__.getDriver();
+
+    // Dummy implementation - just pass dummy SQL and params to driver
+    const dummySql = `INSERT INTO ${this.__meta__.name} (id, name) VALUES (?, ?)`;
+    const dummyParams = ['dummy-id', 'dummy-name'];
+
+    const result = driver.run({
+      query: dummySql,
+      params: dummyParams
+    });
+
+    return result;
   }
 }
 

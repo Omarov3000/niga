@@ -14,7 +14,7 @@ export class Column<
   }
 
   constructor(init:
-    | { kind: 'public'; name: Name; type: ColumnType; appType?: ApplicationType; appDefault?: Type | (() => Type) }
+    | { kind: 'public'; name: Name; type: ColumnType; appType?: ApplicationType; appDefault?: Type | (() => Type); encode?: (data: Type) => number | string; decode?: (data: number | string) => Type }
     | { kind: 'internal'; meta: ColumnMetadata; table?: { getName: () => string }; valueSample?: Type | (() => Type) }
   ) {
     if (init.kind === 'public') {
@@ -24,6 +24,8 @@ export class Column<
         appType: init.appType,
         insertType: 'optional',
         appDefault: init.appDefault,
+        encode: init.encode,
+        decode: init.decode,
       } as ColumnMetadata;
       this._valueSample = init.appDefault;
     } else {

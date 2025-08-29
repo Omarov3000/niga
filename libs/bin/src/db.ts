@@ -1,11 +1,17 @@
-import type { TableMetadata } from './types';
+import type { BinDriver, TableMetadata } from './types';
 
 export interface DbConstructorOptions {
   schema: Record<string, { __meta__: TableMetadata }>;
 }
 
 export class Db {
+  private driver?: BinDriver;
+
   constructor(private options: DbConstructorOptions) {}
+
+  async _connectDriver(driver: BinDriver): Promise<void> {
+    this.driver = driver;
+  }
 
   getSchemaDefinition(): string {
     const parts: string[] = [];

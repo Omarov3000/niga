@@ -8,18 +8,83 @@ import { getDefaultValueFromZodSchema } from './zod-integration/getDefaultValueF
 const text = () => new Column({ kind: 'public', name: 'text', type: 'text', appDefault: '' });
 const integer = () => new Column({ kind: 'public', name: 'integer', type: 'integer', appDefault: 0 });
 const real = () => new Column({ kind: 'public', name: 'real', type: 'real', appDefault: 0 });
-const date = () => new Column({ kind: 'public', name: 'date', type: 'integer', appType: 'date', appDefault: new Date() });
+const date = () => {
+  return new Column({ 
+    kind: 'public', 
+    name: 'date', 
+    type: 'integer', 
+    appType: 'date', 
+    appDefault: new Date(),
+    encode: (date: Date) => date.getTime(),
+    decode: (data: number | string) => {
+      // Date columns are stored as integers (timestamps)
+      if (typeof data !== 'number') {
+        throw new Error(`Date column expects number (timestamp), got ${typeof data}: ${data}`);
+      }
+      return new Date(data);
+    }
+  });
+};
 
 function json<TSchema extends ZodTypeAny>(schema: TSchema) {
-  const col = new Column<'json', zInfer<TSchema>>({ kind: 'public', name: 'json', type: 'text', appType: 'json', appDefault: getDefaultValueFromZodSchema(schema) });
+  const col = new Column<'json', zInfer<TSchema>>({ 
+    kind: 'public', 
+    name: 'json', 
+    type: 'text', 
+    appType: 'json', 
+    appDefault: getDefaultValueFromZodSchema(schema),
+    encode: (data: zInfer<TSchema>) => JSON.stringify(data),
+    decode: (data: number | string) => {
+      // JSON columns are stored as text (strings)
+      if (typeof data !== 'string') {
+        throw new Error(`JSON column expects string, got ${typeof data}: ${data}`);
+      }
+      return JSON.parse(data);
+    }
+  });
   col.__meta__.jsonSchema = schema;
   return col;
 }
 
-const boolean = () => new Column({ kind: 'public', name: 'boolean', type: 'integer', appType: 'boolean', appDefault: false });
+const boolean = () => {
+  return new Column({ 
+    kind: 'public', 
+    name: 'boolean', 
+    type: 'integer', 
+    appType: 'boolean', 
+    appDefault: false,
+    encode: (bool: boolean) => bool ? 1 : 0,
+    decode: (data: number | string) => {
+      // Boolean columns are stored as integers (0 or 1)
+      if (typeof data !== 'number') {
+        throw new Error(`Boolean column expects number (0 or 1), got ${typeof data}: ${data}`);
+      }
+      return data === 1;
+    }
+  });
+};
 
 function enum_<const T extends string>(values: readonly T[], _default: NoInfer<T>) {
-  return new Column<'enum', T, 'required'>({ kind: 'public', name: 'enum', type: 'integer', appType: 'enum', appDefault: _default });
+  const col = new Column<'enum', T, 'required'>({ 
+    kind: 'public', 
+    name: 'enum', 
+    type: 'integer', 
+    appType: 'enum', 
+    appDefault: _default,
+    encode: (enumValue: T) => values.indexOf(enumValue),
+    decode: (data: number | string) => {
+      // Enum columns are stored as integers (indexes)
+      if (typeof data !== 'number') {
+        throw new Error(`Enum column expects number (index), got ${typeof data}: ${data}`);
+      }
+      if (data < 0 || data >= values.length) {
+        throw new Error(`Enum index ${data} out of range for values: [${values.join(', ')}]`);
+      }
+      return values[data] as T;
+    }
+  });
+  col.__meta__.enumValues = values;
+  return col;
 }
 
 const id = () => new Column<'id', string, 'required'>({ kind: 'public', name: 'id', type: 'text', appDefault: () => nanoid() }).primaryKey();

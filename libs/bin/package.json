@@ -13,12 +13,14 @@
     "lint1": "biome lint --write --unsafe --error-on-warnings src"
   },
   "dependencies": {
-    "sql-parser-cst": "^0.33.1",
+    "better-sqlite3": "^12.2.0",
     "nanoid": "^5.1.5",
+    "sql-parser-cst": "^0.33.1",
     "zod": "^4.1.5"
   },
   "devDependencies": {
-    "oxlint": "^1.13.0",
-    "dedent": "^1.5.3"
+    "@types/better-sqlite3": "^7.6.13",
+    "dedent": "^1.5.3",
+    "oxlint": "^1.13.0"
   }
 }

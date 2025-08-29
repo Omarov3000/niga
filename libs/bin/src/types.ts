@@ -1,4 +1,5 @@
 import type { ZodTypeAny } from 'zod';
+import { SelectSql } from './utils/sql';
 
 export type ColumnType = 'integer' | 'real' | 'text' | 'blob';
 
@@ -27,6 +28,7 @@ export interface ColumnMetadata extends SerializableColumnMetadata {
   aliasedFrom?: string;
   definition?: string;
   jsonSchema?: ZodTypeAny;
+  enumValues?: readonly string[];
 }
 
 export interface IndexDefinition {
@@ -44,4 +46,9 @@ export interface SerializableTableMetadata {
 
 export interface TableMetadata extends SerializableTableMetadata {
   aliasedFrom?: string;
+}
+
+export interface BinDriver {
+  exec: (sql: string) => any;
+  run: (sql: SelectSql) => any;
 }
