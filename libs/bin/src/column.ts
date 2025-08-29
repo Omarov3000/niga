@@ -93,6 +93,10 @@ export class Column<
     });
   }
 
+  $onUpdateFn(fn: () => Type): Column<Name, Type, InsertType> {
+    return this.cloneMeta({ appOnUpdate: fn });
+  }
+
   references(get: () => Column<any, any, any>): Column<Name, Type, InsertType> {
     const target = get();
     const tableName = target.__table__?.getName();

@@ -1,6 +1,7 @@
 import { Column } from './column';
 import type { IndexDefinition, TableMetadata, SerializableColumnMetadata, BinDriver } from './types';
-import { Sql } from './security/sqlTypes';
+import type { RawSql } from './utils/sql';
+import { rawQueryToSelectQuery } from './security/rawQueryToSelectQuery';
 
 type ColumnLike = Column<any, any, any>;
 
@@ -136,6 +137,57 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
       results.push(inserted as any);
     }
     return results;
+  }
+
+  async update<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf>>(
+    this: TSelf,
+    options: {
+      data: Partial<InsertableForCols<TSelfCols>>;
+      where: RawSql;
+    }
+  ): Promise<void> {
+    const driver = this.__db__.getDriver();
+    const colsMeta = this.__meta__.columns as Record<string, SerializableColumnMetadata>;
+
+    // Apply onUpdate functions first
+    const updatedData: Record<string, unknown> = { ...options.data };
+    for (const [key] of Object.entries(colsMeta)) {
+      const col = (this as any)[key] as Column<any, any, any> | undefined;
+      if (!col || col.__meta__.insertType === 'virtual') continue;
+      
+      // If column has onUpdate function, call it
+      if (col.__meta__.appOnUpdate && typeof col.__meta__.appOnUpdate === 'function') {
+        updatedData[key] = (col.__meta__.appOnUpdate as () => unknown)();
+      }
+    }
+
+    const setClause: string[] = [];
+    const params: any[] = [];
+
+    // Build SET clause from data
+    for (const [key, value] of Object.entries(updatedData)) {
+      if (value === undefined) continue;
+      const col = (this as any)[key] as Column<any, any, any> | undefined;
+      if (!col || col.__meta__.insertType === 'virtual') continue;
+
+      const encoded = col.__meta__.encode ? col.__meta__.encode(value as any) : value;
+      setClause.push(`${key} = ?`);
+      params.push(encoded);
+    }
+
+    if (setClause.length === 0) {
+      throw new Error('No columns to update');
+    }
+
+    // Add WHERE clause parameters
+    params.push(...options.where.params);
+
+    const query = `UPDATE ${this.__meta__.name} SET ${setClause.join(', ')} WHERE ${options.where.query}`;
+    
+    // Parse for security analysis (same as db.query method)
+    rawQueryToSelectQuery({ query, params });
+    
+    driver.run({ query, params });
   }
 }
 

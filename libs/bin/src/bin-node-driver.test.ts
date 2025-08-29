@@ -4,6 +4,7 @@ import { BinNodeDriver } from './bin-node-driver';
 import { z } from 'zod';
 import type { Table } from './table';
 import type { Db } from './db';
+import { sql } from './utils/sql';
 
 let driver: BinNodeDriver;
 
@@ -226,4 +227,217 @@ describe('select', () => {
     expect(rows2.length).toBe(1);
     expect(rows2[0].id).toBe('i3');
   });
-})
+});
+
+describe('update', () => {
+  it('should update data with WHERE clause', async () => {
+    const users = b.table('users', {
+      id: b.id(),
+      name: b.text(),
+      age: b.integer().default(0),
+      email: b.text(),
+    });
+
+    const db = await prepareForTest({ users });
+
+    // Insert test data
+    await users.insert({
+      id: 'user-1',
+      name: 'John Doe',
+      email: 'john@example.com',
+      age: 25,
+    });
+
+    await users.insert({
+      id: 'user-2',
+      name: 'Jane Smith',
+      email: 'jane@example.com',
+      age: 30,
+    });
+
+    // Update user-1's age and name
+    await users.update({
+      data: { name: 'Johnny Doe', age: 26 },
+      where: sql`${users.id.eq('user-1')}`,
+    });
+
+    // Verify user-1 was updated
+    const updatedUser = driver.db.prepare('SELECT id, name, age FROM users WHERE id = ?').get(['user-1']);
+    expect(updatedUser).toMatchObject({ id: 'user-1', name: 'Johnny Doe', age: 26 });
+
+    // Verify user-2 was not affected
+    const unchangedUser = driver.db.prepare('SELECT id, name, age FROM users WHERE id = ?').get(['user-2']);
+    expect(unchangedUser).toMatchObject({ id: 'user-2', name: 'Jane Smith', age: 30 });
+  });
+
+  it('should handle different data types in updates', async () => {
+    const posts = b.table('posts', {
+      id: b.id(),
+      title: b.text(),
+      published: b.boolean().default(false),
+      views: b.integer().default(0),
+    });
+
+    const db = await prepareForTest({ posts });
+
+    // Insert test data
+    await posts.insert({
+      id: 'post-1',
+      title: 'Draft Post',
+      published: false,
+      views: 5,
+    });
+
+    // Update to publish the post
+    await posts.update({
+      data: { title: 'Published Post', published: true, views: 100 },
+      where: sql`${posts.id.eq('post-1')}`,
+    });
+
+    // Verify update (boolean stored as integer)
+    const updatedPost = driver.db.prepare('SELECT id, title, published, views FROM posts WHERE id = ?').get(['post-1']);
+    expect(updatedPost).toMatchObject({ 
+      id: 'post-1', 
+      title: 'Published Post', 
+      published: 1, // boolean true stored as 1
+      views: 100 
+    });
+  });
+
+  it('should apply $onUpdateFn when updating', async () => {
+    let updateCallCount = 0;
+    const users = b.table('users', {
+      id: b.id(),
+      name: b.text(),
+      updatedAt: b.date().$onUpdateFn(() => {
+        updateCallCount++;
+        return new Date(1700000000000); // Fixed timestamp for testing
+      }),
+    });
+
+    const db = await prepareForTest({ users });
+
+    // Insert test data
+    await users.insert({
+      id: 'user-1',
+      name: 'John Doe',
+      updatedAt: new Date(1600000000000), // Earlier timestamp
+    });
+
+    // Update user
+    await users.update({
+      data: { name: 'Johnny Doe' },
+      where: sql`${users.id.eq('user-1')}`,
+    });
+
+    // Verify onUpdate function was called
+    expect(updateCallCount).toBe(1);
+
+    // Verify updatedAt was updated to the onUpdate value
+    const updatedUser = driver.db.prepare('SELECT id, name, updatedAt FROM users WHERE id = ?').get(['user-1']);
+    expect(updatedUser).toMatchObject({ 
+      id: 'user-1', 
+      name: 'Johnny Doe',
+      updatedAt: 1700000000000 // The fixed timestamp from onUpdate
+    });
+  });
+
+  it('should update multiple rows with WHERE clause', async () => {
+    const users = b.table('users', {
+      id: b.id(),
+      name: b.text(),
+      age: b.integer(),
+      status: b.text().default('active'),
+    });
+
+    const db = await prepareForTest({ users });
+
+    // Insert test data
+    await users.insertMany([
+      { id: 'user-1', name: 'John', age: 25, status: 'active' },
+      { id: 'user-2', name: 'Jane', age: 30, status: 'active' },
+      { id: 'user-3', name: 'Bob', age: 35, status: 'inactive' },
+    ]);
+
+    // Update all active users older than 28
+    await users.update({
+      data: { status: 'senior' },
+      where: sql`${users.age.gte(28)} AND ${users.status.eq('active')}`,
+    });
+
+    // Verify only user-2 was updated
+    const allUsers = driver.db.prepare('SELECT id, status FROM users ORDER BY id').all();
+    expect(allUsers).toMatchObject([
+      { id: 'user-1', status: 'active' }, // age 25, not updated
+      { id: 'user-2', status: 'senior' }, // age 30, updated
+      { id: 'user-3', status: 'inactive' }, // inactive, not updated
+    ]);
+  });
+
+  it('should throw error when no columns to update', async () => {
+    const users = b.table('users', {
+      id: b.id(),
+      name: b.text(),
+    });
+
+    const db = await prepareForTest({ users });
+
+    await users.insert({
+      id: 'user-1',
+      name: 'John',
+    });
+
+    // Try to update with no data
+    await expect(users.update({
+      data: {},
+      where: sql`${users.id.eq('user-1')}`,
+    })).rejects.toThrow('No columns to update');
+  });
+
+  it('should parse UPDATE query for security analysis', async () => {
+    const users = b.table('users', {
+      id: b.id(),
+      name: b.text(),
+      age: b.integer(),
+    });
+
+    const db = await prepareForTest({ users });
+
+    await users.insert({
+      id: 'user-1',
+      name: 'John',
+      age: 25,
+    });
+
+    // This should not throw - security parsing should succeed for valid UPDATE
+    await expect(users.update({
+      data: { name: 'Johnny', age: 26 },
+      where: sql`${users.id.eq('user-1')}`,
+    })).resolves.not.toThrow();
+
+    // Verify the update actually worked
+    const updatedUser = driver.db.prepare('SELECT id, name, age FROM users WHERE id = ?').get(['user-1']);
+    expect(updatedUser).toMatchObject({ id: 'user-1', name: 'Johnny', age: 26 });
+  });
+
+  it('should handle malformed UPDATE queries in security parsing', async () => {
+    const users = b.table('users', {
+      id: b.id(),
+      name: b.text(),
+    });
+
+    const db = await prepareForTest({ users });
+
+    // Create a malformed RawSql object that should trigger parsing errors
+    const malformedSql: any = {
+      query: 'UPDATE users SET name = ? WHERE id = ? AND INVALID SYNTAX',
+      params: ['test', 'user-1']
+    };
+
+    // The security parsing should catch malformed SQL
+    await expect(users.update({
+      data: { name: 'test' },
+      where: malformedSql,
+    })).rejects.toThrow();
+  });
+});

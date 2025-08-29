@@ -164,7 +164,6 @@ make(overrides: Partial<InsertableTableData<this>>): SelectableTableData<this>
 // on table class instance all its columns are accessable: users.age
 insert({
  data: InsertableTableData // TableData is a generic type that ensures proper typesafey
- returning?: '*'
 }): Promise
 
 update({

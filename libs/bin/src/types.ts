@@ -23,6 +23,7 @@ export interface ColumnMetadata extends SerializableColumnMetadata {
   insertType: InsertionType;
   serverTime?: boolean;
   appDefault?: (() => unknown) | unknown;
+  appOnUpdate?: (() => unknown) | unknown;
   encode?: (data: unknown) => number | string;
   decode?: (data: number | string) => unknown;
   aliasedFrom?: string;
