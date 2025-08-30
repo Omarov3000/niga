@@ -15,16 +15,20 @@ describe('optional fields behavior', () => {
       });
 
       // Verify metadata is correct
-      expect(users.id.__meta__.insertType).toBe('optional');
+      expect(users.id.__meta__.insertType).toBe('withDefault');
       expect(users.name.__meta__.insertType).toBe('required');
-      expect(users.email.__meta__.insertType).toBe('optional');
-      expect(users.age.__meta__.insertType).toBe('optional');
-      expect(users.isActive.__meta__.insertType).toBe('optional');
-      expect(users.createdAt.__meta__.insertType).toBe('optional');
+      expect(users.email.__meta__.insertType).toBe('required');
+      expect(users.age.__meta__.insertType).toBe('required');
+      expect(users.isActive.__meta__.insertType).toBe('required');
+      expect(users.createdAt.__meta__.insertType).toBe('required');
 
-      // This should compile fine - only name is required
+      // This should compile fine - all required fields provided
       const insertData: Parameters<typeof users.insert>[0] = {
-        name: 'John Doe'
+        name: 'John Doe',
+        email: 'john@example.com',
+        age: 30,
+        isActive: true,
+        createdAt: new Date()
       };
 
       expect(insertData).toMatchObject({
@@ -42,9 +46,10 @@ describe('optional fields behavior', () => {
         viewCount: b.integer().default(0), // Optional
       });
 
-      // Should compile - providing only required fields
+      // Should compile - providing all required fields
       const minimalPost: Parameters<typeof posts.insert>[0] = {
         title: 'My Post',
+        content: 'Post content',
         authorId: 'user123'
       };
 
@@ -82,8 +87,8 @@ describe('optional fields behavior', () => {
 
       const db = b.db({ schema: { users } });
       await db._connectDriver({ 
-        exec: () => {}, 
-        run: () => [] 
+        exec: async () => {}, 
+        run: async () => [] 
       });
 
       // Should work without providing id
@@ -108,8 +113,8 @@ describe('optional fields behavior', () => {
 
       const db = b.db({ schema: { users } });
       await db._connectDriver({ 
-        exec: () => {}, 
-        run: () => [] 
+        exec: async () => {}, 
+        run: async () => [] 
       });
 
       // Should use explicit ID when provided
@@ -136,13 +141,16 @@ describe('optional fields behavior', () => {
 
       const db = b.db({ schema: { posts } });
       await db._connectDriver({ 
-        exec: () => {}, 
-        run: () => [] 
+        exec: async () => {}, 
+        run: async () => [] 
       });
 
       // Only provide required field
       const post = await posts.insert({
-        title: 'My Post'
+        title: 'My Post',
+        content: '',
+        viewCount: 0,
+        createdAt: new Date()
       });
 
       expect(post).toMatchObject({
@@ -179,8 +187,8 @@ describe('optional fields behavior', () => {
 
       const db = b.db({ schema: { documents } });
       await db._connectDriver({ 
-        exec: () => {}, 
-        run: () => [] 
+        exec: async () => {}, 
+        run: async () => [] 
       });
 
       // Regular user
@@ -190,7 +198,8 @@ describe('optional fields behavior', () => {
       // Should allow creating public document (isPrivate defaults to false)
       const doc = await documents.insert({
         title: 'Public Doc',
-        ownerId: 'user123'
+        ownerId: 'user123',
+        content: ''
         // isPrivate omitted, should default to false
       });
 
@@ -204,6 +213,7 @@ describe('optional fields behavior', () => {
       await expect(documents.insert({
         title: 'Private Doc',
         ownerId: 'user123',
+        content: '',
         isPrivate: true
       })).rejects.toThrow('Security check failed for insert operation');
 
@@ -214,6 +224,7 @@ describe('optional fields behavior', () => {
       const privateDoc = await documents.insert({
         title: 'Admin Private Doc',
         ownerId: 'admin123',
+        content: '',
         isPrivate: true
       });
 
@@ -241,16 +252,18 @@ describe('optional fields behavior', () => {
 
       const db = b.db({ schema: { profiles } });
       await db._connectDriver({ 
-        exec: () => {}, 
-        run: () => [] 
+        exec: async () => {}, 
+        run: async () => [] 
       });
 
       // Create profile without optional avatar
       const profile = await profiles.insert({
         userId: 'user123',
         displayName: 'John Doe',
-        bio: 'Software engineer'
-        // avatar and createdAt omitted
+        bio: 'Software engineer',
+        avatar: '',
+        createdAt: new Date()
+        // avatar provided with default value
       });
 
       expect(profile).toMatchObject({
@@ -305,8 +318,8 @@ describe('optional fields behavior', () => {
 
       const db = b.db({ schema: { orders } });
       await db._connectDriver({ 
-        exec: () => {}, 
-        run: () => [] 
+        exec: async () => {}, 
+        run: async () => [] 
       });
 
       const user = { id: 'customer123', maxAmount: 500 };
@@ -315,7 +328,10 @@ describe('optional fields behavior', () => {
       // Should work with minimal required fields
       const order = await orders.insert({
         customerId: 'customer123',
-        amount: 99.99
+        amount: 99.99,
+        notes: '',
+        createdAt: new Date(),
+        processedAt: new Date()
         // All other fields should use defaults
       });
 
@@ -337,7 +353,9 @@ describe('optional fields behavior', () => {
         amount: 299.99,
         currency: 'EUR',
         isRushOrder: true,
-        notes: 'Urgent delivery needed'
+        notes: 'Urgent delivery needed',
+        createdAt: new Date(),
+        processedAt: new Date()
       });
 
       expect(rushOrder).toMatchObject({
@@ -351,7 +369,10 @@ describe('optional fields behavior', () => {
       // Should reject over amount limit
       await expect(orders.insert({
         customerId: 'customer123',
-        amount: 600 // Over limit
+        amount: 600, // Over limit
+        notes: '',
+        createdAt: new Date(),
+        processedAt: new Date()
       })).rejects.toThrow('Security check failed for insert operation');
     });
   });

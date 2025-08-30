@@ -5,11 +5,11 @@ import { Db } from './db';
 import { IndexBuilder, Table } from './table';
 import { getDefaultValueFromZodSchema } from './zod-integration/getDefaultValueFromZodSchema';
 
-const text = () => new Column({ kind: 'public', name: 'text', type: 'text', appDefault: '' });
-const integer = () => new Column({ kind: 'public', name: 'integer', type: 'integer', appDefault: 0 });
-const real = () => new Column({ kind: 'public', name: 'real', type: 'real', appDefault: 0 });
+const text = () => new Column<'text', string, 'required'>({ kind: 'public', name: 'text', type: 'text', appDefault: '' });
+const integer = () => new Column<'integer', number, 'required'>({ kind: 'public', name: 'integer', type: 'integer', appDefault: 0 });
+const real = () => new Column<'real', number, 'required'>({ kind: 'public', name: 'real', type: 'real', appDefault: 0 });
 const date = () => {
-  return new Column({
+  return new Column<'date', Date, 'required'>({
     kind: 'public',
     name: 'date',
     type: 'integer',
@@ -87,7 +87,7 @@ function enum_<const T extends string>(values: readonly T[], _default: NoInfer<T
   return col;
 }
 
-const id = () => new Column({ kind: 'public', name: 'id', type: 'text' }).$defaultFn(() => nanoid()).primaryKey();
+const id = () => new Column<'id', string, 'withDefault'>({ kind: 'public', name: 'id', type: 'text' }).$defaultFn(() => nanoid()).primaryKey();
 
 function table<Name extends string, TCols extends Record<string, Column<any, any, any>>>(
   name: Name,

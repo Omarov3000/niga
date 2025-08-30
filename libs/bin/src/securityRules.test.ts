@@ -25,8 +25,8 @@ describe('security rules end-to-end', () => {
 
       const db = b.db({ schema: { posts } });
       await db._connectDriver({ 
-        exec: () => {}, 
-        run: () => [] 
+        exec: async () => {}, 
+        run: async () => [] 
       });
 
       // Admin user should be able to delete
@@ -83,8 +83,8 @@ describe('security rules end-to-end', () => {
 
       const db = b.db({ schema: { documents } });
       await db._connectDriver({ 
-        exec: () => {}, 
-        run: () => [] 
+        exec: async () => {}, 
+        run: async () => [] 
       });
 
       const user = { id: 'user123' };
@@ -142,8 +142,8 @@ describe('security rules end-to-end', () => {
 
       const db = b.db({ schema: { profiles } });
       await db._connectDriver({ 
-        exec: () => {}, 
-        run: () => [] 
+        exec: async () => {}, 
+        run: async () => [] 
       });
 
       const user = { id: 'user123', role: 'user' };
@@ -226,8 +226,8 @@ describe('security rules end-to-end', () => {
 
       const db = b.db({ schema: { orders } });
       await db._connectDriver({ 
-        exec: () => {}, 
-        run: () => [] 
+        exec: async () => {}, 
+        run: async () => [] 
       });
 
       // Regular user with low limit
@@ -301,8 +301,8 @@ describe('security rules end-to-end', () => {
 
       const db = b.db({ schema: { users } });
       await db._connectDriver({ 
-        exec: () => {}, 
-        run: () => [] 
+        exec: async () => {}, 
+        run: async () => [] 
       });
 
       // Should allow insert with all fields
@@ -369,8 +369,8 @@ describe('security rules end-to-end', () => {
 
       const db = b.db({ schema: { posts } });
       await db._connectDriver({ 
-        exec: () => {}, 
-        run: () => [] 
+        exec: async () => {}, 
+        run: async () => [] 
       });
 
       const user = { id: 'author123', role: 'user' };
@@ -496,8 +496,8 @@ describe('security rules end-to-end', () => {
 
       const db = b.db({ schema: { users, posts, comments } });
       await db._connectDriver({ 
-        exec: () => {}, 
-        run: () => [] 
+        exec: async () => {}, 
+        run: async () => [] 
       });
 
       // Regular user operations
@@ -566,8 +566,8 @@ describe('security rules end-to-end', () => {
 
       const db = b.db({ schema: { publicData } });
       await db._connectDriver({ 
-        exec: () => {}, 
-        run: () => [] 
+        exec: async () => {}, 
+        run: async () => [] 
       });
 
       // No user connected - security rules should be bypassed

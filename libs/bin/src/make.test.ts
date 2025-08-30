@@ -239,8 +239,8 @@ describe('table.make() type _tests', () => {
 
     type Expected = {
       id: string;
-      name: string | undefined;
-      age: number | undefined;
+      name: string;
+      age: number;
     };
 
     type _Test = Expect<Equal<typeof result, Expected>>;
@@ -259,7 +259,7 @@ describe('table.make() type _tests', () => {
     type Expected = {
       id: string;
       name: string;
-      age: number | undefined;
+      age: number;
       isActive: boolean;
     };
 
@@ -287,8 +287,8 @@ describe('table.make() type _tests', () => {
     type Expected = {
       id: string;
       name: string;
-      age: number | undefined;
-      email: string | undefined;
+      age: number;
+      email: string;
     };
 
     type _Test = Expect<Equal<typeof result, Expected>>;
@@ -305,7 +305,7 @@ describe('table.make() type _tests', () => {
 
     type Expected = {
       id: string;
-      firstName: string | undefined;
+      firstName: string;
     };
 
     type _Test = Expect<Equal<typeof result, Expected>>;

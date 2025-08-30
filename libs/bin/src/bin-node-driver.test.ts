@@ -1,15 +1,16 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { b } from './builder';
-import { BinNodeDriver, BinTursoDriver } from './bin-node-driver';
+import { BinNodeDriver } from './bin-node-driver';
+import { BinTursoDriver } from './bin-turso-driver';
 import { z } from 'zod';
 import type { Table } from './table';
 import type { Db } from './db';
 import { sql } from './utils/sql';
 
-let driver: BinNodeDriver;
+let driver: BinTursoDriver;
 
-beforeEach(() => {
-  driver = new BinNodeDriver(':memory:');
+beforeEach(async () => {
+  driver = new BinTursoDriver(':memory:');
 });
 
 async function prepareForTest<TSchema extends Record<string, Table<any, any>>>(
@@ -17,8 +18,17 @@ async function prepareForTest<TSchema extends Record<string, Table<any, any>>>(
 ): Promise<Db & TSchema> {
   const db = b.db({ schema }) as Db & TSchema;
   await db._connectDriver(driver);
-  driver.exec(db.getSchemaDefinition());
+  await driver.exec(db.getSchemaDefinition());
   return db;
+}
+
+async function runQuery(query: string, params?: any[]): Promise<any[]> {
+  return await driver.run({ query, params: params || [] });
+}
+
+async function runQueryAndGetFirst(query: string, params?: any[]): Promise<any> {
+  const results = await runQuery(query, params);
+  return results[0];
 }
 
 describe('insert', () => {
@@ -39,7 +49,7 @@ describe('insert', () => {
       age: 20,
     });
 
-    const rows = driver.db.prepare('SELECT id, name, email, age FROM users WHERE id = ?').all(['test-123']);
+    const rows = await runQuery('SELECT id, name, email, age FROM users WHERE id = ?', ['test-123']);
 
     expect(rows).toMatchObject([
       { id: 'test-123', name: 'John Doe', email: 'john@example.com', age: 20 },
@@ -56,6 +66,9 @@ describe('insert', () => {
 
     const db = await prepareForTest({ posts });
 
+    // Check if table exists
+    const tables = await runQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='posts'");
+
     await posts.insert({
       id: 'post-123',
       title: 'Test Post',
@@ -63,7 +76,10 @@ describe('insert', () => {
       views: 42,
     });
 
-    const rows = driver.db.prepare('SELECT id, title, published, views FROM posts WHERE id = ?').all(['post-123']);
+    // Check row count
+    const count = await runQuery('SELECT COUNT(*) as count FROM posts');
+
+    const rows = await runQuery('SELECT id, title, published, views FROM posts WHERE id = ?', ['post-123']);
 
     expect(rows).toMatchObject([
       { id: 'post-123', title: 'Test Post', published: 1, views: 42 },
@@ -82,7 +98,7 @@ describe('insert', () => {
 
     expect(returned).toMatchObject({ id: 'user-123', name: 'Alice' });
 
-    const rows = driver.db.prepare('SELECT id, name FROM users WHERE id = ?').all(['user-123']);
+    const rows = await runQuery('SELECT id, name FROM users WHERE id = ?', ['user-123']);
 
     expect(rows).toMatchObject([{ id: 'user-123', name: 'Alice' }]);
   });
@@ -104,7 +120,7 @@ describe('insert', () => {
 
     expect(model).toMatchObject({ id: 'type-safe-test', name: 'Type Safe User', age: 30 });
 
-    const rows = driver.db.prepare('SELECT name, age FROM users WHERE id = ?').all(['type-safe-test']);
+    const rows = await runQuery('SELECT name, age FROM users WHERE id = ?', ['type-safe-test']);
 
     expect(rows).toMatchObject([{ name: 'Type Safe User', age: 30 }]);
   });
@@ -147,8 +163,8 @@ describe('select', () => {
     const db = await prepareForTest({ users });
 
     // Seed some rows directly
-    driver.db.prepare('INSERT INTO users (id, name, age) VALUES (?, ?, ?)').run(['u1', 'Alice', 30]);
-    driver.db.prepare('INSERT INTO users (id, name, age) VALUES (?, ?, ?)').run(['u2', 'Bob', 25]);
+    await runQuery('INSERT INTO users (id, name, age) VALUES (?, ?, ?)', ['u1', 'Alice', 30]);
+    await runQuery('INSERT INTO users (id, name, age) VALUES (?, ?, ?)', ['u2', 'Bob', 25]);
 
     const rows = await db
       .query`SELECT ${db.users.id}, ${db.users.name}, ${db.users.age} FROM users WHERE ${db.users.age.gte(25)}`
@@ -162,7 +178,7 @@ describe('select', () => {
     const users = b.table('users', { id: b.id(), name: b.text() });
     const db = await prepareForTest({ users });
 
-    driver.db.prepare('INSERT INTO users (id, name) VALUES (?, ?)').run(['u1', 'Alice']);
+    await runQuery('INSERT INTO users (id, name) VALUES (?, ?)', ['u1', 'Alice']);
 
     const row = await db
       .query`SELECT ${db.users.id}, ${db.users.name} FROM users WHERE ${db.users.id.eq('u1')}`
@@ -183,7 +199,7 @@ describe('select', () => {
     const db = await prepareForTest({ users });
 
     const now = new Date(1700000000000);
-    driver.db.prepare('INSERT INTO users (id, createdAt, isActive, role, profile) VALUES (?, ?, ?, ?, ?)').run(['u1', now.getTime(), 1, 0, JSON.stringify({ bio: 'Dev' })]);
+    await runQuery('INSERT INTO users (id, createdAt, isActive, role, profile) VALUES (?, ?, ?, ?, ?)', ['u1', now.getTime(), 1, 0, JSON.stringify({ bio: 'Dev' })]);
 
     const row = await db
       .query`SELECT ${db.users.id}, ${db.users.createdAt}, ${db.users.isActive}, ${db.users.role}, ${db.users.profile} FROM users WHERE ${db.users.createdAt.gte(now)} AND ${db.users.isActive.eq(true)} AND ${db.users.role.eq('admin')}`
@@ -210,9 +226,9 @@ describe('select', () => {
     });
     const db = await prepareForTest({ items });
 
-    driver.db.prepare('INSERT INTO items (id, price, name) VALUES (?, ?, ?)').run(['i1', 10, 'A']);
-    driver.db.prepare('INSERT INTO items (id, price, name) VALUES (?, ?, ?)').run(['i2', 20, 'B']);
-    driver.db.prepare('INSERT INTO items (id, price, name) VALUES (?, ?, ?)').run(['i3', 30, null]);
+    await runQuery('INSERT INTO items (id, price, name) VALUES (?, ?, ?)', ['i1', 10, 'A']);
+    await runQuery('INSERT INTO items (id, price, name) VALUES (?, ?, ?)', ['i2', 20, 'B']);
+    await runQuery('INSERT INTO items (id, price, name) VALUES (?, ?, ?)', ['i3', 30, null]);
 
     const rows = await db
       .query`SELECT ${db.items.id}, ${db.items.price} FROM items WHERE ${db.items.price.between(10, 25)} AND ${db.items.id.inArray(['i1','i2'])} AND ${db.items.name.isNull()}`
@@ -262,11 +278,11 @@ describe('update', () => {
     });
 
     // Verify user-1 was updated
-    const updatedUser = driver.db.prepare('SELECT id, name, age FROM users WHERE id = ?').get(['user-1']);
+    const updatedUser = await runQueryAndGetFirst('SELECT id, name, age FROM users WHERE id = ?', ['user-1']);
     expect(updatedUser).toMatchObject({ id: 'user-1', name: 'Johnny Doe', age: 26 });
 
     // Verify user-2 was not affected
-    const unchangedUser = driver.db.prepare('SELECT id, name, age FROM users WHERE id = ?').get(['user-2']);
+    const unchangedUser = await runQueryAndGetFirst('SELECT id, name, age FROM users WHERE id = ?', ['user-2']);
     expect(unchangedUser).toMatchObject({ id: 'user-2', name: 'Jane Smith', age: 30 });
   });
 
@@ -295,7 +311,7 @@ describe('update', () => {
     });
 
     // Verify update (boolean stored as integer)
-    const updatedPost = driver.db.prepare('SELECT id, title, published, views FROM posts WHERE id = ?').get(['post-1']);
+    const updatedPost = await runQueryAndGetFirst('SELECT id, title, published, views FROM posts WHERE id = ?', ['post-1']);
     expect(updatedPost).toMatchObject({
       id: 'post-1',
       title: 'Published Post',
@@ -334,7 +350,7 @@ describe('update', () => {
     expect(updateCallCount).toBe(1);
 
     // Verify updatedAt was updated to the onUpdate value
-    const updatedUser = driver.db.prepare('SELECT id, name, updatedAt FROM users WHERE id = ?').get(['user-1']);
+    const updatedUser = await runQueryAndGetFirst('SELECT id, name, updatedAt FROM users WHERE id = ?', ['user-1']);
     expect(updatedUser).toMatchObject({
       id: 'user-1',
       name: 'Johnny Doe',
@@ -366,7 +382,7 @@ describe('update', () => {
     });
 
     // Verify only user-2 was updated
-    const allUsers = driver.db.prepare('SELECT id, status FROM users ORDER BY id').all();
+    const allUsers = await runQuery('SELECT id, status FROM users ORDER BY id');
     expect(allUsers).toMatchObject([
       { id: 'user-1', status: 'active' }, // age 25, not updated
       { id: 'user-2', status: 'senior' }, // age 30, updated
@@ -416,7 +432,7 @@ describe('update', () => {
     })).resolves.not.toThrow();
 
     // Verify the update actually worked
-    const updatedUser = driver.db.prepare('SELECT id, name, age FROM users WHERE id = ?').get(['user-1']);
+    const updatedUser = await runQueryAndGetFirst('SELECT id, name, age FROM users WHERE id = ?', ['user-1']);
     expect(updatedUser).toMatchObject({ id: 'user-1', name: 'Johnny', age: 26 });
   });
 
@@ -465,7 +481,7 @@ describe('delete', () => {
     });
 
     // Verify user-2 was deleted
-    const remainingUsers = driver.db.prepare('SELECT id, name FROM users ORDER BY id').all();
+    const remainingUsers = await runQuery('SELECT id, name FROM users ORDER BY id');
     expect(remainingUsers).toMatchObject([
       { id: 'user-1', name: 'John Doe' },
       { id: 'user-3', name: 'Bob Johnson' },
@@ -496,7 +512,7 @@ describe('delete', () => {
     });
 
     // Verify only active users remain
-    const remainingUsers = driver.db.prepare('SELECT id, name, status FROM users ORDER BY id').all();
+    const remainingUsers = await runQuery('SELECT id, name, status FROM users ORDER BY id');
     expect(remainingUsers).toMatchObject([
       { id: 'user-1', name: 'John', status: 'active' },
       { id: 'user-4', name: 'Alice', status: 'active' },
@@ -527,7 +543,7 @@ describe('delete', () => {
     });
 
     // Verify only published posts and high-view drafts remain
-    const remainingPosts = driver.db.prepare('SELECT id, title, views, published FROM posts ORDER BY id').all();
+    const remainingPosts = await runQuery('SELECT id, title, views, published FROM posts ORDER BY id');
     expect(remainingPosts).toMatchObject([
       { id: 'post-2', title: 'Published 1', views: 100, published: 1 },
       { id: 'post-4', title: 'Published 2', views: 50, published: 1 },
@@ -556,7 +572,7 @@ describe('delete', () => {
     });
 
     // Verify only user-2 and user-4 remain
-    const remainingUsers = driver.db.prepare('SELECT id, name FROM users ORDER BY id').all();
+    const remainingUsers = await runQuery('SELECT id, name FROM users ORDER BY id');
     expect(remainingUsers).toMatchObject([
       { id: 'user-2', name: 'Jane' },
       { id: 'user-4', name: 'Alice' },
@@ -582,7 +598,7 @@ describe('delete', () => {
     })).resolves.not.toThrow();
 
     // Verify the delete actually worked
-    const remainingUsers = driver.db.prepare('SELECT id FROM users').all();
+    const remainingUsers = await runQuery('SELECT id FROM users');
     expect(remainingUsers).toHaveLength(0);
   });
 
@@ -625,7 +641,7 @@ describe('delete', () => {
     });
 
     // Verify no users were deleted
-    const remainingUsers = driver.db.prepare('SELECT id FROM users').all();
+    const remainingUsers = await runQuery('SELECT id FROM users');
     expect(remainingUsers).toHaveLength(2);
   });
 });

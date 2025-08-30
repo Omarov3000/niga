@@ -23,7 +23,7 @@ export class Column<
         name: init.name,
         type: init.type,
         appType: init.appType,
-        insertType: 'optional',
+        insertType: init.appDefault !== undefined ? 'required' : 'optional',
         appDefault: init.appDefault,
         encode: init.encode,
         decode: init.decode,
@@ -74,20 +74,20 @@ export class Column<
     return this.cloneMeta({ decode: fn });
   }
 
-  default(value: number | string | boolean | null): Column<Name, Type, 'optional'> {
+  default(value: number | string | boolean | null): Column<Name, Type, 'withDefault'> {
     const encodedDefault = this.__meta__.encode ? this.__meta__.encode(value as unknown) : value;
-    return new Column<Name, Type, 'optional'>({
+    return new Column<Name, Type, 'withDefault'>({
       kind: 'internal',
-      meta: Column.makeMeta(this.__meta__, { default: encodedDefault as any, appDefault: value, insertType: 'optional' }),
+      meta: Column.makeMeta(this.__meta__, { default: encodedDefault as any, appDefault: value, insertType: 'withDefault' }),
       table: this.__table__,
       valueSample: (this._valueSample ?? (value as any)) as any,
     });
   }
 
-  $defaultFn(fn: () => Type): Column<Name, Type, 'optional'> {
-    return new Column<Name, Type, 'optional'>({
+  $defaultFn(fn: () => Type): Column<Name, Type, 'withDefault'> {
+    return new Column<Name, Type, 'withDefault'>({
       kind: 'internal',
-      meta: Column.makeMeta(this.__meta__, { appDefault: fn, insertType: 'optional' }),
+      meta: Column.makeMeta(this.__meta__, { appDefault: fn, insertType: 'withDefault' }),
       table: this.__table__,
       valueSample: fn as any,
     });

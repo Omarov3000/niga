@@ -19,8 +19,8 @@ describe('data-aware security rules', () => {
 
     const db = b.db({ schema: { posts } });
     await db._connectDriver({ 
-      exec: () => {}, 
-      run: () => [] 
+      exec: async () => {}, 
+      run: async () => [] 
     });
 
     const user = { id: 'user123', role: 'user' };
@@ -57,8 +57,8 @@ describe('data-aware security rules', () => {
 
     const db = b.db({ schema: { posts } });
     await db._connectDriver({ 
-      exec: () => {}, 
-      run: () => [] 
+      exec: async () => {}, 
+      run: async () => [] 
     });
 
     const user = { id: 'user123', role: 'user' };
@@ -90,8 +90,8 @@ describe('data-aware security rules', () => {
 
     const db = b.db({ schema: { profiles } });
     await db._connectDriver({ 
-      exec: () => {}, 
-      run: () => [] 
+      exec: async () => {}, 
+      run: async () => [] 
     });
 
     const user = { id: 'user123', role: 'user' };
@@ -125,8 +125,8 @@ describe('data-aware security rules', () => {
 
     const db = b.db({ schema: { profiles } });
     await db._connectDriver({ 
-      exec: () => {}, 
-      run: () => [] 
+      exec: async () => {}, 
+      run: async () => [] 
     });
 
     const user = { id: 'user123', role: 'user' };
@@ -171,8 +171,8 @@ describe('data-aware security rules', () => {
 
     const db = b.db({ schema: { documents } });
     await db._connectDriver({ 
-      exec: () => {}, 
-      run: () => [] 
+      exec: async () => {}, 
+      run: async () => [] 
     });
 
     // High clearance user

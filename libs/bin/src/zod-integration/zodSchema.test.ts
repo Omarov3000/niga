@@ -11,40 +11,32 @@ type BinToZodTypeMap = {
   blob: z.ZodString;
 };
 
+export type TrulyOptional<T> = {
+  [P in keyof T as undefined extends T[P] ? never : P]: T[P]
+} & {
+  [P in keyof T as undefined extends T[P] ? P : never]?: Exclude<T[P], undefined>
+};
 
-type ColumnToZodType<TCol extends Column<any, any, any>> = 
+
+// Simple direct mapping based on insertion types
+type ColumnToZodType<TCol extends Column<any, any, any>> =
   TCol extends Column<any, infer Type, infer InsertType> ?
     InsertType extends 'virtual' ? never :
-    TCol['__meta__']['appType'] extends undefined ?
-      TCol['__meta__']['type'] extends keyof BinToZodTypeMap ?
-        InsertType extends 'required' ? z.ZodType<Type> :
-        z.ZodOptional<z.ZodType<Type>>
-      : never
-    : TCol['__meta__']['appType'] extends infer AppType ?
-      AppType extends 'json' ? 
-        InsertType extends 'required' ? z.ZodType<Type> : z.ZodOptional<z.ZodType<Type>> :
-      AppType extends 'date' ? 
-        InsertType extends 'required' ? z.ZodType<Type> : z.ZodOptional<z.ZodType<Type>> :
-      AppType extends 'boolean' ? 
-        InsertType extends 'required' ? z.ZodType<Type> : z.ZodOptional<z.ZodType<Type>> :
-      AppType extends 'enum' ? 
-        InsertType extends 'required' ? z.ZodType<Type> : z.ZodOptional<z.ZodType<Type>> :
-      AppType extends 'ulid' ? 
-        InsertType extends 'required' ? z.ZodType<Type> : z.ZodOptional<z.ZodType<Type>> :
-      never
-    : never
+    InsertType extends 'withDefault' ? z.ZodOptional<z.ZodType<Type>> :
+    InsertType extends 'optional' ? z.ZodOptional<z.ZodType<Type>> :
+    z.ZodType<Type>
   : never;
 
 type TableColumnsToZodSchema<TCols extends Record<string, Column<any, any, any>>> = {
   [K in keyof TCols as ColumnToZodType<TCols[K]> extends never ? never : K]: ColumnToZodType<TCols[K]>
 };
 
-type MakeInsertSchema<T extends Table<any, any>> = 
-  T extends Table<any, infer TCols> ? 
+type MakeInsertSchema<T extends Table<any, any>> =
+  T extends Table<any, infer TCols> ?
     z.ZodObject<TableColumnsToZodSchema<TCols>>
   : never;
 
-type ColumnToSelectZodType<TCol extends Column<any, any, any>> = 
+type ColumnToSelectZodType<TCol extends Column<any, any, any>> =
   TCol extends Column<any, infer Type, infer InsertType> ?
     InsertType extends 'virtual' ? never :
     z.ZodType<Type>
@@ -54,21 +46,21 @@ type TableColumnsToSelectZodSchema<TCols extends Record<string, Column<any, any,
   [K in keyof TCols as ColumnToSelectZodType<TCols[K]> extends never ? never : K]: ColumnToSelectZodType<TCols[K]>
 };
 
-type MakeSelectSchema<T extends Table<any, any>> = 
-  T extends Table<any, infer TCols> ? 
+type MakeSelectSchema<T extends Table<any, any>> =
+  T extends Table<any, infer TCols> ?
     z.ZodObject<TableColumnsToSelectZodSchema<TCols>>
   : never;
 
 export function makeInsertSchema<T extends Table<any, any>>(binTableSchema: T): MakeInsertSchema<T> {
   const shape: Record<string, z.ZodTypeAny> = {};
-  
+
   const columns = binTableSchema.__meta__.columns;
   for (const [key, colMeta] of Object.entries(columns)) {
     const col = (binTableSchema as any)[key] as Column<any, any, any>;
     if (!col || col.__meta__.insertType === 'virtual') continue;
-    
+
     let zodType: z.ZodTypeAny;
-    
+
     // Handle application types using metadata
     if (col.__meta__.appType) {
       switch (col.__meta__.appType) {
@@ -100,7 +92,7 @@ export function makeInsertSchema<T extends Table<any, any>>(binTableSchema: T): 
           break;
         case 'boolean':
           if (col.__meta__.encode && col.__meta__.decode) {
-            // For insert schemas, accept both boolean and integer formats  
+            // For insert schemas, accept both boolean and integer formats
             zodType = z.union([
               z.boolean(), // accept boolean directly
               z.number().transform((int) => col.__meta__.decode!(int)) // accept integer and decode
@@ -147,28 +139,28 @@ export function makeInsertSchema<T extends Table<any, any>>(binTableSchema: T): 
           throw new Error(`Unsupported column type '${col.__meta__.type}' for column '${key}'`);
       }
     }
-    
-    // Make optional if not required
-    if (col.__meta__.insertType !== 'required') {
+
+    // Make optional if has app default OR insertion type indicates optional
+    if (col.__meta__.appDefault !== undefined || col.__meta__.insertType === 'withDefault' || col.__meta__.insertType === 'optional') {
       zodType = zodType.optional();
     }
-    
+
     shape[key] = zodType;
   }
-  
+
   return z.object(shape) as MakeInsertSchema<T>;
 }
 
 export function makeSelectSchema<T extends Table<any, any>>(binTableSchema: T): MakeSelectSchema<T> {
   const shape: Record<string, z.ZodTypeAny> = {};
-  
+
   const columns = binTableSchema.__meta__.columns;
   for (const [key, colMeta] of Object.entries(columns)) {
     const col = (binTableSchema as any)[key] as Column<any, any, any>;
     if (!col || col.__meta__.insertType === 'virtual') continue;
-    
+
     let zodType: z.ZodTypeAny;
-    
+
     // Handle application types using metadata
     if (col.__meta__.appType) {
       switch (col.__meta__.appType) {
@@ -235,10 +227,10 @@ export function makeSelectSchema<T extends Table<any, any>>(binTableSchema: T): 
           throw new Error(`Unsupported column type '${col.__meta__.type}' for column '${key}'`);
       }
     }
-    
+
     shape[key] = zodType;
   }
-  
+
   return z.object(shape) as MakeSelectSchema<T>;
 }
 
@@ -257,7 +249,7 @@ describe('makeInsertSchema()', () => {
       });
 
       const schema = makeInsertSchema(users);
-      
+
       expect(schema.parse({
         id: 'test-id',
         name: 'John',
@@ -280,7 +272,7 @@ describe('makeInsertSchema()', () => {
       });
 
       const schema = makeInsertSchema(users);
-      
+
       // Should work with only required fields
       expect(schema.parse({
         id: 'test-id',
@@ -314,7 +306,7 @@ describe('makeInsertSchema()', () => {
       });
 
       const schema = makeInsertSchema(settings);
-      
+
       expect(schema.parse({
         id: 'test-id',
         enabled: true,
@@ -333,7 +325,7 @@ describe('makeInsertSchema()', () => {
       });
 
       const schema = makeInsertSchema(settings);
-      
+
       expect(schema.parse({
         id: 'test-id',
         enabled: 1, // integer input should decode to boolean
@@ -360,7 +352,7 @@ describe('makeInsertSchema()', () => {
 
       const schema = makeInsertSchema(posts);
       const now = new Date();
-      
+
       expect(schema.parse({
         id: 'test-id',
         createdAt: now,
@@ -380,7 +372,7 @@ describe('makeInsertSchema()', () => {
 
       const schema = makeInsertSchema(posts);
       const timestamp = 1640995200000; // Jan 1, 2022
-      
+
       expect(schema.parse({
         id: 'test-id',
         createdAt: timestamp,
@@ -398,7 +390,7 @@ describe('makeInsertSchema()', () => {
       });
 
       const schema = makeInsertSchema(users);
-      
+
       expect(schema.parse({
         id: 'test-id',
         role: 'admin',
@@ -424,7 +416,7 @@ describe('makeInsertSchema()', () => {
       });
 
       const schema = makeInsertSchema(users);
-      
+
       // Test enum index decoding: 0 = 'admin', 1 = 'user', 2 = 'guest'
       expect(schema.parse({
         id: 'test-id',
@@ -444,11 +436,11 @@ describe('makeInsertSchema()', () => {
     });
 
     it('handles json columns with schemas', () => {
-      const profileSchema = z.object({ 
-        bio: z.string(), 
-        age: z.number().optional() 
+      const profileSchema = z.object({
+        bio: z.string(),
+        age: z.number().optional()
       });
-      
+
       const users = b.table('users', {
         id: b.id(),
         profile: b.json(profileSchema).notNull(),
@@ -456,7 +448,7 @@ describe('makeInsertSchema()', () => {
       });
 
       const schema = makeInsertSchema(users);
-      
+
       expect(schema.parse({
         id: 'test-id',
         profile: { bio: 'Developer', age: 30 },
@@ -467,20 +459,20 @@ describe('makeInsertSchema()', () => {
         metadata: { tags: ['tech', 'coding'] },
       });
     });
-    
+
     it('handles json columns with codecs for string input', () => {
-      const profileSchema = z.object({ 
-        bio: z.string(), 
-        age: z.number().optional() 
+      const profileSchema = z.object({
+        bio: z.string(),
+        age: z.number().optional()
       });
-      
+
       const users = b.table('users', {
         id: b.id(),
         profile: b.json(profileSchema).notNull(),
       });
 
       const schema = makeInsertSchema(users);
-      
+
       // Test that codec can decode JSON string input
       expect(schema.parse({
         id: 'test-id',
@@ -503,7 +495,7 @@ describe('makeInsertSchema()', () => {
 
       const schema = makeInsertSchema(users);
       const shape = schema.shape;
-      
+
       expect(shape).toHaveProperty('id');
       expect(shape).toHaveProperty('firstName');
       expect(shape).toHaveProperty('lastName');
@@ -519,7 +511,7 @@ describe('makeInsertSchema()', () => {
       });
 
       const schema = makeInsertSchema(posts);
-      
+
       expect(schema.parse({
         id: 'post-id',
         title: 'Test Post',
@@ -536,13 +528,13 @@ describe('makeInsertSchema()', () => {
     it('handles empty table schema', () => {
       const empty = b.table('empty', {});
       const schema = makeInsertSchema(empty);
-      
+
       expect(schema.parse({})).toEqual({});
     });
 
     it('handles complex mixed scenario', () => {
       const profileSchema = z.object({ bio: z.string() });
-      
+
       const users = b.table('users', {
         id: b.id(),
         name: b.text().notNull(),
@@ -557,7 +549,7 @@ describe('makeInsertSchema()', () => {
 
       const schema = makeInsertSchema(users);
       const now = new Date();
-      
+
       expect(schema.parse({
         id: 'test-id',
         name: 'Alice',
@@ -586,9 +578,9 @@ describe('makeInsertSchema()', () => {
       const col = b.text();
       col.__meta__.appType = 'enum';
       // Don't set enumValues
-      
+
       const table = b.table('test', { role: col });
-      
+
       expect(() => makeInsertSchema(table)).toThrow("Enum column 'role' must have enumValues in metadata");
     });
 
@@ -597,9 +589,9 @@ describe('makeInsertSchema()', () => {
       const col = b.text();
       col.__meta__.appType = 'json';
       // Don't set jsonSchema
-      
+
       const table = b.table('test', { data: col });
-      
+
       expect(() => makeInsertSchema(table)).toThrow("JSON column 'data' must have jsonSchema in metadata");
     });
   });
@@ -616,7 +608,7 @@ describe('makeSelectSchema()', () => {
       });
 
       const schema = makeSelectSchema(users);
-      
+
       expect(schema.parse({
         id: 'test-id',
         name: 'John',
@@ -639,7 +631,7 @@ describe('makeSelectSchema()', () => {
       });
 
       const schema = makeSelectSchema(users);
-      
+
       // Parse storage format data (from database)
       expect(schema.parse({
         id: 'test-id',
@@ -655,18 +647,18 @@ describe('makeSelectSchema()', () => {
     });
 
     it('handles JSON columns with storage format decoding', () => {
-      const profileSchema = z.object({ 
-        bio: z.string(), 
-        age: z.number().optional() 
+      const profileSchema = z.object({
+        bio: z.string(),
+        age: z.number().optional()
       });
-      
+
       const users = b.table('users', {
         id: b.id(),
         profile: b.json(profileSchema),
       });
 
       const schema = makeSelectSchema(users);
-      
+
       // Parse JSON string from database
       expect(schema.parse({
         id: 'test-id',
@@ -689,7 +681,7 @@ describe('makeSelectSchema()', () => {
 
       const schema = makeSelectSchema(users);
       const shape = schema.shape;
-      
+
       expect(shape).toHaveProperty('id');
       expect(shape).toHaveProperty('firstName');
       expect(shape).toHaveProperty('lastName');
@@ -705,7 +697,7 @@ describe('makeSelectSchema()', () => {
       });
 
       const schema = makeSelectSchema(posts);
-      
+
       expect(schema.parse({
         id: 'post-id',
         title: 'Test Post',
@@ -722,13 +714,13 @@ describe('makeSelectSchema()', () => {
     it('handles empty table schema', () => {
       const empty = b.table('empty', {});
       const schema = makeSelectSchema(empty);
-      
+
       expect(schema.parse({})).toEqual({});
     });
 
     it('handles complex mixed scenario with storage format', () => {
       const profileSchema = z.object({ bio: z.string() });
-      
+
       const users = b.table('users', {
         id: b.id(),
         name: b.text(),
@@ -742,7 +734,7 @@ describe('makeSelectSchema()', () => {
       });
 
       const schema = makeSelectSchema(users);
-      
+
       // Parse database storage format
       expect(schema.parse({
         id: 'test-id',
@@ -772,9 +764,9 @@ describe('makeSelectSchema()', () => {
       const col = b.text();
       col.__meta__.appType = 'enum';
       // Don't set enumValues
-      
+
       const table = b.table('test', { role: col });
-      
+
       expect(() => makeSelectSchema(table)).toThrow("Enum column 'role' must have enumValues in metadata");
     });
 
@@ -783,9 +775,9 @@ describe('makeSelectSchema()', () => {
       const col = b.text();
       col.__meta__.appType = 'json';
       // Don't set jsonSchema
-      
+
       const table = b.table('test', { data: col });
-      
+
       expect(() => makeSelectSchema(table)).toThrow("JSON column 'data' must have jsonSchema in metadata");
     });
 
@@ -796,7 +788,7 @@ describe('makeSelectSchema()', () => {
       });
 
       const schema = makeSelectSchema(posts);
-      
+
       expect(() => schema.parse({
         id: 'test-id',
         createdAt: 'not-a-timestamp', // string instead of number
@@ -810,7 +802,7 @@ describe('makeSelectSchema()', () => {
       });
 
       const schema = makeSelectSchema(settings);
-      
+
       expect(() => schema.parse({
         id: 'test-id',
         enabled: 'true', // string instead of number
@@ -824,7 +816,7 @@ describe('makeSelectSchema()', () => {
       });
 
       const schema = makeSelectSchema(users);
-      
+
       expect(() => schema.parse({
         id: 'test-id',
         profile: 123, // number instead of string
@@ -838,7 +830,7 @@ describe('makeSelectSchema()', () => {
       });
 
       const schema = makeSelectSchema(users);
-      
+
       expect(() => schema.parse({
         id: 'test-id',
         role: 'admin', // string instead of number index
@@ -852,7 +844,7 @@ describe('makeSelectSchema()', () => {
       });
 
       const schema = makeSelectSchema(users);
-      
+
       expect(() => schema.parse({
         id: 'test-id',
         role: 5, // index out of range
@@ -866,7 +858,7 @@ describe('makeSelectSchema()', () => {
       });
 
       const schema = makeSelectSchema(users);
-      
+
       expect(() => schema.parse({
         id: 'test-id',
         role: -1, // negative index
@@ -884,26 +876,26 @@ describe('makeInsertSchema() type tests', () => {
     });
 
     const schema = makeInsertSchema(users);
-    
+
     // Test that it returns a ZodObject
     type IsZodObject = typeof schema extends z.ZodObject<any> ? true : false;
     type _Test1 = Expect<Equal<IsZodObject, true>>;
-    
+
     // Test that it can parse the expected data
     const result = schema.parse({
       id: 'test-id',
       name: 'John',
       age: 25,
     });
-    
+
     // Test the parsed result has correct types
     type ResultType = typeof result;
     type ExpectedResult = {
-      id: string;
-      name?: string;
-      age?: number;
+      id?: string;
+      name: string;
+      age: number;
     };
-    
+
     type _Test2 = Expect<Equal<ResultType, ExpectedResult>>;
   });
 
@@ -916,23 +908,23 @@ describe('makeInsertSchema() type tests', () => {
     });
 
     const schema = makeInsertSchema(users);
-    
+
     // Test with only required fields
     const result1 = schema.parse({
       id: 'test-id',
       name: 'John',
     });
-    
+
     type Result1Type = typeof result1;
     type Expected1 = {
-      id: string;
+      id?: string;
       name: string;
-      email?: string;
-      age?: number;
+      email: string;
+      age: number;
     };
-    
+
     type _Test1 = Expect<Equal<Result1Type, Expected1>>;
-    
+
     // Test with all fields
     const result2 = schema.parse({
       id: 'test-id',
@@ -940,7 +932,7 @@ describe('makeInsertSchema() type tests', () => {
       email: 'john@example.com',
       age: 25,
     });
-    
+
     type Result2Type = typeof result2;
     type _Test2 = Expect<Equal<Result2Type, Expected1>>;
   });
@@ -953,19 +945,19 @@ describe('makeInsertSchema() type tests', () => {
     });
 
     const schema = makeInsertSchema(users);
-    
+
     const result = schema.parse({
       id: 'test-id',
       firstName: 'John',
     });
-    
+
     type ResultType = typeof result;
     type Expected = {
-      id: string;
-      firstName?: string;
+      id?: string;
+      firstName: string;
       // fullName should not be present
     };
-    
+
     type _Test = Expect<Equal<ResultType, Expected>>;
   });
 
@@ -977,20 +969,20 @@ describe('makeInsertSchema() type tests', () => {
     });
 
     const schema = makeInsertSchema(users);
-    
+
     const result = schema.parse({
       id: 'test-id',
       role: 'admin',
       status: 'active',
     });
-    
+
     type ResultType = typeof result;
     type Expected = {
-      id: string;
+      id?: string;
       role: 'admin' | 'user';
       status: 'active' | 'inactive';
     };
-    
+
     type _Test = Expect<Equal<ResultType, Expected>>;
   });
 
@@ -1003,20 +995,20 @@ describe('makeInsertSchema() type tests', () => {
     });
 
     const schema = makeInsertSchema(posts);
-    
+
     const result = schema.parse({
       id: 'test-id',
       metadata: { count: 5 },
       tags: ['test'],
     });
-    
+
     type ResultType = typeof result;
     type Expected = {
-      id: string;
+      id?: string;
       metadata: { count: number };
       tags?: string[];
     };
-    
+
     type _Test = Expect<Equal<ResultType, Expected>>;
   });
 
@@ -1031,7 +1023,7 @@ describe('makeInsertSchema() type tests', () => {
 
     const schema = makeInsertSchema(users);
     const now = new Date();
-    
+
     const result = schema.parse({
       id: 'test-id',
       isActive: true,
@@ -1039,22 +1031,22 @@ describe('makeInsertSchema() type tests', () => {
       createdAt: now,
       updatedAt: now,
     });
-    
+
     type ResultType = typeof result;
     type Expected = {
-      id: string;
+      id?: string;
       isActive: boolean;
       visible?: boolean;
       createdAt: Date;
       updatedAt?: Date;
     };
-    
+
     type _Test = Expect<Equal<ResultType, Expected>>;
   });
 
   it('handles complex mixed scenario types', () => {
     const profileSchema = z.object({ bio: z.string() });
-    
+
     const users = b.table('users', {
       id: b.id(),
       name: b.text().notNull(),
@@ -1069,7 +1061,7 @@ describe('makeInsertSchema() type tests', () => {
 
     const schema = makeInsertSchema(users);
     const now = new Date();
-    
+
     const result = schema.parse({
       id: 'test-id',
       name: 'Alice',
@@ -1080,20 +1072,20 @@ describe('makeInsertSchema() type tests', () => {
       createdAt: now,
       profile: { bio: 'Developer' },
     });
-    
+
     type ResultType = typeof result;
     type Expected = {
-      id: string;
+      id?: string;
       name: string;
       email?: string;
       age?: number;
-      role: 'admin' | 'user';
+      role?: 'admin' | 'user';
       isActive?: boolean;
       createdAt: Date;
       profile?: { bio: string };
       // fullName should not be present
     };
-    
+
     type _Test = Expect<Equal<ResultType, Expected>>;
   });
 });
@@ -1107,25 +1099,25 @@ describe('makeSelectSchema() type tests', () => {
     });
 
     const schema = makeSelectSchema(users);
-    
+
     // Test that it returns a ZodObject
     type IsZodObject = typeof schema extends z.ZodObject<any> ? true : false;
     type _Test1 = Expect<Equal<IsZodObject, true>>;
-    
+
     // Test the parsed result has correct types
     const result = schema.parse({
       id: 'test-id',
       name: 'John',
       age: 25,
     });
-    
+
     type ResultType = typeof result;
     type ExpectedResult = {
       id: string;
       name: string;
       age: number;
     };
-    
+
     type _Test2 = Expect<Equal<ResultType, ExpectedResult>>;
   });
 
@@ -1137,19 +1129,19 @@ describe('makeSelectSchema() type tests', () => {
     });
 
     const schema = makeSelectSchema(users);
-    
+
     const result = schema.parse({
       id: 'test-id',
       firstName: 'John',
     });
-    
+
     type ResultType = typeof result;
     type Expected = {
       id: string;
       firstName: string;
       // fullName should not be present
     };
-    
+
     type _Test = Expect<Equal<ResultType, Expected>>;
   });
 
@@ -1162,7 +1154,7 @@ describe('makeSelectSchema() type tests', () => {
     });
 
     const schema = makeSelectSchema(users);
-    
+
     // Parse storage format (what comes from database)
     const result = schema.parse({
       id: 'test-id',
@@ -1170,7 +1162,7 @@ describe('makeSelectSchema() type tests', () => {
       createdAt: 1640995200000, // timestamp from DB
       role: 0, // index from DB
     });
-    
+
     type ResultType = typeof result;
     type Expected = {
       id: string;
@@ -1178,7 +1170,7 @@ describe('makeSelectSchema() type tests', () => {
       createdAt: Date; // decoded to Date
       role: 'admin' | 'user'; // decoded to enum string
     };
-    
+
     type _Test = Expect<Equal<ResultType, Expected>>;
   });
 
@@ -1190,25 +1182,25 @@ describe('makeSelectSchema() type tests', () => {
     });
 
     const schema = makeSelectSchema(posts);
-    
+
     // Parse JSON string from database
     const result = schema.parse({
       id: 'test-id',
       metadata: '{"count":5}', // JSON string from DB
     });
-    
+
     type ResultType = typeof result;
     type Expected = {
       id: string;
       metadata: { count: number }; // decoded to object
     };
-    
+
     type _Test = Expect<Equal<ResultType, Expected>>;
   });
 
   it('handles complex mixed scenario types correctly', () => {
     const profileSchema = z.object({ bio: z.string() });
-    
+
     const users = b.table('users', {
       id: b.id(),
       name: b.text(),
@@ -1222,7 +1214,7 @@ describe('makeSelectSchema() type tests', () => {
     });
 
     const schema = makeSelectSchema(users);
-    
+
     // Parse storage format from database
     const result = schema.parse({
       id: 'test-id',
@@ -1234,7 +1226,7 @@ describe('makeSelectSchema() type tests', () => {
       createdAt: 1640995200000, // timestamp from DB
       profile: '{"bio":"Developer"}', // JSON string from DB
     });
-    
+
     type ResultType = typeof result;
     type Expected = {
       id: string;
@@ -1247,7 +1239,7 @@ describe('makeSelectSchema() type tests', () => {
       profile: { bio: string }; // decoded from JSON string
       // fullName should not be present
     };
-    
+
     type _Test = Expect<Equal<ResultType, Expected>>;
   });
 });

@@ -11,12 +11,17 @@ type ColumnsOnly<T> = OmitNever<{ [K in keyof T]: T[K] extends ColumnLike ? T[K]
 
 type RawSelectable<T> = {
   [K in keyof T]: T[K] extends Column<any, infer V, infer I>
-    ? (I extends 'virtual' ? never : I extends 'required' ? V : V | undefined)
+    ? (I extends 'virtual' ? never :
+       I extends 'required' ? V :
+       I extends 'withDefault' ? V :
+       V | undefined)
     : never;
 };
 type RawInsertable<T> = {
-  [K in keyof T]: T[K] extends Column<any, infer V, infer I> 
-    ? (I extends 'virtual' ? never : I extends 'required' ? V : V | undefined) 
+  [K in keyof T]: T[K] extends Column<any, infer V, infer I>
+    ? (I extends 'virtual' ? never :
+       I extends 'required' ? V :
+       V | undefined)
     : never;
 };
 type OmitNever<T> = { [K in keyof T as T[K] extends never ? never : K]: T[K] };
@@ -29,7 +34,7 @@ type RequiredInsertFields<T> = {
 };
 type OptionalInsertFields<T> = {
   [K in keyof T]: T[K] extends Column<any, infer V, infer I>
-    ? I extends 'optional' ? V : never
+    ? I extends 'optional' | 'withDefault' ? V : never
     : never;
 };
 
@@ -84,6 +89,8 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
         continue;
       }
 
+      // TODO: if appDefault is not set return
+      // for text = '', for numbers = 0, for boolean = false, for json - getDefaultValueFromZodSchema, for date new Date()
       const appDef = col.__meta__.appDefault;
       if (appDef !== undefined) {
         (result as any)[key] = typeof appDef === 'function' ? (appDef as () => unknown)() : appDef;
@@ -145,7 +152,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     const sqlQuery = rawQueryToSelectQuery(fullQuery);
     await this.checkSecurity(sqlQuery, model);
 
-    driver.run(fullQuery);
+    await driver.run(fullQuery);
 
     return model;
   }
@@ -177,7 +184,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     for (const [key] of Object.entries(colsMeta)) {
       const col = (this as any)[key] as Column<any, any, any> | undefined;
       if (!col || col.__meta__.insertType === 'virtual') continue;
-      
+
       // If column has onUpdate function, call it
       if (col.__meta__.appOnUpdate && typeof col.__meta__.appOnUpdate === 'function') {
         updatedData[key] = (col.__meta__.appOnUpdate as () => unknown)();
@@ -207,12 +214,12 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
 
     const query = `UPDATE ${this.__meta__.name} SET ${setClause.join(', ')} WHERE ${options.where.query}`;
     const fullQuery = { query, params };
-    
+
     // Parse for security analysis and check security
     const sqlQuery = rawQueryToSelectQuery(fullQuery);
     await this.checkSecurity(sqlQuery, updatedData);
-    
-    driver.run(fullQuery);
+
+    await driver.run(fullQuery);
   }
 
   async delete<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf>>(
@@ -231,7 +238,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     const sqlQuery = rawQueryToSelectQuery(fullQuery);
     await this.checkSecurity(sqlQuery);
 
-    driver.run(fullQuery);
+    await driver.run(fullQuery);
   }
 
   secure<TUser = any>(rule: SecurityRule<TUser>): this {
@@ -249,7 +256,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
 
     let queryType: QueryType;
     let accessedTables = [this.__meta__.name];
-    
+
     // Extract query type and accessed tables from the parsed SQL query
     switch (sqlQuery.type) {
       case 'insert':

@@ -181,8 +181,8 @@ describe('immutableFields', () => {
 
       const db = b.db({ schema: { users } });
       await db._connectDriver({ 
-        exec: () => {}, 
-        run: () => [] 
+        exec: async () => {}, 
+        run: async () => [] 
       });
 
       // Should allow update without touching id
@@ -203,8 +203,8 @@ describe('immutableFields', () => {
 
       const db = b.db({ schema: { users } });
       await db._connectDriver({ 
-        exec: () => {}, 
-        run: () => [] 
+        exec: async () => {}, 
+        run: async () => [] 
       });
 
       // Should reject update that tries to modify id
@@ -228,8 +228,8 @@ describe('immutableFields', () => {
 
       const db = b.db({ schema: { users } });
       await db._connectDriver({ 
-        exec: () => {}, 
-        run: () => [] 
+        exec: async () => {}, 
+        run: async () => [] 
       });
 
       // Should allow updating only mutable fields
@@ -271,8 +271,8 @@ describe('immutableFields', () => {
 
       const db = b.db({ schema: { posts } });
       await db._connectDriver({ 
-        exec: () => {}, 
-        run: () => [] 
+        exec: async () => {}, 
+        run: async () => [] 
       });
 
       const user = { id: 'user123', role: 'user' };

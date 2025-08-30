@@ -5,7 +5,7 @@ export type ColumnType = 'integer' | 'real' | 'text' | 'blob';
 
 export type ApplicationType = 'json' | 'date' | 'boolean' | 'enum' | 'ulid' | undefined;
 
-export type InsertionType = 'required' | 'optional' | 'virtual';
+export type InsertionType = 'required' | 'optional' | 'virtual' | 'withDefault';
 
 export interface SerializableColumnMetadata {
   name: string;
@@ -50,8 +50,8 @@ export interface TableMetadata extends SerializableTableMetadata {
 }
 
 export interface BinDriver {
-  exec: (sql: string) => any;
-  run: (sql: RawSql) => any;
+  exec: (sql: string) => Promise<any>;
+  run: (sql: RawSql) => Promise<any>;
 }
 
 export interface SecurityCheckContext {
