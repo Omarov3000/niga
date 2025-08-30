@@ -10,23 +10,29 @@ export interface DbConstructorOptions {
 
 export class Db {
   private driver?: BinDriver;
+  private currentUser?: any;
 
   constructor(private options: DbConstructorOptions) {
     // expose tables on the db instance and wire driver access for table methods
     Object.entries(this.options.schema).forEach(([name, table]) => {
       (this as any)[name] = table;
-      // attach driver getter to table for methods like insert()
+      // attach driver getter and user getter to table for methods like insert()
       (table as any).__db__ = {
         getDriver: () => {
           if (!this.driver) throw new Error('No driver connected. Call _connectDriver first.');
           return this.driver;
         },
+        getCurrentUser: () => this.currentUser,
       };
     });
   }
 
   async _connectDriver(driver: BinDriver): Promise<void> {
     this.driver = driver;
+  }
+
+  connectUser<TUser = any>(user: TUser): void {
+    this.currentUser = user;
   }
 
   query(strings: TemplateStringsArray, ...values: any[]) {

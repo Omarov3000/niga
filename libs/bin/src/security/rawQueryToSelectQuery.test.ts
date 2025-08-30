@@ -644,10 +644,6 @@ describe("rawQueryToSelectQuery - INSERT / UPDATE / DELETE", () => {
       });
     });
 
-    it.skip("parses UPDATE with FROM clause (PostgreSQL syntax - not supported in SQLite)", () => {
-      // This test is skipped because SQLite doesn't support FROM clause in UPDATE
-      // Original test was: UPDATE users SET active = 0 FROM sessions WHERE users.id = sessions.user_id
-    });
 
     it("parses UPDATE with RETURNING", () => {
       const result = rawQueryToSelectQuery(
@@ -688,10 +684,6 @@ describe("rawQueryToSelectQuery - INSERT / UPDATE / DELETE", () => {
       });
     });
 
-    it.skip("parses DELETE with USING (PostgreSQL syntax - not supported in SQLite)", () => {
-      // This test is skipped because SQLite doesn't support USING clause in DELETE
-      // Original test was: DELETE FROM users USING sessions WHERE users.id = sessions.user_id
-    });
 
     it("parses DELETE with RETURNING", () => {
       const result = rawQueryToSelectQuery(

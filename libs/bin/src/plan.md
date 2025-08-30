@@ -202,7 +202,8 @@ constructor(schema: Record<string, Table>, opts: { origin: 'client' | 'server'})
 transaction: (cb: () => void): Promise<void>
 query(strings: TemplateStringsArray, ...values: any[]): { execute: (zodSchema: T) => Promise<infer<T>> }
 
-_connectDriver: (driver: BinDriver) => Promise<void>
+_connectDriver: (driver: BinDriver) => void
+_connectUser(user: any): void
 getSchemaDefinition: () => string // emits CREATE TABLE + INDEX ✅
 _getSchemaSnapshot(prev?: SchemaSnapshot) ⏭️
 _clear ⏭️
@@ -230,7 +231,27 @@ const db = b.db({
   // advanced security rules (note this db should run queiries without security checks to avoid dead locks
 })
 
-db.users.secure(async (table) => (query, user: { id: string }) => {
+// Data-aware security rules - access to insert/update data
+db.users.secure((query, user: { id: string; role: string }) => {
+  switch (query.type) {
+    case 'insert':
+      // Users can only create records for themselves
+      return query.data?.userId === user.id;
+    case 'update':
+      // Users cannot change ownership
+      return !query.data.hasOwnProperty('userId') || query.data.userId === user.id;
+    case 'delete':
+      if (user.role === 'admin') return true;
+      // Users can only delete their own records with proper WHERE clause
+      return hasWhereClauseCheck(query.sql, user.id.equalityCheck(user.id));
+    case 'select':
+      // Always allow SELECT (handled by WHERE clause analysis)
+      return true;
+  }
+})
+
+// Complex security rules with async checks
+db.users.secure(async (query, user: { id: string }) => {
     const { type } = db.query`select ${db.groups.type} from ${db.groups} where ${db.groups.userId.eq(user.id)}`.executeAndTakeFirst({ type: z.enum(['moderators']) })
     if (type == 'moderators') return true // only moderators can access this table
     return false

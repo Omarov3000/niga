@@ -451,6 +451,17 @@ export function analyze(sql: RawSql): QueryAnalysis {
           }
         });
       }
+    } else if (expr.type === "logical_expr") {
+      // Recursively collect filters from logical expressions
+      if (expr.operator === "AND") {
+        // For AND expressions, collect filters from both sides
+        const leftFilters = collectFiltersFromExpression(expr.left, tableAliasMap, params, fromClause);
+        const rightFilters = collectFiltersFromExpression(expr.right, tableAliasMap, params, fromClause);
+        filters.push(...leftFilters, ...rightFilters);
+      } else if (expr.operator === "OR") {
+        // For OR expressions, we don't collect filters here since OR needs special handling at the top level
+        // This case shouldn't normally be hit since OR is handled in processLogicalExpression
+      }
     }
 
     return filters;
@@ -516,13 +527,28 @@ export function analyze(sql: RawSql): QueryAnalysis {
   if (sqlQuery.type === "select" || sqlQuery.type === "compound_select") {
     processSelectQuery(sqlQuery);
   } else {
-    // For INSERT/UPDATE/DELETE queries, we can analyze table access differently
-    // For now, just extract the main table name
+    // For INSERT/UPDATE/DELETE queries, analyze table access and WHERE clauses
     switch (sqlQuery.type) {
       case "insert":
-      case "update":  
-      case "delete":
         getOrCreateTable(sqlQuery.table.name);
+        break;
+      case "update":
+        {
+          const table = getOrCreateTable(sqlQuery.table.name);
+          // Process WHERE clause if present
+          if (sqlQuery.where && table) {
+            processExpression(sqlQuery.where, new Map(), sql.params);
+          }
+        }
+        break;
+      case "delete":
+        {
+          const table = getOrCreateTable(sqlQuery.table.name);
+          // Process WHERE clause if present
+          if (sqlQuery.where && table) {
+            processExpression(sqlQuery.where, new Map(), sql.params);
+          }
+        }
         break;
     }
   }

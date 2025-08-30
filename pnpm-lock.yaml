@@ -133,6 +133,9 @@ importers:
 
   libs/bin:
     dependencies:
+      '@tursodatabase/database':
+        specifier: ^0.1.4
+        version: 0.1.4
       better-sqlite3:
         specifier: ^12.2.0
         version: 12.2.0
@@ -245,8 +248,14 @@ packages:
     resolution: {integrity: sha512-ruv7Ae4J5dUYULmeXw1gmb7rYRz57OWCPM57pHojnLq/3Z1CK2lNSLTCVjxVk1F/TZHwOZZrOWi0ur95BbLxNQ==}
     engines: {node: '>=6.9.0'}
 
+  '@emnapi/core@1.5.0':
+    resolution: {integrity: sha512-sbP8GzB1WDzacS8fgNPpHlp6C9VZe+SJP3F90W9rLemaQj2PzIuTEl1qDOYQf58YIpyjViI24y9aPWCjEzY2cg==}
+
   '@emnapi/runtime@1.4.5':
     resolution: {integrity: sha512-++LApOtY0pEEz1zrd9vy1/zXVaVJJ/EbAF3u0fXIzPJEDtnITsBGbbK0EkM72amhl/R5b+5xx0Y/QhcVOpuulg==}
+
+  '@emnapi/wasi-threads@1.1.0':
+    resolution: {integrity: sha512-WI0DdZ8xFSbgMjR1sFsKABJ/C5OnRrjT06JXbZKexJGrDuPTzZdDYfFlsgcCXCyf+suG5QU2e/y1Wo2V/OapLQ==}
 
   '@esbuild/aix-ppc64@0.25.8':
     resolution: {integrity: sha512-urAvrUedIqEiFR3FYSLTWQgLu5tb+m0qZw0NBEasUeo6wuqatkMDaRT+1uABiGXEu5vqgPd7FGE1BhsAIy9QVA==}
@@ -614,6 +623,9 @@ packages:
   '@lingo-reader/shared@0.3.4':
     resolution: {integrity: sha512-a2n1sxNHCnM9w91WMxoJaZqBIC2PjLmbw9GNblo564g7fLlHib7unwJuMk0yYT9HmGv37cZdSjR9Ymd9w6S1Uw==}
 
+  '@napi-rs/wasm-runtime@1.0.3':
+    resolution: {integrity: sha512-rZxtMsLwjdXkMUGC3WwsPwLNVqVqnTJT6MNIB6e+5fhMcSCPP0AOsNWuMQ5mdCq6HNjs/ZeWAEchpqeprqBD2Q==}
+
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
     engines: {node: '>= 8'}
@@ -801,6 +813,35 @@ packages:
     resolution: {integrity: sha512-CvUo2ixeIQGtF6WvuB87XWqPQkoFAFqW+HUo/WzHwuHDvIwZCtjdWXoYCcr06iKGydiqTclC4jU/TNObC/xKZg==}
     cpu: [x64]
     os: [win32]
+
+  '@tursodatabase/database-darwin-universal@0.1.4':
+    resolution: {integrity: sha512-1Ov5LqMILoEKKqKBe/SjMfWxojHleAnV6ZTAUjD0T64VciyyT6NUgjGzTCkJZxVNLubHo+aKewQiE8CaqRebNg==}
+    engines: {node: '>= 10'}
+    os: [darwin]
+
+  '@tursodatabase/database-linux-x64-gnu@0.1.4':
+    resolution: {integrity: sha512-UV/hyCAJ9UZNCKQfI3WHqm9Mp1Cm1f0OZKPXWeWUUePei/o/XV9wU0tYJzW3sE1cSOLRx4MGRfHRrBpUBkIW8A==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [linux]
+
+  '@tursodatabase/database-wasm32-wasi@0.1.4':
+    resolution: {integrity: sha512-o4eLKj4OYiXhL7gxZuzGUzrQ1WqwZxZfw3z7YhFNi2HzIvH5nD1W4wJtCyCHbWMESdfto9kK8IisC4NX93BBNQ==}
+    engines: {node: '>=14.0.0'}
+    cpu: [wasm32]
+
+  '@tursodatabase/database-win32-x64-msvc@0.1.4':
+    resolution: {integrity: sha512-413YIxRZoAQoI9BHRj6+niYKN3fPTkBAoOWijiJguruFxwZACtvyuJz6MfFBVY6wkMj2yqvXJBlPYGo1QlhybQ==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [win32]
+
+  '@tursodatabase/database@0.1.4':
+    resolution: {integrity: sha512-CdLPSff3sNCPfS6Vj9vRO2KUKNVqci6YMbxTPy1naVFK8wyUdiRqB83j70wFEozVScyTckjrdLHI3NwQsAF6wA==}
+    engines: {node: '>= 10'}
+
+  '@tybys/wasm-util@0.10.0':
+    resolution: {integrity: sha512-VyyPYFlOMNylG45GoAe0xDoLwWuowvf92F9kySqzYh8vmYm7D2u4iUJKa1tOUpS70Ku13ASrOkS4ScXFsTaCNQ==}
 
   '@types/babel__core@7.20.5':
     resolution: {integrity: sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA==}
@@ -2455,7 +2496,18 @@ snapshots:
       '@babel/helper-string-parser': 7.27.1
       '@babel/helper-validator-identifier': 7.27.1
 
+  '@emnapi/core@1.5.0':
+    dependencies:
+      '@emnapi/wasi-threads': 1.1.0
+      tslib: 2.8.1
+    optional: true
+
   '@emnapi/runtime@1.4.5':
+    dependencies:
+      tslib: 2.8.1
+    optional: true
+
+  '@emnapi/wasi-threads@1.1.0':
     dependencies:
       tslib: 2.8.1
     optional: true
@@ -2720,6 +2772,13 @@ snapshots:
       path-browserify: 1.0.1
       sax: 1.4.1
 
+  '@napi-rs/wasm-runtime@1.0.3':
+    dependencies:
+      '@emnapi/core': 1.5.0
+      '@emnapi/runtime': 1.4.5
+      '@tybys/wasm-util': 0.10.0
+    optional: true
+
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
       '@nodelib/fs.stat': 2.0.5
@@ -2841,6 +2900,32 @@ snapshots:
     optional: true
 
   '@rollup/rollup-win32-x64-msvc@4.46.2':
+    optional: true
+
+  '@tursodatabase/database-darwin-universal@0.1.4':
+    optional: true
+
+  '@tursodatabase/database-linux-x64-gnu@0.1.4':
+    optional: true
+
+  '@tursodatabase/database-wasm32-wasi@0.1.4':
+    dependencies:
+      '@napi-rs/wasm-runtime': 1.0.3
+    optional: true
+
+  '@tursodatabase/database-win32-x64-msvc@0.1.4':
+    optional: true
+
+  '@tursodatabase/database@0.1.4':
+    optionalDependencies:
+      '@tursodatabase/database-darwin-universal': 0.1.4
+      '@tursodatabase/database-linux-x64-gnu': 0.1.4
+      '@tursodatabase/database-wasm32-wasi': 0.1.4
+      '@tursodatabase/database-win32-x64-msvc': 0.1.4
+
+  '@tybys/wasm-util@0.10.0':
+    dependencies:
+      tslib: 2.8.1
     optional: true
 
   '@types/babel__core@7.20.5':

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { b } from './builder';
-import { BinNodeDriver } from './bin-node-driver';
+import { BinNodeDriver, BinTursoDriver } from './bin-node-driver';
 import { z } from 'zod';
 import type { Table } from './table';
 import type { Db } from './db';
@@ -296,11 +296,11 @@ describe('update', () => {
 
     // Verify update (boolean stored as integer)
     const updatedPost = driver.db.prepare('SELECT id, title, published, views FROM posts WHERE id = ?').get(['post-1']);
-    expect(updatedPost).toMatchObject({ 
-      id: 'post-1', 
-      title: 'Published Post', 
+    expect(updatedPost).toMatchObject({
+      id: 'post-1',
+      title: 'Published Post',
       published: 1, // boolean true stored as 1
-      views: 100 
+      views: 100
     });
   });
 
@@ -335,8 +335,8 @@ describe('update', () => {
 
     // Verify updatedAt was updated to the onUpdate value
     const updatedUser = driver.db.prepare('SELECT id, name, updatedAt FROM users WHERE id = ?').get(['user-1']);
-    expect(updatedUser).toMatchObject({ 
-      id: 'user-1', 
+    expect(updatedUser).toMatchObject({
+      id: 'user-1',
       name: 'Johnny Doe',
       updatedAt: 1700000000000 // The fixed timestamp from onUpdate
     });

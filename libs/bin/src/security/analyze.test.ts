@@ -408,4 +408,62 @@ describe("analyze - integration tests", () => {
       ],
     });
   });
+
+  describe("INSERT, UPDATE, DELETE queries", () => {
+    it("extracts table from INSERT query", () => {
+      const result = analyze(sql`INSERT INTO users (name, email) VALUES (${'John'}, ${'john@example.com'})`);
+      expect(result).toEqual({
+        accessedTables: [
+          { name: "users", columns: [], filterBranches: [[]] }
+        ],
+      });
+    });
+
+    it("extracts table from UPDATE query", () => {
+      const result = analyze(sql`UPDATE users SET name = ${'Jane'} WHERE id = ${123}`);
+      expect(result).toEqual({
+        accessedTables: [
+          { name: "users", columns: ["id"], filterBranches: [[{ column: "id", operator: "=", value: 123 }]] }
+        ],
+      });
+    });
+
+    it("extracts table from DELETE query", () => {
+      const result = analyze(sql`DELETE FROM users WHERE active = ${null}`);
+      expect(result).toEqual({
+        accessedTables: [
+          { name: "users", columns: ["active"], filterBranches: [[{ column: "active", operator: "=", value: null }]] }
+        ],
+      });
+    });
+
+    it("handles UPDATE with complex WHERE clause", () => {
+      const result = analyze(sql`UPDATE posts SET title = ${'Updated'} WHERE user_id = ${1} AND status = ${'draft'}`);
+      expect(result).toEqual({
+        accessedTables: [
+          { name: "posts", columns: ["user_id", "status"], filterBranches: [[{ column: "user_id", operator: "=", value: 1 }, { column: "status", operator: "=", value: "draft" }]] }
+        ],
+      });
+    });
+
+    it("handles DELETE with JOIN-like subquery", () => {
+      const result = analyze(sql`DELETE FROM comments WHERE post_id IN (SELECT id FROM posts WHERE user_id = ${456})`);
+      expect(result).toEqual({
+        accessedTables: [
+          { name: "comments", columns: ["post_id"], filterBranches: [[]] },
+          { name: "posts", columns: ["id", "user_id"], filterBranches: [[{ column: "user_id", operator: "=", value: 456 }]] }
+        ],
+      });
+    });
+
+    it("handles INSERT with SELECT subquery", () => {
+      const result = analyze(sql`INSERT INTO audit_log (user_id, event_type) SELECT id, ${'login'} FROM users WHERE last_login > ${new Date('2023-01-01').getTime()}`);
+      // INSERT with SELECT is not fully implemented yet - just expect the INSERT table
+      expect(result).toEqual({
+        accessedTables: [
+          { name: "audit_log", columns: [], filterBranches: [[]] }
+        ],
+      });
+    });
+  });
 });

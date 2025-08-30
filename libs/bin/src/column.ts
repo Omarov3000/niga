@@ -1,4 +1,4 @@
-import type { ApplicationType, ColumnType, InsertionType, ColumnMetadata } from './types';
+import type { ApplicationType, ColumnType, InsertionType, ColumnMetadata, SecurityCheckContext } from './types';
 import { FilterObject } from './utils/sql';
 
 export class Column<
@@ -74,9 +74,9 @@ export class Column<
     return this.cloneMeta({ decode: fn });
   }
 
-  default(value: number | string | boolean | null): Column<Name, Type, 'required'> {
+  default(value: number | string | boolean | null): Column<Name, Type, 'optional'> {
     const encodedDefault = this.__meta__.encode ? this.__meta__.encode(value as unknown) : value;
-    return new Column<Name, Type, 'required'>({
+    return new Column<Name, Type, 'optional'>({
       kind: 'internal',
       meta: Column.makeMeta(this.__meta__, { default: encodedDefault as any, appDefault: value, insertType: 'optional' }),
       table: this.__table__,
@@ -84,8 +84,8 @@ export class Column<
     });
   }
 
-  $defaultFn(fn: () => Type): Column<Name, Type, 'required'> {
-    return new Column<Name, Type, 'required'>({
+  $defaultFn(fn: () => Type): Column<Name, Type, 'optional'> {
+    return new Column<Name, Type, 'optional'>({
       kind: 'internal',
       meta: Column.makeMeta(this.__meta__, { appDefault: fn, insertType: 'optional' }),
       table: this.__table__,
@@ -222,5 +222,18 @@ export class Column<
       { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
       { type: "literal", value: encValues }
     );
+  }
+
+  equalityCheck(value: Type): SecurityCheckContext {
+    const tableName = this.__table__?.getName();
+    if (!tableName) {
+      throw new Error('Column must be attached to a table to use equalityCheck');
+    }
+    return {
+      tableName,
+      columnName: this.__meta__.name,
+      value,
+      operator: '='
+    };
   }
 }

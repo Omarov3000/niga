@@ -53,3 +53,25 @@ export interface BinDriver {
   exec: (sql: string) => any;
   run: (sql: RawSql) => any;
 }
+
+export interface SecurityCheckContext {
+  tableName: string;
+  columnName: string;
+  value: any;
+  operator: string;
+}
+
+export type QueryType = 'select' | 'insert' | 'update' | 'delete';
+
+export interface QueryContext {
+  type: QueryType;
+  accessedTables: string[];
+  data?: any; // The data being inserted or updated
+}
+
+export type SecurityRule<TUser = any> = (query: QueryContext, user: TUser) => boolean | Promise<boolean>;
+
+export interface ImmutableFieldRule {
+  tableName: string;
+  fieldName: string;
+}

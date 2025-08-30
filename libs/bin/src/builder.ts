@@ -87,7 +87,7 @@ function enum_<const T extends string>(values: readonly T[], _default: NoInfer<T
   return col;
 }
 
-const id = () => new Column<'id', string, 'required'>({ kind: 'public', name: 'id', type: 'text', appDefault: () => nanoid() }).primaryKey();
+const id = () => new Column({ kind: 'public', name: 'id', type: 'text' }).$defaultFn(() => nanoid()).primaryKey();
 
 function table<Name extends string, TCols extends Record<string, Column<any, any, any>>>(
   name: Name,

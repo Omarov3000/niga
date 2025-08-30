@@ -1,7 +1,9 @@
 import { Column } from './column';
-import type { IndexDefinition, TableMetadata, SerializableColumnMetadata, BinDriver } from './types';
+import type { IndexDefinition, TableMetadata, SerializableColumnMetadata, BinDriver, SecurityRule, QueryContext, QueryType, SecurityCheckContext, ImmutableFieldRule } from './types';
 import type { RawSql } from './utils/sql';
-import { rawQueryToSelectQuery } from './security/rawQueryToSelectQuery';
+import { rawQueryToSelectQuery, type SqlQuery } from './security/rawQueryToSelectQuery';
+import { hasWhereClauseCheck } from './security/hasWhereClauseCheck';
+import { checkImmutableFields } from './security/immutableFields';
 
 type ColumnLike = Column<any, any, any>;
 
@@ -13,12 +15,26 @@ type RawSelectable<T> = {
     : never;
 };
 type RawInsertable<T> = {
-  [K in keyof T]: T[K] extends Column<any, infer V, infer I> ? (I extends 'virtual' ? never : V) : never;
+  [K in keyof T]: T[K] extends Column<any, infer V, infer I> 
+    ? (I extends 'virtual' ? never : I extends 'required' ? V : V | undefined) 
+    : never;
 };
 type OmitNever<T> = { [K in keyof T as T[K] extends never ? never : K]: T[K] };
 
+// Split required and optional fields for proper TypeScript handling
+type RequiredInsertFields<T> = {
+  [K in keyof T]: T[K] extends Column<any, infer V, infer I>
+    ? I extends 'required' ? V : never
+    : never;
+};
+type OptionalInsertFields<T> = {
+  [K in keyof T]: T[K] extends Column<any, infer V, infer I>
+    ? I extends 'optional' ? V : never
+    : never;
+};
+
 export type SelectableForCols<T> = OmitNever<RawSelectable<T>>;
-export type InsertableForCols<T> = OmitNever<RawInsertable<T>>;
+export type InsertableForCols<T> = OmitNever<RequiredInsertFields<T>> & Partial<OmitNever<OptionalInsertFields<T>>>;
 
 export interface TableConstructorOptions<Name extends string, TCols extends Record<string, Column<any, any, any>>> {
   name: Name;
@@ -28,10 +44,12 @@ export interface TableConstructorOptions<Name extends string, TCols extends Reco
 
 export class Table<Name extends string, TCols extends Record<string, Column<any, any, any>>> {
   readonly __meta__: TableMetadata;
-  readonly __db__!: { getDriver: () => BinDriver };
+  readonly __db__!: { getDriver: () => BinDriver; getCurrentUser: () => any };
   // type helpers exposed on instance for precise typing
   readonly __selectionType__!: SelectableForCols<TCols>;
   readonly __insertionType__!: InsertableForCols<TCols>;
+  private _securityRule?: SecurityRule;
+  private _immutableRules: ImmutableFieldRule[] = [];
 
   constructor(options: TableConstructorOptions<Name, TCols>) {
     const columnMetadata: Record<string, any> = {};
@@ -121,8 +139,13 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     // Generate raw SQL INSERT statement
     const placeholders = params.map(() => '?').join(', ');
     const query = `INSERT INTO ${this.__meta__.name} (${columnNames.join(', ')}) VALUES (${placeholders})`;
+    const fullQuery = { query, params };
 
-    driver.run({ query, params });
+    // Parse for security analysis and check security
+    const sqlQuery = rawQueryToSelectQuery(fullQuery);
+    await this.checkSecurity(sqlQuery, model);
+
+    driver.run(fullQuery);
 
     return model;
   }
@@ -183,11 +206,13 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     params.push(...options.where.params);
 
     const query = `UPDATE ${this.__meta__.name} SET ${setClause.join(', ')} WHERE ${options.where.query}`;
+    const fullQuery = { query, params };
     
-    // Parse for security analysis (same as db.query method)
-    rawQueryToSelectQuery({ query, params });
+    // Parse for security analysis and check security
+    const sqlQuery = rawQueryToSelectQuery(fullQuery);
+    await this.checkSecurity(sqlQuery, updatedData);
     
-    driver.run({ query, params });
+    driver.run(fullQuery);
   }
 
   async delete<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf>>(
@@ -200,11 +225,82 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
 
     const query = `DELETE FROM ${this.__meta__.name} WHERE ${options.where.query}`;
     const params = [...options.where.params];
+    const fullQuery = { query, params };
 
-    // Parse for security analysis (same as db.query method)
-    rawQueryToSelectQuery({ query, params });
+    // Parse for security analysis and check security
+    const sqlQuery = rawQueryToSelectQuery(fullQuery);
+    await this.checkSecurity(sqlQuery);
 
-    driver.run({ query, params });
+    driver.run(fullQuery);
+  }
+
+  secure<TUser = any>(rule: SecurityRule<TUser>): this {
+    this._securityRule = rule;
+    return this;
+  }
+
+  addImmutableRule(rule: ImmutableFieldRule): this {
+    this._immutableRules.push(rule);
+    return this;
+  }
+
+  private async checkSecurity<TUser = any>(sqlQuery: SqlQuery, data?: any): Promise<void> {
+    const user = this.__db__.getCurrentUser();
+
+    let queryType: QueryType;
+    let accessedTables = [this.__meta__.name];
+    
+    // Extract query type and accessed tables from the parsed SQL query
+    switch (sqlQuery.type) {
+      case 'insert':
+        queryType = 'insert';
+        accessedTables = [sqlQuery.table.name];
+        break;
+      case 'update':
+        queryType = 'update';
+        accessedTables = [sqlQuery.table.name];
+        break;
+      case 'delete':
+        queryType = 'delete';
+        accessedTables = [sqlQuery.table.name];
+        break;
+      case 'select':
+      case 'compound_select':
+        queryType = 'select';
+        // For SELECT queries, we'd need more complex analysis
+        // For now, keep the default behavior
+        break;
+      default:
+        throw new Error(`Unsupported query type: ${(sqlQuery as any).type}`);
+    }
+
+    const queryContext: QueryContext = {
+      type: queryType,
+      accessedTables,
+      data
+    };
+
+    // Check immutable field rules first
+    if (this._immutableRules.length > 0) {
+      const immutableAllowed = checkImmutableFields(queryContext, this._immutableRules);
+      if (!immutableAllowed) {
+        throw new Error(`Immutable field violation for ${queryType} operation on table ${this.__meta__.name}`);
+      }
+    }
+
+    // Then check custom security rule
+    if (this._securityRule && user) {
+      const allowed = await this._securityRule(queryContext, user);
+      if (!allowed) {
+        throw new Error(`Security check failed for ${queryType} operation on table ${this.__meta__.name}`);
+      }
+    }
+  }
+}
+
+export class SecurityChecks {
+  static hasWhereClauseCheck(sql: RawSql, securityCheck: SecurityCheckContext): boolean {
+    return hasWhereClauseCheck(sql, securityCheck);
   }
 }
 
