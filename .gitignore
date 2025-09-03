@@ -45,3 +45,4 @@ repomix-output.xml
 .deploy-packages
 
 .genkit
+drizzle-zod

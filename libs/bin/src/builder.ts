@@ -5,16 +5,15 @@ import { Db } from './db';
 import { IndexBuilder, Table } from './table';
 import { getDefaultValueFromZodSchema } from './zod-integration/getDefaultValueFromZodSchema';
 
-const text = () => new Column<'text', string, 'required'>({ kind: 'public', name: 'text', type: 'text', appDefault: '' });
-const integer = () => new Column<'integer', number, 'required'>({ kind: 'public', name: 'integer', type: 'integer', appDefault: 0 });
-const real = () => new Column<'real', number, 'required'>({ kind: 'public', name: 'real', type: 'real', appDefault: 0 });
+const text = () => new Column<'text', string, 'required'>({ kind: 'public', name: 'text', type: 'text' });
+const integer = () => new Column<'integer', number, 'required'>({ kind: 'public', name: 'integer', type: 'integer' });
+const real = () => new Column<'real', number, 'required'>({ kind: 'public', name: 'real', type: 'real' });
 const date = () => {
   return new Column<'date', Date, 'required'>({
     kind: 'public',
     name: 'date',
     type: 'integer',
     appType: 'date',
-    appDefault: new Date(),
     encode: (date: Date) => date.getTime(),
     decode: (data: number | string) => {
       // Date columns are stored as integers (timestamps)
@@ -32,7 +31,6 @@ function json<TSchema extends ZodTypeAny>(schema: TSchema) {
     name: 'json',
     type: 'text',
     appType: 'json',
-    appDefault: getDefaultValueFromZodSchema(schema),
     encode: (data: zInfer<TSchema>) => JSON.stringify(data),
     decode: (data: number | string) => {
       // JSON columns are stored as text (strings)
@@ -52,7 +50,6 @@ const boolean = () => {
     name: 'boolean',
     type: 'integer',
     appType: 'boolean',
-    appDefault: false,
     encode: (bool: boolean) => bool ? 1 : 0,
     decode: (data: number | string) => {
       // Boolean columns are stored as integers (0 or 1)
@@ -63,7 +60,7 @@ const boolean = () => {
     }
   });
 };
-
+// TODO: remove appDefault by default
 function enum_<const T extends string>(values: readonly T[], _default: NoInfer<T>) {
   const col = new Column<'enum', T, 'required'>({
     kind: 'public',

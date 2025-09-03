@@ -1,3 +1,8 @@
+[ ] async driver by default
+[ ] snake_case when emitting SQL. b.z.object() needs to transform snake_case to camelCase
+[ ] ensure proper API for security rules
+[ ] todos in the code
+
 # Overview
 
 we need to build a typesafe orm for sqlite. This refined plan stays in sync with the current code and highlights what's done vs next.
