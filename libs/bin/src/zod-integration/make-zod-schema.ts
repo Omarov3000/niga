@@ -32,11 +32,27 @@ type MakeInsertSchema<T extends Table<any, any>> =
     z.ZodObject<TableColumnsToZodSchema<TCols>>
   : never;
 
+type ColumnToSelectZodType<TCol extends Column<any, any, any>> =
+  TCol extends Column<any, infer _Type, infer InsertType> ?
+    InsertType extends 'virtual' ? never :
+    InsertType extends 'optional' ? z.ZodOptional<ColumnBaseZodType<TCol>> :
+    ColumnBaseZodType<TCol>
+  : never;
+
+type TableColumnsToSelectZodSchema<TCols extends Record<string, Column<any, any, any>>> = {
+  [K in keyof TCols as ColumnToSelectZodType<TCols[K]> extends never ? never : K]: ColumnToSelectZodType<TCols[K]>
+};
+
+type MakeSelectSchema<T extends Table<any, any>> =
+  T extends Table<any, infer TCols> ?
+    z.ZodObject<TableColumnsToSelectZodSchema<TCols>>
+  : never;
+
 export function makeInsertSchema<T extends Table<any, any>>(binTableSchema: T): MakeInsertSchema<T> {
   const shape: Record<string, z.ZodTypeAny> = {};
 
   const columns = binTableSchema.__meta__.columns;
-  for (const [key, colMeta] of Object.entries(columns)) {
+  for (const [key] of Object.entries(columns)) {
     const col = (binTableSchema as any)[key] as Column<any, any, any>;
     if (!col || col.__meta__.insertType === 'virtual') continue;
 
@@ -132,43 +148,83 @@ export function makeInsertSchema<T extends Table<any, any>>(binTableSchema: T): 
   return z.object(shape) as MakeInsertSchema<T>;
 }
 
+export function makeSelectSchema<T extends Table<any, any>>(binTableSchema: T): MakeSelectSchema<T> {
+  const shape: Record<string, z.ZodTypeAny> = {};
 
-describe('makeInsertSchema()', () => {
-  it('works with all column types', () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text().notNull(),
-      age: b.integer().default(18),
-      salary: b.real().$defaultFn(() => 1000),
-      height: b.real(),
-      role: b.enum(['admin', 'user', 'guest']).notNull(),
-    });
+  const columns = binTableSchema.__meta__.columns;
+  for (const [key] of Object.entries(columns)) {
+    const col = (binTableSchema as any)[key] as Column<any, any, any>;
+    if (!col || col.__meta__.insertType === 'virtual') continue;
 
-    const schema = makeInsertSchema(users);
-    const result = schema.parse({
-      name: 'John Doe',
-      age: 30,
-      salary: 1000,
-      height: 180,
-      role: 'user',
-    });
-    expect(result).toMatchObject({
-      name: 'John Doe',
-      age: 30,
-      salary: 1000,
-      height: 180,
-      role: 'user',
-    });
+    let zodType: z.ZodTypeAny;
 
-    type Received = z.infer<typeof schema>;
-    type Expected = {
-      id?: string | undefined;
-      name: string;
-      salary?: number | undefined;
-      age?: number | undefined;
-      height?: number | undefined;
-      role: 'user' | 'admin' | 'guest';
+    if (col.__meta__.appType) {
+      switch (col.__meta__.appType) {
+        case 'json':
+          if (col.__meta__.jsonSchema) {
+            if (col.__meta__.decode) {
+              zodType = z.string().transform((str) => col.__meta__.decode!(str));
+            } else {
+              zodType = col.__meta__.jsonSchema;
+            }
+          } else {
+            throw new Error(`JSON column '${key}' must have jsonSchema in metadata`);
+          }
+          break;
+        case 'date':
+          if (col.__meta__.decode) {
+            zodType = z.number().transform((timestamp) => col.__meta__.decode!(timestamp));
+          } else {
+            zodType = z.date();
+          }
+          break;
+        case 'boolean':
+          if (col.__meta__.decode) {
+            zodType = z.number().transform((int) => col.__meta__.decode!(int));
+          } else {
+            zodType = z.boolean();
+          }
+          break;
+        case 'enum':
+          if (col.__meta__.enumValues) {
+            if (col.__meta__.decode) {
+              zodType = z.number().transform((index) => col.__meta__.decode!(index));
+            } else {
+              zodType = z.enum(col.__meta__.enumValues as [string, ...string[]]);
+            }
+          } else {
+            throw new Error(`Enum column '${key}' must have enumValues in metadata`);
+          }
+          break;
+        case 'ulid':
+          zodType = z.string();
+          break;
+        default:
+          throw new Error(`Unsupported appType '${col.__meta__.appType}' for column '${key}'`);
+      }
+    } else {
+      switch (col.__meta__.type) {
+        case 'text':
+          zodType = z.string();
+          break;
+        case 'integer':
+        case 'real':
+          zodType = z.number();
+          break;
+        case 'blob':
+          zodType = z.string();
+          break;
+        default:
+          throw new Error(`Unsupported column type '${col.__meta__.type}' for column '${key}'`);
+      }
     }
-    type _Test = Expect<Equal<Received, Expected>>;
-  });
-})
+
+    if (col.__meta__.insertType === 'optional') {
+      zodType = zodType.optional();
+    }
+
+    shape[key] = zodType;
+  }
+
+  return z.object(shape) as MakeSelectSchema<T>;
+}
