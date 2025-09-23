@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
-import { getDefaultValueFromZodSchema } from './getDefaultValueFromZodSchema';
+import { getDefaultValueFromZodSchema } from './get-default-value-from-zod-schema';
 
 
 describe("getDefaultValueFromZodSchema", () => {

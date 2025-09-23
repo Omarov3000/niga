@@ -1,14 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import { b } from './builder';
-import { Expect, Equal } from './utils';
-
-export type ShallowPrettify<T> = { [K in keyof T]: T[K] } & {}
-// TODO: b.text().default('Anonymous') - should update app default
-// TODO: add $defaultFn
-// TODO: add encode decode functions, when default is called they should properly process it
-
-// use ShallowPrettify if necessary to fix errors in Expect<Equal calls
+import { Expect, Equal, ShallowPrettify } from './utils';
 
 describe('table.make()', () => {
   describe('basic functionality', () => {
