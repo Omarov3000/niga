@@ -48,14 +48,14 @@ describe('schema generation', () => {
 
   it('json(schema) stores schema and emits TEXT', () => {
     const schema = z.object({ a: z.number(), b: z.string().optional() });
-    const t = b.table('t', { meta: b.json(schema) });
+    const t = b.table('t', { jsonColumn: b.json(schema) });
     const db = b.db({ schema: { t } });
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE t (
-        meta TEXT
+        jsonColumn TEXT
       );
     `);
-    expect((t.__meta__.columns.meta as any).jsonSchema).toBe(schema);
+    expect(t.__meta__.columns.jsonColumn.jsonSchema).toBe(schema);
   });
 
   it('constraints/defaults', () => {
@@ -136,12 +136,11 @@ describe('schema generation', () => {
       );
     `);
   });
-
   it('tables are accessible on db instance', () => {
     const users = b.table('users', { id: b.id(), name: b.text() });
     const posts = b.table('posts', { id: b.id(), title: b.text() });
     const db = b.db({ schema: { users, posts } });
-    
+
     expect(db.users).toBeDefined();
     expect(db.posts).toBeDefined();
   });

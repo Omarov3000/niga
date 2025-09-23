@@ -7,9 +7,10 @@ export type ApplicationType = 'json' | 'date' | 'boolean' | 'enum' | 'ulid' | un
 
 export type InsertionType = 'required' | 'optional' | 'virtual' | 'withDefault';
 
-export interface SerializableColumnMetadata {
+export interface ColumnMetadata {
   name: string;
   type: ColumnType;
+  insertType: InsertionType;
   notNull?: boolean;
   generatedAlwaysAs?: string;
   primaryKey?: boolean;
@@ -17,10 +18,6 @@ export interface SerializableColumnMetadata {
   unique?: boolean;
   default?: number | string | boolean | null;
   appType?: ApplicationType;
-}
-
-export interface ColumnMetadata extends SerializableColumnMetadata {
-  insertType: InsertionType;
   serverTime?: boolean;
   appDefault?: (() => unknown) | unknown;
   appOnUpdate?: (() => unknown) | unknown;
@@ -31,6 +28,18 @@ export interface ColumnMetadata extends SerializableColumnMetadata {
   jsonSchema?: ZodTypeAny;
   enumValues?: readonly string[];
 }
+
+export type SerializableColumnMetadata = Pick<ColumnMetadata,
+  'name' |
+  'type' |
+  'notNull' |
+  'generatedAlwaysAs' |
+  'primaryKey' |
+  'foreignKey' |
+  'unique' |
+  'default' |
+  'appType' |
+  'enumValues'>
 
 export interface IndexDefinition {
   name?: string;
@@ -45,7 +54,11 @@ export interface SerializableTableMetadata {
   constrains?: string[][];
 }
 
-export interface TableMetadata extends SerializableTableMetadata {
+export interface TableMetadata {
+  name: string;
+  columns: Record<string, ColumnMetadata>;
+  indexes?: IndexDefinition[];
+  constrains?: string[][];
   aliasedFrom?: string;
 }
 

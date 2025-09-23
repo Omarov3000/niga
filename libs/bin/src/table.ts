@@ -1,5 +1,5 @@
 import { Column } from './column';
-import type { IndexDefinition, TableMetadata, SerializableColumnMetadata, BinDriver, SecurityRule, QueryContext, QueryType, SecurityCheckContext, ImmutableFieldRule } from './types';
+import type { IndexDefinition, TableMetadata, ColumnMetadata, BinDriver, SecurityRule, QueryContext, QueryType, SecurityCheckContext, ImmutableFieldRule } from './types';
 import type { RawSql } from './utils/sql';
 import { rawQueryToSelectQuery, type SqlQuery } from './security/rawQueryToSelectQuery';
 import { hasWhereClauseCheck } from './security/hasWhereClauseCheck';
@@ -50,16 +50,16 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
   private _immutableRules: ImmutableFieldRule[] = [];
 
   constructor(options: TableConstructorOptions<Name, TCols>) {
-    const columnMetadata: Record<string, any> = {};
+    const columnMetadata: Record<string, ColumnMetadata> = {};
     Object.entries(options.columns).forEach(([key, col]) => {
       col.__table__ = { getName: () => options.name };
       (this as any)[key] = col;
-      columnMetadata[key] = { ...col.__meta__, name: key } as SerializableColumnMetadata;
+      columnMetadata[key] = { ...col.__meta__, name: key } as ColumnMetadata;
     });
 
     this.__meta__ = {
       name: options.name,
-      columns: columnMetadata as Record<string, SerializableColumnMetadata>,
+      columns: columnMetadata,
       indexes: options.indexes ?? [],
     } as TableMetadata;
   }
@@ -69,7 +69,8 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     overrides?: Partial<InsertableForCols<TSelfCols>>
   ): SelectableForCols<TSelfCols> {
     const result: Record<string, unknown> = {};
-    const colsMeta = this.__meta__.columns as Record<string, SerializableColumnMetadata>;
+    const normalizedOverrides = (overrides ?? {}) as Partial<InsertableForCols<TSelfCols>>;
+    const colsMeta = this.__meta__.columns;
 
     for (const [key] of Object.entries(colsMeta)) {
       const col = (this as any)[key] as Column<any, any, any> | undefined;
@@ -77,8 +78,8 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
       // skip virtual columns
       if (col.__meta__.insertType === 'virtual') continue;
 
-      if (Object.prototype.hasOwnProperty.call(overrides as any, key) && (overrides as any)[key] !== undefined) {
-        (result as any)[key] = (overrides as any)[key];
+      if (Object.prototype.hasOwnProperty.call(normalizedOverrides, key) && (normalizedOverrides as any)[key] !== undefined) {
+        (result as any)[key] = (normalizedOverrides as any)[key];
         continue;
       }
 
@@ -105,7 +106,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     // build full app-level object using defaults
     const model = this.make(data as any) as SelectableForCols<TSelfCols>;
 
-    const colsMeta = this.__meta__.columns as Record<string, SerializableColumnMetadata>;
+    const colsMeta = this.__meta__.columns;
     const columnNames: string[] = [];
     const params: any[] = [];
 
@@ -170,7 +171,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     }
   ): Promise<void> {
     const driver = this.__db__.getDriver();
-    const colsMeta = this.__meta__.columns as Record<string, SerializableColumnMetadata>;
+    const colsMeta = this.__meta__.columns;
 
     // Apply onUpdate functions first
     const updatedData: Record<string, unknown> = { ...options.data };
