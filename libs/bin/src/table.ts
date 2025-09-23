@@ -17,13 +17,6 @@ type RawSelectable<T> = {
        V | undefined)
     : never;
 };
-type RawInsertable<T> = {
-  [K in keyof T]: T[K] extends Column<any, infer V, infer I>
-    ? (I extends 'virtual' ? never :
-       I extends 'required' ? V :
-       V | undefined)
-    : never;
-};
 type OmitNever<T> = { [K in keyof T as T[K] extends never ? never : K]: T[K] };
 
 // Split required and optional fields for proper TypeScript handling
@@ -73,7 +66,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
 
   make<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf>>(
     this: TSelf,
-    overrides: Partial<InsertableForCols<TSelfCols>>
+    overrides?: Partial<InsertableForCols<TSelfCols>>
   ): SelectableForCols<TSelfCols> {
     const result: Record<string, unknown> = {};
     const colsMeta = this.__meta__.columns as Record<string, SerializableColumnMetadata>;

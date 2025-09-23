@@ -1,1 +1,1 @@
-rules/main.md
+../../rules/main.md

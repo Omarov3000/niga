@@ -5,11 +5,11 @@ import { Db } from './db';
 import { IndexBuilder, Table } from './table';
 import { getDefaultValueFromZodSchema } from './zod-integration/getDefaultValueFromZodSchema';
 
-const text = () => new Column<'text', string, 'required'>({ kind: 'public', name: 'text', type: 'text' });
-const integer = () => new Column<'integer', number, 'required'>({ kind: 'public', name: 'integer', type: 'integer' });
-const real = () => new Column<'real', number, 'required'>({ kind: 'public', name: 'real', type: 'real' });
+const text = () => new Column<'text', string, 'optional'>({ kind: 'public', name: 'text', type: 'text' });
+const integer = () => new Column<'integer', number, 'optional'>({ kind: 'public', name: 'integer', type: 'integer' });
+const real = () => new Column<'real', number, 'optional'>({ kind: 'public', name: 'real', type: 'real' });
 const date = () => {
-  return new Column<'date', Date, 'required'>({
+  return new Column<'date', Date, 'optional'>({
     kind: 'public',
     name: 'date',
     type: 'integer',
@@ -26,7 +26,7 @@ const date = () => {
 };
 
 function json<TSchema extends ZodTypeAny>(schema: TSchema) {
-  const col = new Column<'json', zInfer<TSchema>>({
+  const col = new Column<'json', zInfer<TSchema>, 'optional'>({
     kind: 'public',
     name: 'json',
     type: 'text',
@@ -45,7 +45,7 @@ function json<TSchema extends ZodTypeAny>(schema: TSchema) {
 }
 
 const boolean = () => {
-  return new Column({
+  return new Column<'boolean', boolean, 'optional'>({
     kind: 'public',
     name: 'boolean',
     type: 'integer',
@@ -61,8 +61,8 @@ const boolean = () => {
   });
 };
 // TODO: remove appDefault by default
-function enum_<const T extends string>(values: readonly T[], _default: NoInfer<T>) {
-  const col = new Column<'enum', T, 'required'>({
+function enum_<const T extends string>(values: readonly T[], _default?: NoInfer<T>) {
+  const col = new Column<'enum', T, 'optional'>({
     kind: 'public',
     name: 'enum',
     type: 'integer',

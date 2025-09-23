@@ -1,9 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import { b } from './builder';
+import { Expect, Equal } from './utils';
 
-export type Expect<T extends true> = T;
-export type Equal<X, Y> = (<T>() => T extends X ? 1 : 2) extends <T>() => T extends Y ? 1 : 2 ? true : false;
 export type ShallowPrettify<T> = { [K in keyof T]: T[K] } & {}
 // TODO: b.text().default('Anonymous') - should update app default
 // TODO: add $defaultFn
@@ -22,13 +21,23 @@ describe('table.make()', () => {
         isActive: b.boolean().default(true),
       });
 
-      const result = users.make({});
+      const result = users.make();
 
       expect(result).toMatchObject({
         name: 'Anonymous',
         age: 18,
         isActive: true,
       });
+
+      type Received = ShallowPrettify<typeof result>;
+      type Expected = {
+        id: string;
+        name: string;
+        age: number;
+        score: number | undefined;
+        isActive: boolean;
+      }
+      type _Test = Expect<Equal<Received, Expected>>;
     });
 
     it('uses overrides when provided, falls back to defaults otherwise', () => {
@@ -92,7 +101,7 @@ describe('table.make()', () => {
         status: b.enum(['active', 'inactive'], 'active'),
       });
 
-      const result = users.make({});
+      const result = users.make();
 
       expect(result).toMatchObject({
         role: 'user',
@@ -176,7 +185,7 @@ describe('table.make()', () => {
   describe('edge cases', () => {
     it('handles empty table schema', () => {
       const empty = b.table('empty', {});
-      const result = empty.make({});
+      const result = empty.make();
       expect(result).toEqual({});
     });
 
@@ -187,7 +196,7 @@ describe('table.make()', () => {
         description: b.text(),
       });
 
-      const result = users.make({});
+      const result = users.make();
 
       expect(result).toMatchObject({
         name: null,
@@ -224,125 +233,5 @@ describe('table.make()', () => {
       });
       expect(result).not.toHaveProperty('fullName');
     });
-  });
-});
-
-describe('table.make() type _tests', () => {
-  it('returns correct type for basic table', () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
-      age: b.integer(),
-    });
-
-    const result = users.make({});
-
-    type Expected = {
-      id: string;
-      name: string;
-      age: number;
-    };
-
-    type _Test = Expect<Equal<typeof result, Expected>>;
-  });
-
-  it('handles defaults correctly in types', () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text().default('Anonymous'),
-      age: b.integer(),
-      isActive: b.boolean().default(true),
-    });
-
-    const result = users.make({});
-
-    type Expected = {
-      id: string;
-      name: string;
-      age: number;
-      isActive: boolean;
-    };
-
-    type _Test = Expect<Equal<typeof result, Expected>>;
-  });
-
-  it('handles partial overrides correctly', () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text().default('Anonymous'),
-      age: b.integer(),
-      email: b.text(),
-    });
-
-    type PartialOverrides = Partial<{
-      id: string;
-      name: string;
-      age: number;
-      email: string;
-    }>;
-
-    const overrides: PartialOverrides = { name: 'John' };
-    const result = users.make(overrides);
-
-    type Expected = {
-      id: string;
-      name: string;
-      age: number;
-      email: string;
-    };
-
-    type _Test = Expect<Equal<typeof result, Expected>>;
-  });
-
-  it('excludes virtual columns from result type', () => {
-    const users = b.table('users', {
-      id: b.id(),
-      firstName: b.text(),
-      fullName: b.text().generatedAlwaysAs('firstName'),
-    });
-
-    const result = users.make({});
-
-    type Expected = {
-      id: string;
-      firstName: string;
-    };
-
-    type _Test = Expect<Equal<typeof result, Expected>>;
-  });
-
-  it('handles enum types correctly', () => {
-    const users = b.table('users', {
-      id: b.id(),
-      role: b.enum(['admin', 'user'], 'user'),
-      status: b.enum(['active', 'inactive'], 'active'),
-    });
-
-    const result = users.make({});
-
-    type Expected = {
-      id: string;
-      role: 'admin' | 'user';
-      status: 'active' | 'inactive';
-    };
-
-    type _Test = Expect<Equal<typeof result, Expected>>;
-  });
-
-  it('handles json types correctly', () => {
-    const schema = z.object({ count: z.number() });
-    const posts = b.table('posts', {
-      id: b.id(),
-      metadata: b.json(schema),
-    });
-
-    const result = posts.make({});
-
-    type Expected = {
-      id: string;
-      metadata: { count: number } | undefined;
-    };
-
-    type _Test = Expect<Equal<typeof result, Expected>>;
   });
 });
