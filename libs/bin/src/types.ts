@@ -76,13 +76,13 @@ export interface SecurityCheckContext {
 
 export type QueryType = 'select' | 'insert' | 'update' | 'delete';
 
-export interface QueryContext {
+export interface QueryContext<TData extends Record<string, unknown> = Record<string, unknown>> {
   type: QueryType;
   accessedTables: string[];
-  data?: any; // The data being inserted or updated
+  data?: TData; // The data being inserted or updated
 }
 
-export type SecurityRule<TUser = any> = (query: QueryContext, user: TUser) => boolean | Promise<boolean>;
+export type SecurityRule<TUser = any, TData extends Record<string, unknown> = Record<string, unknown>> = (query: QueryContext<TData>, user: TUser) => boolean | Promise<boolean>;
 
 export interface ImmutableFieldRule {
   tableName: string;

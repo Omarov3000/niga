@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { b, immutable } from './index';
 import { sql } from './utils/sql';
+import { ShallowPrettify } from './utils';
 
 describe('security rules end-to-end', () => {
   describe('basic security rules', () => {
@@ -12,7 +13,7 @@ describe('security rules end-to-end', () => {
         userId: b.text().notNull()
       }).secure((query, user: { id: string; role: string }) => {
         if (user.role === 'admin') return true;
-        
+
         switch (query.type) {
           case 'delete':
             return false; // Only admins can delete
@@ -24,15 +25,15 @@ describe('security rules end-to-end', () => {
       });
 
       const db = b.db({ schema: { posts } });
-      await db._connectDriver({ 
-        exec: async () => {}, 
-        run: async () => [] 
+      await db._connectDriver({
+        exec: async () => {},
+        run: async () => []
       });
 
       // Admin user should be able to delete
       const admin = { id: 'admin123', role: 'admin' };
       db.connectUser(admin);
-      
+
       await expect(posts.delete({
         where: sql`id = 'post123'`
       })).resolves.not.toThrow();
@@ -68,23 +69,28 @@ describe('security rules end-to-end', () => {
       }).secure((query, user: { id: string }) => {
         // Users can only access their own documents unless public
         if (query.type === 'select') return true; // Allow all selects (WHERE clause will be checked separately)
-        
+
         if (query.type === 'insert') {
-          return query.data?.ownerId === user.id;
+          return query.data?.ownerId === user.id; // user cannot insert data for other users
         }
-        
-        if (query.type === 'update' || query.type === 'delete') {
-          // Must have WHERE clause checking ownerId
-          return query.accessedTables.includes('documents');
+
+        if (query.type === 'update') {
+          // Cannot change ownership; if provided it must match current user
+          return query.data?.ownerId === undefined || query.data.ownerId === user.id;
         }
-        
+
+        if (query.type === 'delete') {
+          // Allow; WHERE ownerId is validated elsewhere
+          return true;
+        }
+
         return false;
       });
 
       const db = b.db({ schema: { documents } });
-      await db._connectDriver({ 
-        exec: async () => {}, 
-        run: async () => [] 
+      await db._connectDriver({
+        exec: async () => {},
+        run: async () => []
       });
 
       const user = { id: 'user123' };
@@ -127,23 +133,23 @@ describe('security rules end-to-end', () => {
         bio: b.text()
       }).secure((query, user: { id: string; role: string }) => {
         if (user.role === 'admin') return true;
-        
+
         if (query.type === 'insert') {
           return query.data?.userId === user.id;
         }
-        
+
         if (query.type === 'update') {
           // Cannot change userId or must keep it as current user
           return !query.data.hasOwnProperty('userId') || query.data.userId === user.id;
         }
-        
+
         return query.type === 'select' || query.type === 'delete';
       });
 
       const db = b.db({ schema: { profiles } });
-      await db._connectDriver({ 
-        exec: async () => {}, 
-        run: async () => [] 
+      await db._connectDriver({
+        exec: async () => {},
+        run: async () => []
       });
 
       const user = { id: 'user123', role: 'user' };
@@ -194,40 +200,44 @@ describe('security rules end-to-end', () => {
         isRushOrder: b.boolean()
       }).secure((query, user: { id: string; role: string; maxOrderAmount: number }) => {
         if (user.role === 'admin') return true;
-        
+
+        if (query.type === 'select') return true;
+
+        if (!query.data) return false;
+
         if (query.type === 'insert') {
           // Regular users can only create orders for themselves
           if (query.data?.customerId !== user.id) return false;
-          
+
           // Check amount limits
-          if (query.data?.amount > user.maxOrderAmount) return false;
-          
+          if (!query.data.amount || query.data.amount > user.maxOrderAmount) return false;
+
           // Only premium users can create rush orders
           if (query.data?.isRushOrder && user.role !== 'premium') return false;
-          
+
           return true;
         }
-        
+
         if (query.type === 'update') {
           // Cannot change customer after creation
           if (query.data.hasOwnProperty('customerId')) return false;
-          
+
           // Cannot increase amount beyond limit
           if (query.data.hasOwnProperty('amount') && query.data.amount > user.maxOrderAmount) return false;
-          
+
           // Only certain users can mark as rush
           if (query.data.hasOwnProperty('isRushOrder') && query.data.isRushOrder && user.role !== 'premium') return false;
-          
+
           return true;
         }
-        
+
         return query.type === 'select';
       });
 
       const db = b.db({ schema: { orders } });
-      await db._connectDriver({ 
-        exec: async () => {}, 
-        run: async () => [] 
+      await db._connectDriver({
+        exec: async () => {},
+        run: async () => []
       });
 
       // Regular user with low limit
@@ -294,15 +304,13 @@ describe('security rules end-to-end', () => {
         displayName: b.text(),
         createdAt: b.date()
       });
-      
-      users.addImmutableRule(immutable(users.id))
-           .addImmutableRule(immutable(users.email))
-           .addImmutableRule(immutable(users.createdAt));
+
+      users.secure(immutable(users.id, users.email, users.createdAt));
 
       const db = b.db({ schema: { users } });
-      await db._connectDriver({ 
-        exec: async () => {}, 
-        run: async () => [] 
+      await db._connectDriver({
+        exec: async () => {},
+        run: async () => []
       });
 
       // Should allow insert with all fields
@@ -347,30 +355,29 @@ describe('security rules end-to-end', () => {
         publishedAt: b.date(),
         isPublished: b.boolean()
       });
-      
-      posts.addImmutableRule(immutable(posts.id))
-           .addImmutableRule(immutable(posts.authorId))
-           .addImmutableRule(immutable(posts.publishedAt))
-           .secure((query, user: { id: string; role: string }) => {
+
+      posts
+        .secure(immutable(posts.id, posts.authorId, posts.publishedAt))
+        .secure((query, user: { id: string; role: string }) => {
           if (user.role === 'admin') return true;
-          
+
           if (query.type === 'insert') {
             return query.data?.authorId === user.id;
           }
-          
+
           if (query.type === 'update') {
             // Users can only update their own posts
             // But they cannot change ownership (handled by immutable rule)
             return query.data?.authorId === user.id || !query.data.hasOwnProperty('authorId');
           }
-          
+
           return query.type === 'select';
         });
 
       const db = b.db({ schema: { posts } });
-      await db._connectDriver({ 
-        exec: async () => {}, 
-        run: async () => [] 
+      await db._connectDriver({
+        exec: async () => {},
+        run: async () => []
       });
 
       const user = { id: 'author123', role: 'user' };
@@ -427,22 +434,23 @@ describe('security rules end-to-end', () => {
         email: b.text().notNull(),
         role: b.text().notNull()
       });
-      
-      users.addImmutableRule(immutable(users.id))
-           .secure((query, user: { id: string; role: string }) => {
+
+      users
+        .secure(immutable(users.id))
+        .secure((query, user: { id: string; role: string }) => {
           if (user.role === 'admin') return true;
-          
+
           if (query.type === 'insert') {
             // Users can self-register but only as 'user' role
             return query.data?.role === 'user';
           }
-          
+
           if (query.type === 'update') {
             // Cannot change role or id, can only update own records
             if (query.data.hasOwnProperty('role')) return false;
             return true; // WHERE clause should enforce user access
           }
-          
+
           return query.type === 'select';
         });
 
@@ -452,16 +460,16 @@ describe('security rules end-to-end', () => {
         authorId: b.text().notNull(),
         isPublished: b.boolean()
       });
-      
-      posts.addImmutableRule(immutable(posts.id))
-           .addImmutableRule(immutable(posts.authorId))
-           .secure((query, user: { id: string; role: string }) => {
+
+      posts
+        .secure(immutable(posts.id, posts.authorId))
+        .secure((query, user: { id: string; role: string }) => {
           if (user.role === 'admin') return true;
-          
+
           if (query.type === 'insert') {
             return query.data?.authorId === user.id;
           }
-          
+
           return true; // Other operations allowed with proper WHERE clauses
         });
 
@@ -472,32 +480,31 @@ describe('security rules end-to-end', () => {
         content: b.text().notNull(),
         isModerated: b.boolean()
       });
-      
-      comments.addImmutableRule(immutable(comments.id))
-              .addImmutableRule(immutable(comments.postId))
-              .addImmutableRule(immutable(comments.authorId))
-              .secure((query, user: { id: string; role: string }) => {
+
+      comments
+        .secure(immutable(comments.id, comments.postId, comments.authorId))
+        .secure((query, user: { id: string; role: string }) => {
           if (user.role === 'admin' || user.role === 'moderator') return true;
-          
+
           if (query.type === 'insert') {
             // Users can comment but cannot set moderation status
             if (query.data?.isModerated !== false && query.data?.isModerated !== undefined) return false;
             return query.data?.authorId === user.id;
           }
-          
+
           if (query.type === 'update') {
             // Regular users cannot change moderation status
             if (query.data.hasOwnProperty('isModerated')) return false;
             return true;
           }
-          
+
           return query.type === 'select' || query.type === 'delete';
         });
 
       const db = b.db({ schema: { users, posts, comments } });
-      await db._connectDriver({ 
-        exec: async () => {}, 
-        run: async () => [] 
+      await db._connectDriver({
+        exec: async () => {},
+        run: async () => []
       });
 
       // Regular user operations
@@ -554,36 +561,34 @@ describe('security rules end-to-end', () => {
       })).rejects.toThrow('Immutable field violation for update operation on table comments');
     });
 
-    it('should work without user context (no security checks)', async () => {
+    it('should reject operations without user context when security rules exist', async () => {
       const publicData = b.table('public_data', {
         id: b.id(),
         name: b.text().notNull(),
         value: b.text()
       }).secure((query, user) => {
-        // This should not be called when no user is connected
         return user?.role === 'admin';
       });
 
       const db = b.db({ schema: { publicData } });
-      await db._connectDriver({ 
-        exec: async () => {}, 
-        run: async () => [] 
+      await db._connectDriver({
+        exec: async () => {},
+        run: async () => []
       });
 
-      // No user connected - security rules should be bypassed
       await expect(publicData.insert({
         name: 'Test',
         value: 'Public value'
-      })).resolves.not.toThrow();
+      })).rejects.toThrow('Security check failed for insert operation on table public_data');
 
       await expect(publicData.update({
         data: { value: 'Updated value' },
         where: sql`name = 'Test'`
-      })).resolves.not.toThrow();
+      })).rejects.toThrow('Security check failed for update operation on table public_data');
 
       await expect(publicData.delete({
         where: sql`name = 'Test'`
-      })).resolves.not.toThrow();
+      })).rejects.toThrow('Security check failed for delete operation on table public_data');
     });
   });
 });

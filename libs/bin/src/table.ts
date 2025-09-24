@@ -1,9 +1,7 @@
 import { Column } from './column';
-import type { IndexDefinition, TableMetadata, ColumnMetadata, BinDriver, SecurityRule, QueryContext, QueryType, SecurityCheckContext, ImmutableFieldRule } from './types';
+import type { IndexDefinition, TableMetadata, ColumnMetadata, BinDriver, SecurityRule, QueryContext, QueryType } from './types';
 import type { RawSql } from './utils/sql';
 import { rawQueryToSelectQuery, type SqlQuery } from './security/rawQueryToSelectQuery';
-import { hasWhereClauseCheck } from './security/hasWhereClauseCheck';
-import { checkImmutableFields } from './security/immutableFields';
 
 type ColumnLike = Column<any, any, any>;
 
@@ -83,7 +81,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     const driver = this.__db__.getDriver();
 
     // build full app-level object using defaults
-    const model = this.make(data as any) as SelectableForCols<TSelfCols>;
+    const dataToInsert = this.make(data as any) as SelectableForCols<TSelfCols>;
 
     const colsMeta = this.__meta__.columns;
     const columnNames: string[] = [];
@@ -93,7 +91,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
       const col = (this as any)[key] as Column<any, any, any> | undefined;
       if (!col || col.__meta__.insertType === 'virtual') continue;
 
-      const value = (model as any)[key];
+      const value = (dataToInsert as any)[key];
       if (value === undefined) continue; // omit undefined to allow DB defaults
       const encoded = col.__meta__.encode ? col.__meta__.encode(value as any) : value;
       columnNames.push(key);
@@ -105,7 +103,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     for (const [key] of Object.entries(colsMeta)) {
       const col = (this as any)[key] as Column<any, any, any> | undefined;
       if (!col || col.__meta__.insertType !== 'required') continue;
-      const value = (model as any)[key];
+      const value = (dataToInsert as any)[key];
       if (value === undefined) missingRequired.push(key);
     }
     if (missingRequired.length > 0) {
@@ -123,11 +121,11 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
 
     // Parse for security analysis and check security
     const sqlQuery = rawQueryToSelectQuery(fullQuery);
-    await this.checkSecurity(sqlQuery, model);
+    await this.checkSecurity(sqlQuery, dataToInsert);
 
     await driver.run(fullQuery);
 
-    return model;
+    return dataToInsert;
   }
 
   async insertMany<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf>>(
@@ -216,13 +214,8 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
 
   //#endregion
 
-  secure<TUser = any>(rule: SecurityRule<TUser>): this {
-    this._securityRule = rule;
-    return this;
-  }
-
-  addImmutableRule(rule: ImmutableFieldRule): this {
-    this._immutableRules.push(rule);
+  secure<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf>, TUser = any>(rule: SecurityRule<TUser, Partial<InsertableForCols<TSelfCols>>>): this {
+    this._securityRules.push(rule as SecurityRule);
     return this;
   }
 
@@ -262,18 +255,9 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
       data
     };
 
-    // Check immutable field rules first
-    if (this._immutableRules.length > 0) {
-      const immutableAllowed = checkImmutableFields(queryContext, this._immutableRules);
-      if (!immutableAllowed) {
-        throw new Error(`Immutable field violation for ${queryType} operation on table ${this.__meta__.name}`);
-      }
-    }
-
-    // Then check custom security rule
-    if (this._securityRule && user) {
-      const allowed = await this._securityRule(queryContext, user);
-      if (!allowed) {
+    for (const rule of this._securityRules) {
+      const allowed = await rule(queryContext, user);
+      if (allowed === false) {
         throw new Error(`Security check failed for ${queryType} operation on table ${this.__meta__.name}`);
       }
     }
@@ -284,8 +268,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
   // type helpers exposed on instance for precise typing
   readonly __selectionType__!: SelectableForCols<TCols>;
   readonly __insertionType__!: InsertableForCols<TCols>;
-  private _securityRule?: SecurityRule;
-  private _immutableRules: ImmutableFieldRule[] = [];
+  private _securityRules: SecurityRule[] = [];
 
   constructor(options: TableConstructorOptions<Name, TCols>) {
     const columnMetadata: Record<string, ColumnMetadata> = {};
