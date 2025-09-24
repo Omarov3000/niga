@@ -1,4 +1,3 @@
-[ ] async driver by default
 [ ] snake_case when emitting SQL. b.z.object() needs to transform snake_case to camelCase
 [ ] ensure proper API for security rules
 [ ] todos in the code

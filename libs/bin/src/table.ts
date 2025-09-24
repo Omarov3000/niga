@@ -41,29 +41,6 @@ export interface TableConstructorOptions<Name extends string, TCols extends Reco
 }
 
 export class Table<Name extends string, TCols extends Record<string, Column<any, any, any>>> {
-  readonly __meta__: TableMetadata;
-  readonly __db__!: { getDriver: () => BinDriver; getCurrentUser: () => any };
-  // type helpers exposed on instance for precise typing
-  readonly __selectionType__!: SelectableForCols<TCols>;
-  readonly __insertionType__!: InsertableForCols<TCols>;
-  private _securityRule?: SecurityRule;
-  private _immutableRules: ImmutableFieldRule[] = [];
-
-  constructor(options: TableConstructorOptions<Name, TCols>) {
-    const columnMetadata: Record<string, ColumnMetadata> = {};
-    Object.entries(options.columns).forEach(([key, col]) => {
-      col.__table__ = { getName: () => options.name };
-      (this as any)[key] = col;
-      columnMetadata[key] = { ...col.__meta__, name: key } as ColumnMetadata;
-    });
-
-    this.__meta__ = {
-      name: options.name,
-      columns: columnMetadata,
-      indexes: options.indexes ?? [],
-    } as TableMetadata;
-  }
-
   make<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf>>(
     this: TSelf,
     overrides?: Partial<InsertableForCols<TSelfCols>>
@@ -96,6 +73,8 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
 
     return result as any;
   }
+
+  //#region MUTATIONS
 
   async insert<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf>>(
     this: TSelf,
@@ -235,6 +214,8 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     await driver.run(fullQuery);
   }
 
+  //#endregion
+
   secure<TUser = any>(rule: SecurityRule<TUser>): this {
     this._securityRule = rule;
     return this;
@@ -297,11 +278,28 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
       }
     }
   }
-}
 
-export class SecurityChecks {
-  static hasWhereClauseCheck(sql: RawSql, securityCheck: SecurityCheckContext): boolean {
-    return hasWhereClauseCheck(sql, securityCheck);
+  readonly __meta__: TableMetadata;
+  readonly __db__!: { getDriver: () => BinDriver; getCurrentUser: () => any };
+  // type helpers exposed on instance for precise typing
+  readonly __selectionType__!: SelectableForCols<TCols>;
+  readonly __insertionType__!: InsertableForCols<TCols>;
+  private _securityRule?: SecurityRule;
+  private _immutableRules: ImmutableFieldRule[] = [];
+
+  constructor(options: TableConstructorOptions<Name, TCols>) {
+    const columnMetadata: Record<string, ColumnMetadata> = {};
+    Object.entries(options.columns).forEach(([key, col]) => {
+      col.__table__ = { getName: () => options.name };
+      (this as any)[key] = col;
+      columnMetadata[key] = { ...col.__meta__, name: key } as ColumnMetadata;
+    });
+
+    this.__meta__ = {
+      name: options.name,
+      columns: columnMetadata,
+      indexes: options.indexes ?? [],
+    } as TableMetadata;
   }
 }
 
