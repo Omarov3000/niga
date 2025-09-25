@@ -1,5 +1,5 @@
 import { it, expect, describe } from "vitest";
-import { rawQueryToSelectQuery } from './rawQueryToSelectQuery';
+import { rawQueryToSelectQuery } from './raw-query-to-select-query';
 import { sql } from '../utils/sql';
 
 describe("rawQueryToSelectQuery - unit tests", () => {

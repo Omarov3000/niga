@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { sql } from '../utils/sql';
 import { analyze } from './analyze';
-import { hasWhereClauseCheck } from './hasWhereClauseCheck';
+import { hasWhereClauseCheck } from './has-where-clause-check';
 import type { SecurityCheckContext } from '../types';
 
 describe('hasWhereClauseCheck', () => {
@@ -141,11 +141,11 @@ describe('hasWhereClauseCheck', () => {
 
     it('handles multiple tables with different security checks', () => {
       const query = sql`SELECT p.*, u.name FROM posts p JOIN users u ON p.user_id = u.id WHERE p.user_id = ${123} AND u.role = ${'admin'}`;
-      
+
       // Check posts table security
       const postsResult = evaluate(query, userOwnershipCheck);
       expect(postsResult).toBe(true);
-      
+
       // Check users table security
       const usersResult = evaluate(query, adminCheck);
       expect(usersResult).toBe(true);
@@ -160,7 +160,7 @@ describe('hasWhereClauseCheck', () => {
         value: 1234567890,
         operator: '>'
       };
-      
+
       const query = sql`SELECT * FROM posts WHERE created_at > ${1234567890}`;
       const result = evaluate(query, gtCheck);
       expect(result).toBe(true);
@@ -173,7 +173,7 @@ describe('hasWhereClauseCheck', () => {
         value: null,
         operator: '='
       };
-      
+
       const query = sql`SELECT * FROM posts WHERE deleted_at = ${null}`;
       const result = evaluate(query, nullCheck);
       expect(result).toBe(true);

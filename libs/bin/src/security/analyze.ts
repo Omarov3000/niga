@@ -1,4 +1,4 @@
-import { ComparisonOperator, rawQueryToSelectQuery, SelectQuery, SqlQuery } from './rawQueryToSelectQuery';
+import { ComparisonOperator, rawQueryToSelectQuery, SelectQuery, SqlQuery } from './raw-query-to-select-query';
 import { RawSql } from '../utils/sql';
 import type { QueryType } from '../types';
 
