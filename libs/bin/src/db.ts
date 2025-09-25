@@ -1,8 +1,8 @@
-import type { BinDriver, TableMetadata } from './types';
+import type { BinDriver, QueryContext, TableMetadata } from './types';
 import type { ZodTypeAny } from 'zod';
 import { sql } from './utils/sql';
 import type { Table } from './table';
-import { rawQueryToSelectQuery } from './security/rawQueryToSelectQuery';
+import { analyze } from './security/analyze';
 
 export interface DbConstructorOptions {
   schema: Record<string, { __meta__: TableMetadata }>;
@@ -36,25 +36,46 @@ export class Db {
   }
 
   query(strings: TemplateStringsArray, ...values: any[]) {
-    const { query, params } = sql(strings, ...values);
+    const rawSql = sql(strings, ...values);
     const ensureDriver = () => {
       if (!this.driver) throw new Error('No driver connected. Call _connectDriver first.');
       return this.driver;
     };
 
+    const runSecurityChecks = async () => {
+      const analysis = analyze(rawSql);
+      const accessedTables = Array.from(new Set(analysis.accessedTables.map((table) => table.name)));
+
+      if (accessedTables.length === 0) {
+        return;
+      }
+
+      const queryContext: QueryContext = {
+        type: analysis.type,
+        accessedTables,
+        analysis
+      };
+
+      const user = this.currentUser;
+
+      for (const tableName of accessedTables) {
+        const table = this.options.schema[tableName] as Table<any, any> | undefined;
+        if (!table) continue;
+        await table.enforceSecurityRules(queryContext, user);
+      }
+    };
+
     return {
       execute: async <T extends ZodTypeAny>(zodSchema: T) => {
         const driver = ensureDriver();
-        // Parse for security analysis but use raw SQL for execution
-        rawQueryToSelectQuery({ query, params }); // Security analysis
-        const rows = await Promise.resolve(driver.run({ query, params }));
+        await runSecurityChecks();
+        const rows = await Promise.resolve(driver.run(rawSql));
         return zodSchema.array().parse(rows) as ReturnType<T['array']>['_output'];
       },
       executeAndTakeFirst: async <T extends ZodTypeAny>(zodSchema: T) => {
         const driver = ensureDriver();
-        // Parse for security analysis but use raw SQL for execution
-        rawQueryToSelectQuery({ query, params }); // Security analysis
-        const rows = await Promise.resolve(driver.run({ query, params }));
+        await runSecurityChecks();
+        const rows = await Promise.resolve(driver.run(rawSql));
         if (!rows || rows.length === 0) throw new Error('No rows returned');
         return zodSchema.parse(rows[0]) as ReturnType<T['parse']>;
       },

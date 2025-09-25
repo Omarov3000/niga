@@ -1,5 +1,6 @@
 import type { ZodTypeAny } from 'zod';
 import { RawSql } from './utils/sql';
+import type { QueryAnalysis } from './security/analyze';
 
 export type ColumnType = 'integer' | 'real' | 'text' | 'blob';
 
@@ -80,6 +81,7 @@ export interface QueryContext<TData extends Record<string, unknown> = Record<str
   type: QueryType;
   accessedTables: string[];
   data?: TData; // The data being inserted or updated
+  analysis: QueryAnalysis;
 }
 
 export type SecurityRule<TUser = any, TData extends Record<string, unknown> = Record<string, unknown>> = (query: QueryContext<TData>, user: TUser) => boolean | Promise<boolean>;

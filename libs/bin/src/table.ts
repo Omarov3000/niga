@@ -1,7 +1,7 @@
 import { Column } from './column';
-import type { IndexDefinition, TableMetadata, ColumnMetadata, BinDriver, SecurityRule, QueryContext, QueryType } from './types';
+import type { IndexDefinition, TableMetadata, ColumnMetadata, BinDriver, SecurityRule, QueryContext } from './types';
 import type { RawSql } from './utils/sql';
-import { rawQueryToSelectQuery, type SqlQuery } from './security/rawQueryToSelectQuery';
+import { analyze } from './security/analyze';
 
 type ColumnLike = Column<any, any, any>;
 
@@ -119,9 +119,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     const query = `INSERT INTO ${this.__meta__.name} (${columnNames.join(', ')}) VALUES (${placeholders})`;
     const fullQuery = { query, params };
 
-    // Parse for security analysis and check security
-    const sqlQuery = rawQueryToSelectQuery(fullQuery);
-    await this.checkSecurity(sqlQuery, dataToInsert);
+    await this.checkSecurity(fullQuery, dataToInsert);
 
     await driver.run(fullQuery);
 
@@ -187,8 +185,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     const fullQuery = { query, params };
 
     // Parse for security analysis and check security
-    const sqlQuery = rawQueryToSelectQuery(fullQuery);
-    await this.checkSecurity(sqlQuery, updatedData);
+    await this.checkSecurity(fullQuery, updatedData);
 
     await driver.run(fullQuery);
   }
@@ -206,8 +203,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     const fullQuery = { query, params };
 
     // Parse for security analysis and check security
-    const sqlQuery = rawQueryToSelectQuery(fullQuery);
-    await this.checkSecurity(sqlQuery);
+    await this.checkSecurity(fullQuery);
 
     await driver.run(fullQuery);
   }
@@ -219,48 +215,28 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     return this;
   }
 
-  private async checkSecurity<TUser = any>(sqlQuery: SqlQuery, data?: any): Promise<void> {
-    const user = this.__db__.getCurrentUser();
-
-    let queryType: QueryType;
-    let accessedTables = [this.__meta__.name];
-
-    // Extract query type and accessed tables from the parsed SQL query
-    switch (sqlQuery.type) {
-      case 'insert':
-        queryType = 'insert';
-        accessedTables = [sqlQuery.table.name];
-        break;
-      case 'update':
-        queryType = 'update';
-        accessedTables = [sqlQuery.table.name];
-        break;
-      case 'delete':
-        queryType = 'delete';
-        accessedTables = [sqlQuery.table.name];
-        break;
-      case 'select':
-      case 'compound_select':
-        queryType = 'select';
-        // For SELECT queries, we'd need more complex analysis
-        // For now, keep the default behavior
-        break;
-      default:
-        throw new Error(`Unsupported query type: ${(sqlQuery as any).type}`);
-    }
-
-    const queryContext: QueryContext = {
-      type: queryType,
-      accessedTables,
-      data
-    };
-
+  async enforceSecurityRules<TUser = any>(queryContext: QueryContext, user: TUser): Promise<void> {
     for (const rule of this._securityRules) {
       const allowed = await rule(queryContext, user);
       if (allowed === false) {
-        throw new Error(`Security check failed for ${queryType} operation on table ${this.__meta__.name}`);
+        throw new Error(`Security check failed for ${queryContext.type} operation on table ${this.__meta__.name}`);
       }
     }
+  }
+
+  private async checkSecurity<TUser = any>(rawSql: RawSql, data?: any): Promise<void> {
+    const user = this.__db__.getCurrentUser();
+    const analysis = analyze(rawSql);
+    const accessedTables = Array.from(new Set(analysis.accessedTables.map((table) => table.name)));
+
+    const queryContext: QueryContext = {
+      type: analysis.type,
+      accessedTables,
+      data,
+      analysis
+    };
+
+    await this.enforceSecurityRules(queryContext, user);
   }
 
   readonly __meta__: TableMetadata;

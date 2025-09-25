@@ -1,6 +1,6 @@
 export type RawSql = { query: string; params: any[] }; // we get this as input
 import { Column } from '../column';
-import { Sql } from '../security/sqlTypes';
+import { Sql } from '../security/sql-types';
 
 export function sql(strings: TemplateStringsArray, ...values: any[]): RawSql {
   let query = "";
@@ -89,4 +89,3 @@ export class FilterObject extends SqlPart {
     this.right = right;
   }
 }
-

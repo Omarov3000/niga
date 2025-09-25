@@ -1,5 +1,6 @@
 import { ComparisonOperator, rawQueryToSelectQuery, SelectQuery, SqlQuery } from './rawQueryToSelectQuery';
 import { RawSql } from '../utils/sql';
+import type { QueryType } from '../types';
 
 // Flattened view of accessed tables for Simplified Analysis
 type SimplifiedFilter = {
@@ -16,6 +17,7 @@ type AccessedTable = {
 };
 
 export type QueryAnalysis = {
+  type: QueryType;
   accessedTables: AccessedTable[];
 };
 
@@ -553,5 +555,5 @@ export function analyze(sql: RawSql): QueryAnalysis {
     }
   }
 
-  return { accessedTables };
+  return { accessedTables, type: sqlQuery.type === 'compound_select' ? 'select' : sqlQuery.type };
 }

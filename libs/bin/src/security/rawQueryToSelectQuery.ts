@@ -1,4 +1,4 @@
-import { Sql, ComparisonOperator, SelectQuery, SqlQuery } from './sqlTypes';
+import { Sql, ComparisonOperator, SelectQuery, SqlQuery } from './sql-types';
 
 export type { ComparisonOperator, SelectQuery, SqlQuery };
 
