@@ -5,7 +5,7 @@ import { Db } from './db';
 import { IndexBuilder, Table } from './table';
 import { getDefaultValueFromZodSchema } from './zod-integration/get-default-value-from-zod-schema';
 import { toSnakeCase } from './utils/casing';
-import { BinDriver } from './types';
+import { BinDriver, type ConstraintDefinition, type ConstraintType } from './types';
 
 const text = () => new Column<'text', string, 'optional'>({ kind: 'public', name: 'text', type: 'text' });
 const integer = () => new Column<'integer', number, 'optional'>({ kind: 'public', name: 'integer', type: 'integer' });
@@ -87,10 +87,36 @@ function enum_<const T extends string>(values: readonly T[]) {
 
 const id = () => new Column<'id', string, 'withDefault'>({ kind: 'public', name: 'id', type: 'text' }).$defaultFn(() => nanoid()).primaryKey();
 
+const ensureConstraintColumns = (type: ConstraintType, columns: Column[]): ConstraintDefinition => {
+  if (columns.length === 0) {
+    throw new Error(`${type} constraint requires at least one column`);
+  }
+
+  const columnNames = columns.map((column) => {
+    const dbName = column.__meta__.dbName ?? toSnakeCase(column.__meta__.name ?? '');
+    if (!dbName) {
+      throw new Error('Constraint column is missing dbName');
+    }
+    return dbName;
+  });
+
+  const uniqueNames = new Set(columnNames);
+  if (uniqueNames.size !== columnNames.length) {
+    throw new Error(`${type} constraint columns must be unique`);
+  }
+
+  return [type, ...columnNames];
+};
+
+const primaryKeyConstraint = (...columns: Column[]): ConstraintDefinition => ensureConstraintColumns('primaryKey', columns);
+
+const uniqueConstraint = (...columns: Column[]): ConstraintDefinition => ensureConstraintColumns('unique', columns);
+
 function table<Name extends string, TCols extends Record<string, Column<any, any, any>>>(
   name: Name,
   columns: TCols,
-  indexesBuilder?: (t: { [K in keyof TCols]: TCols[K] }) => any[]
+  indexesBuilder?: (t: { [K in keyof TCols]: TCols[K] }) => any[],
+  constrainsBuilder?: (t: { [K in keyof TCols]: TCols[K] }) => ConstraintDefinition[]
 ): Table<Name, TCols> & TCols {
   // Assign canonical column names on provided columns to match object keys
   Object.entries(columns).forEach(([key, col]) => {
@@ -100,7 +126,14 @@ function table<Name extends string, TCols extends Record<string, Column<any, any
 
   const indexes = (indexesBuilder ? indexesBuilder(columns as any) : []) as any[];
   const normalizedIndexes = indexes.map((idx: any) => idx);
-  const instance = new Table<Name, TCols>({ name, columns: columns as any, indexes: normalizedIndexes }) as any;
+  const constrains = constrainsBuilder ? constrainsBuilder(columns as any) : [];
+  const normalizedConstrains = constrains.map((constraint) => [...constraint]) as ConstraintDefinition[];
+  const instance = new Table<Name, TCols>({
+    name,
+    columns: columns as any,
+    indexes: normalizedIndexes,
+    constrains: normalizedConstrains,
+  }) as any;
   Object.entries(columns).forEach(([key, col]) => {
     instance[key] = col;
   });
@@ -215,6 +248,8 @@ export const b = {
   index,
   db,
   testDb,
+  primaryKey: primaryKeyConstraint,
+  unique: uniqueConstraint,
   z: {
     text: zText,
     integer: zInteger,
@@ -226,7 +261,4 @@ export const b = {
     id: zId,
     object: z.object,
   },
-  // TODO: constraints
-  // primaryKey
-  // unique
 };
