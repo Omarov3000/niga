@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll } from 'vitest';
 import { b } from './builder';
 import { z } from 'zod';
 import type { Table } from './table';
@@ -11,9 +11,30 @@ import { BinDriver } from './types';
 export function runSharedTests(makeDriver: () => BinDriver) {
 
 let driver: BinDriver;
+const clearRef: { current?: Array<() => Promise<void>> } = { current: [] };
 
-beforeEach(async () => {
+beforeAll(() => {
   driver = makeDriver();
+});
+
+beforeEach(() => {
+  clearRef.current = [];
+});
+
+afterEach(async () => {
+  const clearFns = [...(clearRef.current ?? [])];
+  clearRef.current = [];
+  for (const fn of clearFns.reverse()) {
+    await fn();
+  }
+});
+
+afterAll(async () => {
+  const clearFns = [...(clearRef.current ?? [])];
+  clearRef.current = [];
+  for (const fn of clearFns.reverse()) {
+    await fn();
+  }
 });
 
 describe('insert', () => {
@@ -25,7 +46,7 @@ describe('insert', () => {
       email: b.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     await users.insert({
       id: 'test-123',
@@ -49,7 +70,7 @@ describe('insert', () => {
       views: b.integer().default(0),
     });
 
-    const db = await b.testDb({ schema: { posts } }, driver);
+    const db = await b.testDb({ schema: { posts } }, driver, clearRef);
 
     // Check if table exists
     const tables = await driver.run({ query: "SELECT name FROM sqlite_master WHERE type='table' AND name='posts'", params: [] });
@@ -77,7 +98,7 @@ describe('insert', () => {
       name: b.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     const returned = await users.insert({ id: 'user-123', name: 'Alice' });
 
@@ -95,7 +116,7 @@ describe('insert', () => {
       age: b.integer(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     const model = await users.insert({
       id: 'type-safe-test',
@@ -117,7 +138,7 @@ describe('insert', () => {
       age: b.integer(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     const models = await users.insertMany([
       { id: 'u1', name: 'Alice', age: 30 },
@@ -145,7 +166,7 @@ describe('select', () => {
       age: b.integer(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     // Seed some rows directly
     await driver.run({ query: 'INSERT INTO users (id, name, age) VALUES (?, ?, ?)', params: ['u1', 'Alice', 30] });
@@ -161,7 +182,7 @@ describe('select', () => {
 
   it('executeAndTakeFirst returns a single parsed row', async () => {
     const users = b.table('users', { id: b.id(), name: b.text() });
-    const db = await b.testDb({ schema: { users } }, driver);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: ['u1', 'Alice'] });
 
@@ -181,7 +202,7 @@ describe('select', () => {
       role: b.enum(['admin', 'user']).default('user'),
       profile: b.json(profileZ),
     });
-    const db = await b.testDb({ schema: { users } }, driver);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     const now = new Date(1700000000000);
     await driver.run({ query: 'INSERT INTO users (id, created_at, is_active, role, profile) VALUES (?, ?, ?, ?, ?)', params: ['u1', now.getTime(), 1, 0, JSON.stringify({ bio: 'Dev' })] });
@@ -209,7 +230,7 @@ describe('select', () => {
       price: b.integer(),
       name: b.text(),
     });
-    const db = await b.testDb({ schema: { items } }, driver);
+    const db = await b.testDb({ schema: { items } }, driver, clearRef);
 
     await driver.run({ query: 'INSERT INTO items (id, price, name) VALUES (?, ?, ?)', params: ['i1', 10, 'A'] });
     await driver.run({ query: 'INSERT INTO items (id, price, name) VALUES (?, ?, ?)', params: ['i2', 20, 'B'] });
@@ -239,7 +260,7 @@ describe('update', () => {
       email: b.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     // Insert test data
     await users.insert({
@@ -281,7 +302,7 @@ describe('update', () => {
       views: b.integer().default(0),
     });
 
-    const db = await b.testDb({ schema: { posts } }, driver);
+    const db = await b.testDb({ schema: { posts } }, driver, clearRef);
 
     // Insert test data
     await posts.insert({
@@ -319,7 +340,7 @@ describe('update', () => {
       }),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     // Insert test data
     await users.insert({
@@ -354,7 +375,7 @@ describe('update', () => {
       balance: b.integer().default(0),
     });
 
-    const db = await b.testDb({ schema: { accounts } }, driver);
+    const db = await b.testDb({ schema: { accounts } }, driver, clearRef);
 
     await accounts.insert({
       id: 'acc-1',
@@ -380,7 +401,7 @@ describe('update', () => {
       status: b.text().default('active'),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     // Insert test data
     await users.insertMany([
@@ -410,7 +431,7 @@ describe('update', () => {
       name: b.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     await users.insert({
       id: 'user-1',
@@ -431,7 +452,7 @@ describe('update', () => {
       age: b.integer(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     await users.insert({
       id: 'user-1',
@@ -457,7 +478,7 @@ describe('update', () => {
       name: b.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     // Create a malformed RawSql object that should trigger parsing errors
     const malformedSql: any = {
@@ -481,7 +502,7 @@ describe('delete', () => {
       age: b.integer(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     // Insert test data
     await users.insertMany([
@@ -511,7 +532,7 @@ describe('delete', () => {
       status: b.text().default('active'),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     // Insert test data
     await users.insertMany([
@@ -542,7 +563,7 @@ describe('delete', () => {
       published: b.boolean().default(false),
     });
 
-    const db = await b.testDb({ schema: { posts } }, driver);
+    const db = await b.testDb({ schema: { posts } }, driver, clearRef);
 
     // Insert test data
     await posts.insertMany([
@@ -571,7 +592,7 @@ describe('delete', () => {
       name: b.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     // Insert test data
     await users.insertMany([
@@ -600,7 +621,7 @@ describe('delete', () => {
       name: b.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     await users.insert({
       id: 'user-1',
@@ -623,7 +644,7 @@ describe('delete', () => {
       name: b.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     // Create a malformed RawSql object that should trigger parsing errors
     const malformedSql: any = {
@@ -643,7 +664,7 @@ describe('delete', () => {
       name: b.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     await users.insertMany([
       { id: 'user-1', name: 'John' },

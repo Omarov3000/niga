@@ -133,6 +133,26 @@ export class Db {
     };
   }
 
+  async _clear(): Promise<void> {
+    if (!this.driver) throw new Error('No driver connected. Call _connectDriver first.');
+    const driver = this.driver;
+    const tables = Object.values(this.options.schema)
+      .map((table) => table.__meta__.dbName)
+      .filter((name, index, all) => all.indexOf(name) === index);
+
+    if (tables.length === 0) return;
+
+    await driver.exec('PRAGMA foreign_keys = OFF');
+    try {
+      const deleteStatements = tables
+        .map((name) => `DELETE FROM ${quoteIdentifier(name)};`)
+        .join(' ');
+      await driver.exec(deleteStatements);
+    } finally {
+      await driver.exec('PRAGMA foreign_keys = ON');
+    }
+  }
+
   async transaction<T>(fn: (tx: any) => Promise<T>): Promise<T> {
     if (!this.driver) throw new Error('No driver connected. Call _connectDriver first.');
     const txDriver = await this.driver.beginTransaction();
@@ -166,6 +186,10 @@ export class Db {
       throw e;
     }
   }
+}
+
+function quoteIdentifier(name: string): string {
+  return `"${name.replaceAll('"', '""')}"`;
 }
 
 function serializeCreateTable(table: SerializableTableMetadata): string {

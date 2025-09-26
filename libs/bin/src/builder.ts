@@ -117,13 +117,35 @@ function db<TSchema extends Record<string, Table<any, any>>>(opts: { schema: TSc
   return instance as Db & TSchema;
 }
 
+const quoteIdentifier = (name: string) => `"${name.replaceAll('"', '""')}"`;
+
+type ClearRef = { current?: Array<() => Promise<void>> } | undefined;
+
 async function testDb<TSchema extends Record<string, Table<any, any>>>(
   opts: { schema: TSchema; name?: string },
-  driver: BinDriver
+  driver: BinDriver,
+  clearRef?: ClearRef
 ): Promise<Db & TSchema> {
+  const tableNames = Object.values(opts.schema).map((table) => table.__meta__.dbName);
+  if (tableNames.length > 0) {
+    const dropStatements = [
+      'PRAGMA foreign_keys = OFF',
+      ...tableNames.map((name) => `DROP TABLE IF EXISTS ${quoteIdentifier(name)}`),
+      'PRAGMA foreign_keys = ON',
+    ].join('; ');
+    await driver.exec(dropStatements);
+  }
+
   const instance = db(opts)
   await instance._connectDriver(driver);
   await driver.exec(instance.getSchemaDefinition());
+  if (clearRef) {
+    const queue = clearRef.current ?? [];
+    queue.push(async () => {
+      await instance._clear();
+    });
+    clearRef.current = queue;
+  }
   return instance as Db & TSchema;
 }
 
