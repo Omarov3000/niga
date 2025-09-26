@@ -1,8 +1,25 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import { sql } from './utils/sql';
+import type { RawSql } from './utils/sql';
 import { b } from './builder';
 import { hasWhereClauseCheck } from './security/has-where-clause-check';
+
+const mockBinDriver = {
+  exec: async () => {},
+  run: async ({ query }: RawSql) => {
+    const normalized = query.trim().toUpperCase();
+    if (normalized.startsWith('SELECT')) {
+      return [{ id: 'post-1', title: 'Post', role: 'admin' }];
+    }
+    return [];
+  },
+  beginTransaction: async () => ({
+    run: async () => {},
+    commit: async () => {},
+    rollback: async () => {}
+  })
+};
 
 describe('security rules end-to-end', () => {
   describe('basic security rules', () => {
@@ -19,14 +36,11 @@ describe('security rules end-to-end', () => {
       });
 
       const db = b.db({ schema: { posts } });
-      await db._connectDriver({
-        exec: async () => {},
-        run: async () => []
-      });
+      await db._connectDriver(mockBinDriver);
 
       // Admin user should be able to delete
       const admin = { id: 'admin123', role: 'admin' };
-      db.connectUser(admin);
+      db._connectUser(admin);
 
       await expect(posts.delete({
         where: sql`id = 'post123'`
@@ -34,7 +48,7 @@ describe('security rules end-to-end', () => {
 
       // Regular user should not be able to delete
       const user = { id: 'user123', role: 'user' };
-      db.connectUser(user);
+      db._connectUser(user);
 
       await expect(posts.delete({
         where: sql`id = 'post123'`
@@ -81,13 +95,10 @@ describe('security rules end-to-end', () => {
       });
 
       const db = b.db({ schema: { documents } });
-      await db._connectDriver({
-        exec: async () => {},
-        run: async () => []
-      });
+      await db._connectDriver(mockBinDriver);
 
       const user = { id: 'user123' };
-      db.connectUser(user);
+      db._connectUser(user);
 
       // Should allow creating documents for self
       await expect(documents.insert({
@@ -146,18 +157,15 @@ describe('security rules end-to-end', () => {
       });
 
       const db = b.db({ schema: { posts } });
-      await db._connectDriver({
-        exec: async () => {},
-        run: async () => [{ id: 'post-1', title: 'Post' }]
-      });
+      await db._connectDriver(mockBinDriver);
 
-      db.connectUser({ role: 'user' });
+      db._connectUser({ role: 'user' });
 
       await expect(
         db.query`SELECT id, title FROM posts`.execute(z.object({ id: z.string(), title: z.string() }))
       ).rejects.toThrow('RBAC: select requires admin role');
 
-      db.connectUser({ role: 'admin' });
+      db._connectUser({ role: 'admin' });
 
       await expect(
         db.query`SELECT id, title FROM posts`.execute(z.object({ id: z.string(), title: z.string() }))
@@ -183,12 +191,9 @@ describe('security rules end-to-end', () => {
       });
 
       const db = b.db({ schema: { posts, users } });
-      await db._connectDriver({
-        exec: async () => {},
-        run: async () => [{ id: 'post-1', authorId: 'user-1', role: 'admin' }]
-      });
+      await db._connectDriver(mockBinDriver);
 
-      db.connectUser({ role: 'admin' });
+      db._connectUser({ role: 'admin' });
 
       await db
         .query`SELECT p.id, u.role FROM posts p JOIN users u ON p.authorId = u.id`

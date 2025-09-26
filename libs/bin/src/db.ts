@@ -34,9 +34,12 @@ export class Db {
     this.driver = driver;
   }
 
-  // TODO: rename to _connectUser
   connectUser<TUser = any>(user: TUser): void {
     this.currentUser = user;
+  }
+
+  _connectUser<TUser = any>(user: TUser): void {
+    this.connectUser(user);
   }
 
   query(strings: TemplateStringsArray, ...values: any[]) {
@@ -102,6 +105,40 @@ export class Db {
       }
     });
     return parts.join('\n\n');
+  }
+
+  async transaction<T>(fn: (tx: any) => Promise<T>): Promise<T> {
+    if (!this.driver) throw new Error('No driver connected. Call _connectDriver first.');
+    const txDriver = await this.driver.beginTransaction();
+
+    const txTables: Record<string, any> = {};
+    Object.entries(this.options.schema).forEach(([name, table]) => {
+      const txTable = Object.create(table);
+      Object.defineProperty(txTable, '__db__', {
+        value: {
+          getDriver: () => txDriver,
+          getCurrentUser: () => this.currentUser,
+          getSchema: () => this.options.schema,
+        },
+        enumerable: false,
+        configurable: true,
+        writable: false,
+      });
+      txTables[name] = txTable;
+    });
+
+    const txQuery = (_strings: TemplateStringsArray, _values: any[]) => {
+      throw new Error('tx.query is not supported inside a transaction (reads are disabled)');
+    };
+
+    try {
+      const result = await fn({ ...txTables, query: txQuery });
+      await txDriver.commit();
+      return result;
+    } catch (e) {
+      await txDriver.rollback();
+      throw e;
+    }
   }
 }
 

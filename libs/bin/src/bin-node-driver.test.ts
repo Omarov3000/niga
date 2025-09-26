@@ -645,3 +645,25 @@ describe('delete', () => {
     expect(remainingUsers).toHaveLength(2);
   });
 });
+
+describe('transaction', () => {
+  it('rolls back earlier statements when a later statement fails', async () => {
+    const users = b.table('users', {
+      id: b.id(),
+      name: b.text(),
+    });
+
+    const db = await prepareForTest({ users });
+
+    await expect(
+      db.transaction(async (tx) => {
+        await tx.users.insert({ id: 'u1', name: 'Alice' });
+        // This violates the PRIMARY KEY constraint (duplicate id)
+        await tx.users.insert({ id: 'u1', name: 'Duplicate' });
+      })
+    ).rejects.toThrow();
+
+    const rows = await runQuery('SELECT id, name FROM users WHERE id = ?', ['u1']);
+    expect(rows).toMatchObject([]);
+  });
+});

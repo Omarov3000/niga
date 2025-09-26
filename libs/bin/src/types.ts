@@ -70,6 +70,13 @@ export interface TableMetadata {
 export interface BinDriver {
   exec: (sql: string) => Promise<any>;
   run: (sql: RawSql) => Promise<any>;
+  beginTransaction: () => Promise<TxDriver>;
+}
+
+export interface TxDriver {
+  run: (sql: RawSql) => Promise<void>;
+  commit: () => Promise<void>;
+  rollback: () => Promise<void>;
 }
 
 export interface SecurityCheckContext {

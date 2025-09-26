@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import { BinDriver } from './types';
+import type { TxDriver } from './types';
 import { RawSql } from './utils/sql';
 
 function safeSplit(sql: string, delimiter: string): string[] {
@@ -22,5 +23,25 @@ export class BinNodeDriver implements BinDriver {
     if (query.trim().toUpperCase().startsWith('SELECT')) return q.all(params);
     q.run(params);
     return [];
+  };
+
+  beginTransaction = async (): Promise<TxDriver> => {
+    this.db.exec('BEGIN');
+    const self = this;
+    return {
+      run: async ({ query, params }) => {
+        const q = self.db.prepare(query);
+        if (query.trim().toUpperCase().startsWith('SELECT')) {
+          throw new Error('you cannot run SELECT inside a transaction');
+        }
+        q.run(params);
+      },
+      commit: async () => {
+        self.db.exec('COMMIT');
+      },
+      rollback: async () => {
+        self.db.exec('ROLLBACK');
+      },
+    };
   };
 }

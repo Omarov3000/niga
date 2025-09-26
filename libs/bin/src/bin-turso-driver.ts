@@ -1,6 +1,7 @@
 // @ts-ignore - Package has type issues with exports
 import { connect } from '@tursodatabase/database';
 import { BinDriver } from './types';
+import type { TxDriver } from './types';
 import { RawSql } from './utils/sql';
 
 function safeSplit(sql: string, delimiter: string): string[] {
@@ -35,10 +36,10 @@ export class BinTursoDriver implements BinDriver {
     const db = await this.getDb();
     const stmt = (db as any).prepare(query);
     const upper = query.trim().toUpperCase();
-    
+
     if (upper.startsWith('SELECT')) {
       const result = await (stmt as any).all(...(params || []));
-      
+
       // Fix column name case mismatch - Turso returns lowercase but framework expects original case
       if (result.length > 0) {
         const normalizedResult = result.map((row: any) => {
@@ -55,11 +56,15 @@ export class BinTursoDriver implements BinDriver {
         });
         return normalizedResult;
       }
-      
+
       return result;
     } else {
       await (stmt as any).run(...(params || []));
       return [];
     }
+  };
+
+  beginTransaction = async (): Promise<TxDriver> => {
+    throw new Error('Transactions are not implemented for this driver');
   };
 }
