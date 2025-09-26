@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { b } from './builder';
 import { BinNodeDriver } from './bin-node-driver';
-import { BinTursoDriver } from './bin-turso-driver';
 import { z } from 'zod';
 import type { Table } from './table';
 import type { Db } from './db';

@@ -145,7 +145,7 @@ describe('schema generation', () => {
       CREATE TABLE t (
         id TEXT PRIMARY KEY,
         a INTEGER,
-        b INTEGER GENERATED ALWAYS AS (a + 1)
+        b INTEGER GENERATED ALWAYS AS (a + 1) VIRTUAL
       );
     `);
   });

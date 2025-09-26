@@ -108,8 +108,8 @@ function table<Name extends string, TCols extends Record<string, Column<any, any
 
 const index = () => new IndexBuilder();
 
-function db<TSchema extends Record<string, Table<any, any>>>(opts: { schema: TSchema }): Db & TSchema {
-  const instance = new Db({ schema: opts.schema as any });
+function db<TSchema extends Record<string, Table<any, any>>>(opts: { schema: TSchema; name?: string }): Db & TSchema {
+  const instance = new Db({ schema: opts.schema as any, name: opts.name });
   Object.entries(opts.schema).forEach(([key, table]) => {
     (instance as any)[key] = table;
   });

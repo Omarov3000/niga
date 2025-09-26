@@ -61,6 +61,17 @@ export interface SerializableTableMetadata {
   renamedFrom?: string;
 }
 
+export type TableSnapshot = SerializableTableMetadata;
+
+export interface PreparedSnapshot {
+  snapshot: TableSnapshot[];
+  migration: {
+    name: string;
+    sql: string;
+  };
+  hasChanges: boolean;
+}
+
 export interface TableMetadata {
   name: string;
   dbName: string;
@@ -104,4 +115,11 @@ export type SecurityRule<TUser = any, TData extends Record<string, unknown> = Re
 export interface ImmutableFieldRule {
   tableName: string;
   fieldName: string;
+}
+
+export class ColumnMutationNotSupportedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ColumnMutationNotSupportedError';
+  }
 }
