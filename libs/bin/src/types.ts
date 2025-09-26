@@ -29,6 +29,7 @@ export interface ColumnMetadata {
   definition?: string;
   jsonSchema?: ZodTypeAny;
   enumValues?: readonly string[];
+  renamedFrom?: string;
 }
 
 export type SerializableColumnMetadata = Pick<ColumnMetadata,
@@ -42,7 +43,8 @@ export type SerializableColumnMetadata = Pick<ColumnMetadata,
   'unique' |
   'default' |
   'appType' |
-  'enumValues'>
+  'enumValues' |
+  'renamedFrom'>
 
 export interface IndexDefinition {
   name?: string;
@@ -56,6 +58,7 @@ export interface SerializableTableMetadata {
   columns: Record<string, SerializableColumnMetadata>;
   indexes?: IndexDefinition[];
   constrains?: string[][];
+  renamedFrom?: string;
 }
 
 export interface TableMetadata {
@@ -65,6 +68,7 @@ export interface TableMetadata {
   indexes?: IndexDefinition[];
   constrains?: string[][];
   aliasedFrom?: string;
+  renamedFrom?: string;
 }
 
 export interface BinDriver {

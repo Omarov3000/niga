@@ -48,6 +48,10 @@ export class Column<
     });
   }
 
+  renamedFrom(previousName: string): Column<Name, Type, InsertType> {
+    return this.cloneMeta({ renamedFrom: previousName });
+  }
+
   $defaultFn(fn: () => Type): Column<Name, Type, 'withDefault'> {
     return new Column<Name, Type, 'withDefault'>({
       kind: 'internal',

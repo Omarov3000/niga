@@ -226,6 +226,11 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     return this;
   }
 
+  renamedFrom(previousName: string): this {
+    this.__meta__.renamedFrom = previousName;
+    return this;
+  }
+
   async enforceSecurityRules<TUser = any>(queryContext: QueryContext, user: TUser): Promise<void> {
     for (const rule of this._securityRules) {
       try {

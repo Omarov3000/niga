@@ -101,6 +101,19 @@ describe('schema generation', () => {
     `);
   });
 
+  it('tracks renamed metadata for tables and columns', () => {
+    const users = b
+      .table('users', {
+        id: b.id().renamedFrom('old_id'),
+        status: b.enum(['active', 'inactive']).default('active').renamedFrom('old_status'),
+      })
+      .renamedFrom('old_users');
+
+    expect(users.__meta__.renamedFrom).toBe('old_users');
+    expect(users.__meta__.columns.id.renamedFrom).toBe('old_id');
+    expect(users.__meta__.columns.status.renamedFrom).toBe('old_status');
+  });
+
   it('indexes: unique and composite', () => {
     const users = b.table(
       'users',
