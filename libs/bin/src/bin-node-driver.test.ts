@@ -358,6 +358,30 @@ describe('update', () => {
     });
   });
 
+  it('supports update expressions via column.set', async () => {
+    const accounts = b.table('accounts', {
+      id: b.id(),
+      userId: b.text(),
+      balance: b.integer().default(0),
+    });
+
+    const db = await prepareForTest({ accounts });
+
+    await accounts.insert({
+      id: 'acc-1',
+      userId: 'user-1',
+      balance: 200,
+    });
+
+    await accounts.update({
+      data: { balance: accounts.balance.set`+ ${50}` },
+      where: accounts.userId.eq('user-1'),
+    });
+
+    const updatedAccount = await runQueryAndGetFirst('SELECT balance FROM accounts WHERE user_id = ?', ['user-1']);
+    expect(updatedAccount.balance).toBe(250);
+  });
+
   it('should update multiple rows with WHERE clause', async () => {
     const users = b.table('users', {
       id: b.id(),

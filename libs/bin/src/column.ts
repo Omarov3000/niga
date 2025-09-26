@@ -1,5 +1,6 @@
 import type { ApplicationType, ColumnType, InsertionType, ColumnMetadata, SecurityCheckContext } from './types';
-import { FilterObject } from './utils/sql';
+import { FilterObject, sql } from './utils/sql';
+import type { RawSql } from './utils/sql';
 
 export class Column<
   Name extends string = string,
@@ -50,6 +51,17 @@ export class Column<
 
   renamedFrom(previousName: string): Column<Name, Type, InsertType> {
     return this.cloneMeta({ renamedFrom: previousName });
+  }
+
+  set(strings: TemplateStringsArray, ...values: any[]): Type {
+    const processedValues = values.map((value) => {
+      if (value instanceof Column) return value;
+      if (value instanceof FilterObject) return value;
+      if (value instanceof ColumnUpdateExpression) return value;
+      return this.__meta__.encode ? this.__meta__.encode(value as any) : value;
+    });
+    const fragment = sql(strings, ...processedValues);
+    return new ColumnUpdateExpression(fragment) as unknown as Type;
   }
 
   $defaultFn(fn: () => Type): Column<Name, Type, 'withDefault'> {
@@ -280,6 +292,17 @@ export class Column<
         name: this.__meta__.name,
         table: this.__table__.getName(),
       },
+    };
+  }
+}
+
+export class ColumnUpdateExpression {
+  constructor(private readonly fragment: RawSql) {}
+
+  build(column: Column<any, any, any>): RawSql {
+    return {
+      query: `${column.__meta__.dbName} ${this.fragment.query}`.trim(),
+      params: [...this.fragment.params],
     };
   }
 }

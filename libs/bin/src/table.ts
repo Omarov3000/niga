@@ -1,4 +1,4 @@
-import { Column } from './column';
+import { Column, ColumnUpdateExpression } from './column';
 import type { IndexDefinition, TableMetadata, ColumnMetadata, BinDriver, SecurityRule, QueryContext } from './types';
 import { FilterObject, sql } from './utils/sql';
 import type { RawSql } from './utils/sql';
@@ -177,6 +177,13 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
       if (value === undefined) continue;
       const col = (this as any)[key] as Column<any, any, any> | undefined;
       if (!col || col.__meta__.insertType === 'virtual') continue;
+
+      if (value instanceof ColumnUpdateExpression) {
+        const expressionSql = value.build(col);
+        setClause.push(`${col.__meta__.dbName} = ${expressionSql.query}`);
+        params.push(...expressionSql.params);
+        continue;
+      }
 
       const encoded = col.__meta__.encode ? col.__meta__.encode(value as any) : value;
       setClause.push(`${col.__meta__.dbName} = ?`);
