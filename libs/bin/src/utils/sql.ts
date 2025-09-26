@@ -14,6 +14,10 @@ export function sql(strings: TemplateStringsArray, ...values: any[]): RawSql {
         const serialized = serializeFilterObject(value);
         query += serialized.query;
         params.push(...serialized.params);
+      } else if (value instanceof OrderObject) {
+        const serialized = serializeOrderObject(value);
+        query += serialized.query;
+        params.push(...serialized.params);
       } else if (value instanceof Column) {
         const table = value.__table__;
         if (!table) {
@@ -71,6 +75,14 @@ function serializeFilterObject(filter: FilterObject): { query: string; params: a
   }
 }
 
+function serializeOrderObject(order: OrderObject): { query: string; params: any[] } {
+  const column = `${order.column.table}.${order.column.name}`;
+  return {
+    query: `${column} ${order.direction}`,
+    params: []
+  };
+}
+
 type ComparisonOperator = "=" | "!=" | "<" | "<=" | ">" | ">=";
 
 export class SqlPart {}
@@ -92,5 +104,20 @@ export class FilterObject extends SqlPart {
     this.operator = operator;
     this.left = left;
     this.right = right;
+  }
+}
+
+export class OrderObject extends SqlPart {
+  type: "order_by_item" = "order_by_item";
+  column: ColumnReference;
+  direction: "ASC" | "DESC";
+
+  constructor(
+    column: ColumnReference,
+    direction: "ASC" | "DESC"
+  ) {
+    super();
+    this.column = column;
+    this.direction = direction;
   }
 }

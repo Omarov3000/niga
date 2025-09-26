@@ -1,5 +1,5 @@
 import type { ApplicationType, ColumnType, InsertionType, ColumnMetadata, SecurityCheckContext } from './types';
-import { FilterObject, sql } from './utils/sql';
+import { FilterObject, OrderObject, sql } from './utils/sql';
 import type { RawSql } from './utils/sql';
 
 export class Column<
@@ -212,9 +212,13 @@ export class Column<
 
   //#endregion
 
-  // TODO: implement
-  // asc(): OrderObject
-  // desc(): OrderObject
+  asc(): OrderObject {
+    return new OrderObject(this.getSqlColumnReference(), "ASC");
+  }
+
+  desc(): OrderObject {
+    return new OrderObject(this.getSqlColumnReference(), "DESC");
+  }
 
   // TODO: implement
   // count(): Column<..., "virtual">

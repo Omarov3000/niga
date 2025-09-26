@@ -237,6 +237,129 @@ describe('select', () => {
   });
 });
 
+describe('ordering', () => {
+  it('should support column.asc() and column.desc() in ORDER BY clauses', async () => {
+    const users = b.table('users', {
+      id: b.id(),
+      name: b.text(),
+      age: b.integer(),
+    });
+
+    const db = await b.testDb({ schema: { users } }, driverRef.driver, clearRef);
+
+    // Insert test data in random order
+    await users.insertMany([
+      { id: 'u3', name: 'Charlie', age: 35 },
+      { id: 'u1', name: 'Alice', age: 25 },
+      { id: 'u4', name: 'David', age: 20 },
+      { id: 'u2', name: 'Bob', age: 30 },
+    ]);
+
+    // Test ascending order by age
+    const ascByAge = await db
+      .query`SELECT ${db.users.id}, ${db.users.name}, ${db.users.age} FROM users ORDER BY ${db.users.age.asc()}`
+      .execute(b.z.object({ id: b.z.id(), name: b.z.text(), age: b.z.integer() }));
+
+    expect(ascByAge).toMatchObject([
+      { id: 'u4', name: 'David', age: 20 },
+      { id: 'u1', name: 'Alice', age: 25 },
+      { id: 'u2', name: 'Bob', age: 30 },
+      { id: 'u3', name: 'Charlie', age: 35 },
+    ]);
+
+    // Test descending order by age
+    const descByAge = await db
+      .query`SELECT ${db.users.id}, ${db.users.name}, ${db.users.age} FROM users ORDER BY ${db.users.age.desc()}`
+      .execute(b.z.object({ id: b.z.id(), name: b.z.text(), age: b.z.integer() }));
+
+    expect(descByAge).toMatchObject([
+      { id: 'u3', name: 'Charlie', age: 35 },
+      { id: 'u2', name: 'Bob', age: 30 },
+      { id: 'u1', name: 'Alice', age: 25 },
+      { id: 'u4', name: 'David', age: 20 },
+    ]);
+
+    // Test ascending order by name
+    const ascByName = await db
+      .query`SELECT ${db.users.id}, ${db.users.name}, ${db.users.age} FROM users ORDER BY ${db.users.name.asc()}`
+      .execute(b.z.object({ id: b.z.id(), name: b.z.text(), age: b.z.integer() }));
+
+    expect(ascByName).toMatchObject([
+      { id: 'u1', name: 'Alice', age: 25 },
+      { id: 'u2', name: 'Bob', age: 30 },
+      { id: 'u3', name: 'Charlie', age: 35 },
+      { id: 'u4', name: 'David', age: 20 },
+    ]);
+  });
+
+  it('should support multiple column ordering', async () => {
+    const products = b.table('products', {
+      id: b.id(),
+      category: b.text(),
+      name: b.text(),
+      price: b.integer(),
+    });
+
+    const db = await b.testDb({ schema: { products } }, driverRef.driver, clearRef);
+
+    // Insert test data
+    await products.insertMany([
+      { id: 'p1', category: 'electronics', name: 'Phone', price: 800 },
+      { id: 'p2', category: 'electronics', name: 'Laptop', price: 1200 },
+      { id: 'p3', category: 'books', name: 'Novel', price: 15 },
+      { id: 'p4', category: 'books', name: 'Textbook', price: 50 },
+      { id: 'p5', category: 'electronics', name: 'Tablet', price: 400 },
+    ]);
+
+    // Test ordering by category ASC, then price DESC
+    const ordered = await db
+      .query`SELECT ${db.products.id}, ${db.products.category}, ${db.products.name}, ${db.products.price} FROM products ORDER BY ${db.products.category.asc()}, ${db.products.price.desc()}`
+      .execute(b.z.object({
+        id: b.z.id(),
+        category: b.z.text(),
+        name: b.z.text(),
+        price: b.z.integer()
+      }));
+
+    expect(ordered).toMatchObject([
+      { id: 'p4', category: 'books', name: 'Textbook', price: 50 },
+      { id: 'p3', category: 'books', name: 'Novel', price: 15 },
+      { id: 'p2', category: 'electronics', name: 'Laptop', price: 1200 },
+      { id: 'p1', category: 'electronics', name: 'Phone', price: 800 },
+      { id: 'p5', category: 'electronics', name: 'Tablet', price: 400 },
+    ]);
+  });
+
+  it('should handle ordering with WHERE clauses', async () => {
+    const users = b.table('users', {
+      id: b.id(),
+      name: b.text(),
+      age: b.integer(),
+      status: b.text(),
+    });
+
+    const db = await b.testDb({ schema: { users } }, driverRef.driver, clearRef);
+
+    await users.insertMany([
+      { id: 'u1', name: 'Alice', age: 25, status: 'active' },
+      { id: 'u2', name: 'Bob', age: 35, status: 'active' },
+      { id: 'u3', name: 'Charlie', age: 20, status: 'inactive' },
+      { id: 'u4', name: 'David', age: 30, status: 'active' },
+    ]);
+
+    // Test ordering with WHERE filter
+    const activeUsersByAge = await db
+      .query`SELECT ${db.users.id}, ${db.users.name}, ${db.users.age} FROM users WHERE ${db.users.status.eq('active')} ORDER BY ${db.users.age.desc()}`
+      .execute(b.z.object({ id: b.z.id(), name: b.z.text(), age: b.z.integer() }));
+
+    expect(activeUsersByAge).toMatchObject([
+      { id: 'u2', name: 'Bob', age: 35 },
+      { id: 'u4', name: 'David', age: 30 },
+      { id: 'u1', name: 'Alice', age: 25 },
+    ]);
+  });
+});
+
 describe('update', () => {
   it('should update data with WHERE clause', async () => {
     const users = b.table('users', {
