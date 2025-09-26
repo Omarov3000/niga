@@ -1,5 +1,9 @@
 import { expect, it } from 'vitest';
 import { makeBrowserSQLite } from './bin-browser-driver';
+import { runSharedBinDriverTests } from '@w/bin/src/run-shared-bin-driver-tests';
+import { BinBrowserDriver } from './bin-browser-driver';
+
+const {driverRef, clearRef} = runSharedBinDriverTests(() => new BinBrowserDriver(makeBrowserSQLite()), { skipTableCleanup: true })
 
 // it('works', () => {
 //   const db = makeBrowserSQLite();
