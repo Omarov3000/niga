@@ -1,5 +1,6 @@
 import { Column } from './column';
 import type { IndexDefinition, TableMetadata, ColumnMetadata, BinDriver, SecurityRule, QueryContext } from './types';
+import { FilterObject, sql } from './utils/sql';
 import type { RawSql } from './utils/sql';
 import { analyze } from './security/analyze';
 import { toSnakeCase } from './utils/casing';
@@ -144,11 +145,13 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     this: TSelf,
     options: {
       data: Partial<InsertableForCols<TSelfCols>>;
-      where: RawSql;
+      where: RawSql | FilterObject;
     }
   ): Promise<void> {
     const driver = this.__db__.getDriver();
     const colsMeta = this.__meta__.columns;
+
+    const whereClause = options.where instanceof FilterObject ? sql`${options.where}` : options.where;
 
     // Apply onUpdate functions first
     const updatedData: Record<string, unknown> = { ...options.data };
@@ -181,9 +184,9 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     }
 
     // Add WHERE clause parameters
-    params.push(...options.where.params);
+    params.push(...whereClause.params);
 
-    const query = `UPDATE ${this.__meta__.dbName} SET ${setClause.join(', ')} WHERE ${options.where.query}`;
+    const query = `UPDATE ${this.__meta__.dbName} SET ${setClause.join(', ')} WHERE ${whereClause.query}`;
     const fullQuery = { query, params };
 
     // Parse for security analysis and check security
@@ -195,13 +198,15 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
   async delete<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf>>(
     this: TSelf,
     options: {
-      where: RawSql;
+      where: RawSql | FilterObject;
     }
   ): Promise<void> {
     const driver = this.__db__.getDriver();
 
-    const query = `DELETE FROM ${this.__meta__.dbName} WHERE ${options.where.query}`;
-    const params = [...options.where.params];
+    const whereClause = options.where instanceof FilterObject ? sql`${options.where}` : options.where;
+
+    const query = `DELETE FROM ${this.__meta__.dbName} WHERE ${whereClause.query}`;
+    const params = [...whereClause.params];
     const fullQuery = { query, params };
 
     // Parse for security analysis and check security

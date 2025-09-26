@@ -274,7 +274,7 @@ describe('update', () => {
     // Update user-1's age and name
     await users.update({
       data: { name: 'Johnny Doe', age: 26 },
-      where: sql`${users.id.eq('user-1')}`,
+      where: users.id.eq('user-1'),
     });
 
     // Verify user-1 was updated
@@ -307,7 +307,7 @@ describe('update', () => {
     // Update to publish the post
     await posts.update({
       data: { title: 'Published Post', published: true, views: 100 },
-      where: sql`${posts.id.eq('post-1')}`,
+      where: posts.id.eq('post-1'),
     });
 
     // Verify update (boolean stored as integer)
@@ -343,7 +343,7 @@ describe('update', () => {
     // Update user
     await users.update({
       data: { name: 'Johnny Doe' },
-      where: sql`${users.id.eq('user-1')}`,
+      where: users.id.eq('user-1'),
     });
 
     // Verify onUpdate function was called
