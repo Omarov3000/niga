@@ -11,18 +11,24 @@ import type { SecurityCheckContext } from '../types';
  * @param securityCheck - The required security condition (e.g., from column.equalityCheck)
  * @returns true if all execution paths include the security check, false otherwise
  */
-export function hasWhereClauseCheck(analysis: QueryAnalysis, securityCheck: SecurityCheckContext): boolean {
+export function hasWhereClauseCheck(
+  analysis: QueryAnalysis,
+  securityCheck: SecurityCheckContext,
+  message?: string
+): void {
   const targetTable = analysis.accessedTables.find(table => table.name === securityCheck.tableName);
-  if (!targetTable) return true; // If the table isn't accessed, no security check is needed
+  if (!targetTable) return; // If the table isn't accessed, no security check is needed
 
   // Check that ALL filter branches contain the required security condition
   // If there are no filter branches, or empty filter branches, it means there's no WHERE clause
   if (targetTable.filterBranches.length === 0 || (targetTable.filterBranches.length === 1 && targetTable.filterBranches[0].length === 0)) {
     // For INSERT queries, we don't need to check WHERE clauses since they don't have them
     if (analysis.type === 'insert') {
-      return true;
+      return;
     }
-    return false; // This is a SELECT/UPDATE/DELETE without proper WHERE clause
+    const baseMessage =
+      message ?? `Missing WHERE clause enforcing ${securityCheck.tableName}.${securityCheck.columnName} ${securityCheck.operator} ${String(securityCheck.value)}`;
+    throw new Error(`${baseMessage} (table: ${securityCheck.tableName})`);
   }
 
   // Each branch represents an OR condition, and within each branch are AND conditions
@@ -36,9 +42,9 @@ export function hasWhereClauseCheck(analysis: QueryAnalysis, securityCheck: Secu
 
     if (!hasSecurityCondition) {
       // This branch doesn't contain the required security check
-      return false;
+      const baseMessage =
+        message ?? `Missing required filter ${securityCheck.tableName}.${securityCheck.columnName} ${securityCheck.operator} ${String(securityCheck.value)}`;
+      throw new Error(`${baseMessage} (table: ${securityCheck.tableName})`);
     }
   }
-
-  return true;
 }

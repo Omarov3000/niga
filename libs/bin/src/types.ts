@@ -84,7 +84,7 @@ export interface QueryContext<TData extends Record<string, unknown> = Record<str
   analysis: QueryAnalysis;
 }
 
-export type SecurityRule<TUser = any, TData extends Record<string, unknown> = Record<string, unknown>> = (query: QueryContext<TData>, user: TUser) => boolean | Promise<boolean>;
+export type SecurityRule<TUser = any, TData extends Record<string, unknown> = Record<string, unknown>> = (query: QueryContext<TData>, user: TUser) => boolean | void | Promise<boolean | void>;
 
 export interface ImmutableFieldRule {
   tableName: string;

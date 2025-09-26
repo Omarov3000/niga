@@ -4,6 +4,12 @@ import { analyze } from './analyze';
 import { hasWhereClauseCheck } from './has-where-clause-check';
 import type { SecurityCheckContext } from '../types';
 
+const evaluate = (
+  rawSql: ReturnType<typeof sql>,
+  securityCheck: SecurityCheckContext,
+  message?: string
+) => () => hasWhereClauseCheck(analyze(rawSql), securityCheck, message);
+
 describe('hasWhereClauseCheck', () => {
   const userOwnershipCheck: SecurityCheckContext = {
     tableName: 'posts',
@@ -19,141 +25,114 @@ describe('hasWhereClauseCheck', () => {
     operator: '='
   };
 
-  const evaluate = (rawSql: ReturnType<typeof sql>, securityCheck: SecurityCheckContext) =>
-    hasWhereClauseCheck(analyze(rawSql), securityCheck);
-
   describe('SELECT queries', () => {
-    it('returns true when WHERE clause contains the required security check', () => {
+    it('allows queries containing the required security check', () => {
       const query = sql`SELECT * FROM posts WHERE user_id = ${123}`;
-      const result = evaluate(query, userOwnershipCheck);
-      expect(result).toBe(true);
+      expect(evaluate(query, userOwnershipCheck)).not.toThrow();
     });
 
-    it('returns false when WHERE clause is missing the security check', () => {
+    it('throws when WHERE clause is missing the security check', () => {
       const query = sql`SELECT * FROM posts WHERE title = ${'something'}`;
-      const result = evaluate(query, userOwnershipCheck);
-      expect(result).toBe(false);
+      expect(evaluate(query, userOwnershipCheck)).toThrow('Missing required filter posts.user_id = 123 (table: posts)');
     });
 
-    it('returns false when there is no WHERE clause at all', () => {
+    it('throws when WHERE clause is absent entirely', () => {
       const query = sql`SELECT * FROM posts`;
-      const result = evaluate(query, userOwnershipCheck);
-      expect(result).toBe(false);
+      expect(evaluate(query, userOwnershipCheck)).toThrow('Missing WHERE clause enforcing posts.user_id = 123 (table: posts)');
     });
 
-    it('returns true when AND condition includes the security check', () => {
+    it('allows queries where AND conditions include the security check', () => {
       const query = sql`SELECT * FROM posts WHERE user_id = ${123} AND status = ${'published'}`;
-      const result = evaluate(query, userOwnershipCheck);
-      expect(result).toBe(true);
+      expect(evaluate(query, userOwnershipCheck)).not.toThrow();
     });
 
-    it('returns false when OR condition has branches without security check', () => {
+    it('throws when any OR branch omits the security check', () => {
       const query = sql`SELECT * FROM posts WHERE user_id = ${123} OR title = ${'public'}`;
-      const result = evaluate(query, userOwnershipCheck);
-      expect(result).toBe(false);
+      expect(evaluate(query, userOwnershipCheck)).toThrow('Missing required filter posts.user_id = 123 (table: posts)');
     });
 
-    it('returns true when all OR branches contain the security check (complex parentheses handling)', () => {
+    it('allows OR branches when every branch contains the security check', () => {
       const query = sql`SELECT * FROM posts WHERE (user_id = ${123} AND status = ${'draft'}) OR (user_id = ${123} AND status = ${'published'})`;
-      const result = evaluate(query, userOwnershipCheck);
-      expect(result).toBe(true);
+      expect(evaluate(query, userOwnershipCheck)).not.toThrow();
     });
 
-    it('returns false when one OR branch is missing the security check (complex parentheses)', () => {
+    it('throws when nested OR branches miss the security check', () => {
       const query = sql`SELECT * FROM posts WHERE (user_id = ${123} AND status = ${'draft'}) OR (status = ${'published'} AND created_at > ${'2023-01-01'})`;
-      const result = evaluate(query, userOwnershipCheck);
-      expect(result).toBe(false);
+      expect(evaluate(query, userOwnershipCheck)).toThrow('Missing required filter posts.user_id = 123 (table: posts)');
     });
 
-    it('returns true for deeply nested parentheses with consistent security checks', () => {
+    it('allows deeply nested parentheses with consistent security checks', () => {
       const query = sql`SELECT * FROM posts WHERE ((user_id = ${123} AND status = ${'draft'}) OR (user_id = ${123} AND priority = ${'high'})) AND category = ${'tech'}`;
-      const result = evaluate(query, userOwnershipCheck);
-      expect(result).toBe(true);
+      expect(evaluate(query, userOwnershipCheck)).not.toThrow();
     });
 
-    it('returns true when table is not accessed', () => {
+    it('skips enforcement when the target table is not accessed', () => {
       const query = sql`SELECT * FROM comments WHERE post_id = ${456}`;
-      const result = evaluate(query, userOwnershipCheck);
-      expect(result).toBe(true); // posts table not accessed, so no check needed
+      expect(evaluate(query, userOwnershipCheck)).not.toThrow();
     });
   });
 
   describe('UPDATE queries', () => {
-    it('returns true when UPDATE WHERE clause contains security check', () => {
+    it('allows updates with the security check in WHERE clause', () => {
       const query = sql`UPDATE posts SET title = ${'updated'} WHERE user_id = ${123}`;
-      const result = evaluate(query, userOwnershipCheck);
-      expect(result).toBe(true);
+      expect(evaluate(query, userOwnershipCheck)).not.toThrow();
     });
 
-    it('returns false when UPDATE WHERE clause misses security check', () => {
+    it('throws when UPDATE is missing the security check', () => {
       const query = sql`UPDATE posts SET title = ${'updated'} WHERE id = ${456}`;
-      const result = evaluate(query, userOwnershipCheck);
-      expect(result).toBe(false);
+      expect(evaluate(query, userOwnershipCheck)).toThrow('Missing required filter posts.user_id = 123 (table: posts)');
     });
 
-    it('returns false when UPDATE has no WHERE clause', () => {
+    it('throws when UPDATE has no WHERE clause', () => {
       const query = sql`UPDATE posts SET title = ${'updated'}`;
-      const result = evaluate(query, userOwnershipCheck);
-      expect(result).toBe(false);
+      expect(evaluate(query, userOwnershipCheck)).toThrow('Missing WHERE clause enforcing posts.user_id = 123 (table: posts)');
     });
   });
 
   describe('DELETE queries', () => {
-    it('returns true when DELETE WHERE clause contains security check', () => {
+    it('allows deletes with the security check', () => {
       const query = sql`DELETE FROM posts WHERE user_id = ${123}`;
-      const result = evaluate(query, userOwnershipCheck);
-      expect(result).toBe(true);
+      expect(evaluate(query, userOwnershipCheck)).not.toThrow();
     });
 
-    it('returns false when DELETE WHERE clause misses security check', () => {
+    it('throws when DELETE WHERE clause misses the security check', () => {
       const query = sql`DELETE FROM posts WHERE status = ${'draft'}`;
-      const result = evaluate(query, userOwnershipCheck);
-      expect(result).toBe(false);
+      expect(evaluate(query, userOwnershipCheck)).toThrow('Missing required filter posts.user_id = 123 (table: posts)');
     });
 
-    it('returns false when DELETE has no WHERE clause', () => {
+    it('throws when DELETE lacks a WHERE clause', () => {
       const query = sql`DELETE FROM posts`;
-      const result = evaluate(query, userOwnershipCheck);
-      expect(result).toBe(false);
+      expect(evaluate(query, userOwnershipCheck)).toThrow('Missing WHERE clause enforcing posts.user_id = 123');
     });
   });
 
   describe('INSERT queries', () => {
-    it('returns true for INSERT queries (no WHERE clause analysis needed)', () => {
+    it('ignores INSERT queries (no WHERE clause)', () => {
       const query = sql`INSERT INTO posts (title, user_id) VALUES (${'test'}, ${123})`;
-      const result = evaluate(query, userOwnershipCheck);
-      expect(result).toBe(true); // INSERT doesn't have WHERE clause to check
+      expect(evaluate(query, userOwnershipCheck)).not.toThrow();
     });
   });
 
   describe('Complex queries with joins and subqueries', () => {
-    it('returns true when JOIN includes security check in WHERE', () => {
+    it('allows joins when WHERE clause enforces security', () => {
       const query = sql`SELECT p.*, u.name FROM posts p JOIN users u ON p.user_id = u.id WHERE p.user_id = ${123}`;
-      const result = evaluate(query, userOwnershipCheck);
-      expect(result).toBe(true);
+      expect(evaluate(query, userOwnershipCheck)).not.toThrow();
     });
 
-    it('returns false when subquery bypasses security check', () => {
+    it('throws when a subquery bypasses the security check', () => {
       const query = sql`SELECT * FROM posts WHERE id IN (SELECT post_id FROM comments WHERE author = ${'someone'})`;
-      const result = evaluate(query, userOwnershipCheck);
-      expect(result).toBe(false);
+      expect(evaluate(query, userOwnershipCheck)).toThrow('Missing WHERE clause enforcing posts.user_id = 123');
     });
 
-    it('handles multiple tables with different security checks', () => {
+    it('handles multiple tables with independent checks', () => {
       const query = sql`SELECT p.*, u.name FROM posts p JOIN users u ON p.user_id = u.id WHERE p.user_id = ${123} AND u.role = ${'admin'}`;
-
-      // Check posts table security
-      const postsResult = evaluate(query, userOwnershipCheck);
-      expect(postsResult).toBe(true);
-
-      // Check users table security
-      const usersResult = evaluate(query, adminCheck);
-      expect(usersResult).toBe(true);
+      expect(evaluate(query, userOwnershipCheck)).not.toThrow();
+      expect(evaluate(query, adminCheck)).not.toThrow();
     });
   });
 
   describe('Edge cases', () => {
-    it('handles different operators correctly', () => {
+    it('supports operators beyond equality', () => {
       const gtCheck: SecurityCheckContext = {
         tableName: 'posts',
         columnName: 'created_at',
@@ -162,11 +141,10 @@ describe('hasWhereClauseCheck', () => {
       };
 
       const query = sql`SELECT * FROM posts WHERE created_at > ${1234567890}`;
-      const result = evaluate(query, gtCheck);
-      expect(result).toBe(true);
+      expect(evaluate(query, gtCheck)).not.toThrow();
     });
 
-    it('handles null values in security checks', () => {
+    it('supports null value comparisons', () => {
       const nullCheck: SecurityCheckContext = {
         tableName: 'posts',
         columnName: 'deleted_at',
@@ -175,20 +153,17 @@ describe('hasWhereClauseCheck', () => {
       };
 
       const query = sql`SELECT * FROM posts WHERE deleted_at = ${null}`;
-      const result = evaluate(query, nullCheck);
-      expect(result).toBe(true);
+      expect(evaluate(query, nullCheck)).not.toThrow();
     });
 
-    it('returns false when value does not match', () => {
-      const query = sql`SELECT * FROM posts WHERE user_id = ${456}`; // Different user ID
-      const result = evaluate(query, userOwnershipCheck); // Expects user_id = 123
-      expect(result).toBe(false);
+    it('throws when value does not match expectation', () => {
+      const query = sql`SELECT * FROM posts WHERE user_id = ${456}`;
+      expect(evaluate(query, userOwnershipCheck)).toThrow('Missing required filter posts.user_id = 123 (table: posts)');
     });
 
-    it('returns false when operator does not match', () => {
-      const query = sql`SELECT * FROM posts WHERE user_id != ${123}`; // Different operator
-      const result = evaluate(query, userOwnershipCheck); // Expects user_id = 123
-      expect(result).toBe(false);
+    it('throws when operator does not match expectation', () => {
+      const query = sql`SELECT * FROM posts WHERE user_id != ${123}`;
+      expect(evaluate(query, userOwnershipCheck)).toThrow('Missing required filter posts.user_id = 123');
     });
   });
 });

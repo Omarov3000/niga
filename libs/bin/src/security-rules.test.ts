@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import { sql } from './utils/sql';
 import { b } from './builder';
+import { hasWhereClauseCheck } from './security/has-where-clause-check';
 
 describe('security rules end-to-end', () => {
   describe('basic security rules', () => {
@@ -12,15 +13,8 @@ describe('security rules end-to-end', () => {
         content: b.text(),
         userId: b.text().notNull()
       }).secure((query, user: { id: string; role: string }) => {
-        if (user.role === 'admin') return true;
-
-        switch (query.type) {
-          case 'delete':
-            return false; // Only admins can delete
-          case 'insert':
-          case 'update':
-          case 'select':
-            return true; // Regular users can read/write
+        if (query.type === 'delete') {
+          throw new Error('RBAC: delete requires admin role');
         }
       });
 
@@ -44,7 +38,7 @@ describe('security rules end-to-end', () => {
 
       await expect(posts.delete({
         where: sql`id = 'post123'`
-      })).rejects.toThrow('Security check failed for delete operation on table posts');
+      })).rejects.toThrow('RBAC: delete requires admin role');
 
       // But regular user should be able to insert and update
       await expect(posts.insert({
@@ -59,7 +53,7 @@ describe('security rules end-to-end', () => {
       })).resolves.not.toThrow();
     });
 
-    it('should enforce ABAC (Attribute-Based Access Control) with WHERE clause checking', async () => {
+    it('should enforce ABAC (Attribute-Based Access Control)', async () => {
       const documents = b.table('documents', {
         id: b.id(),
         title: b.text().notNull(),
@@ -67,24 +61,23 @@ describe('security rules end-to-end', () => {
         ownerId: b.text().notNull(),
         isPublic: b.boolean()
       }).secure((query, user: { id: string }) => {
-        // Users can only access their own documents unless public
-        if (query.type === 'select') return true; // Allow all selects (WHERE clause will be checked separately)
-
         if (query.type === 'insert') {
-          return query.data?.ownerId === user.id; // user cannot insert data for other users
-        }
+          if (query.data?.ownerId !== user.id) throw new Error('ABAC: ownerId must match current user');
+        } else if (query.type === 'update') {
+          hasWhereClauseCheck(
+            query.analysis,
+            documents.ownerId.equalityCheck(user.id),
+            'ABAC: only owner can update document'
+          );
 
-        if (query.type === 'update') {
-          // Cannot change ownership; if provided it must match current user
-          return query.data?.ownerId === undefined || query.data.ownerId === user.id;
+          documents.ownerId.assertImmutable(query.data, user.id)
+        } else if (query.type === 'delete') {
+          hasWhereClauseCheck(
+            query.analysis,
+            documents.ownerId.equalityCheck(user.id),
+            'ABAC: only owner can delete document'
+          );
         }
-
-        if (query.type === 'delete') {
-          // Allow; WHERE ownerId is validated elsewhere
-          return true;
-        }
-
-        return false;
       });
 
       const db = b.db({ schema: { documents } });
@@ -110,17 +103,35 @@ describe('security rules end-to-end', () => {
         content: 'Content',
         ownerId: 'other_user',
         isPublic: false
-      })).rejects.toThrow('Security check failed for insert operation on table documents');
+      })).rejects.toThrow('ABAC: ownerId must match current user');
 
-      // Should allow update and delete (WHERE clause checking would be done separately)
+      // Should allow update when WHERE clause keeps ownership restriction
       await expect(documents.update({
         data: { title: 'Updated Title' },
         where: sql`ownerId = ${user.id}`
       })).resolves.not.toThrow();
 
+      // Should reject update if WHERE clause is missing ownership filter
+      await expect(documents.update({
+        data: { title: 'No ownership filter' },
+        where: sql`title = 'My Document'`
+      })).rejects.toThrow('ABAC: only owner can update document (table: documents)');
+
+      // Should reject update if attempting to change ownerId
+      await expect(documents.update({
+        data: { ownerId: 'hacker' },
+        where: sql`ownerId = ${user.id}`
+      })).rejects.toThrow('Column ownerId is immutable');
+
+      // Should allow delete when WHERE clause keeps ownership restriction
       await expect(documents.delete({
         where: sql`ownerId = ${user.id}`
       })).resolves.not.toThrow();
+
+      // Should reject delete without ownership filter
+      await expect(documents.delete({
+        where: sql`title = 'My Document'`
+      })).rejects.toThrow('ABAC: only owner can delete document (table: documents)');
     });
   });
 
@@ -129,7 +140,10 @@ describe('security rules end-to-end', () => {
       const posts = b.table('posts', {
         id: b.id(),
         title: b.text().notNull()
-      }).secure((query, user: { role: string }) => user?.role === 'admin');
+      }).secure((query, user: { role: string }) => {
+        if (user.role === 'admin') return;
+        throw new Error(`RBAC: ${query.type} requires admin role`);
+      });
 
       const db = b.db({ schema: { posts } });
       await db._connectDriver({
@@ -141,7 +155,7 @@ describe('security rules end-to-end', () => {
 
       await expect(
         db.query`SELECT id, title FROM posts`.execute(z.object({ id: z.string(), title: z.string() }))
-      ).rejects.toThrow('Security check failed for select operation on table posts');
+      ).rejects.toThrow('RBAC: select requires admin role');
 
       db.connectUser({ role: 'admin' });
 
@@ -157,17 +171,15 @@ describe('security rules end-to-end', () => {
       const posts = b.table('posts', {
         id: b.id(),
         authorId: b.text().notNull()
-      }).secure((query) => {
+      }).secure(() => {
         postsRuleInvoked += 1;
-        return true;
       });
 
       const users = b.table('users', {
         id: b.id(),
         role: b.text().notNull()
-      }).secure((query) => {
+      }).secure(() => {
         usersRuleInvoked += 1;
-        return true;
       });
 
       const db = b.db({ schema: { posts, users } });

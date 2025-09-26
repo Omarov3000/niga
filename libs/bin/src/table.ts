@@ -217,9 +217,16 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
 
   async enforceSecurityRules<TUser = any>(queryContext: QueryContext, user: TUser): Promise<void> {
     for (const rule of this._securityRules) {
-      const allowed = await rule(queryContext, user);
-      if (allowed === false) {
-        throw new Error(`Security check failed for ${queryContext.type} operation on table ${this.__meta__.name}`);
+      try {
+        const allowed = await rule(queryContext, user);
+        if (allowed === false) {
+          throw new Error(`Security rule returned false for ${queryContext.type} operation on table ${this.__meta__.name}`);
+        }
+      } catch (error) {
+        if (error instanceof Error) {
+          throw error;
+        }
+        throw new Error(String(error));
       }
     }
   }

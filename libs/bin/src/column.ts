@@ -210,6 +210,15 @@ export class Column<
     };
   }
 
+  assertImmutable(data?: Record<string, unknown>, allowedValue?: Type) {
+    if (!data) return
+
+    if (this.__meta__.name in data) {
+      if (data[this.__meta__.name] !== undefined && data[this.__meta__.name] !== allowedValue)
+      throw new Error(`Column ${this.__meta__.name} is immutable`);
+    }
+  }
+
   //#endregion
 
   readonly __meta__: ColumnMetadata;
