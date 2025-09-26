@@ -8,6 +8,10 @@ export type ApplicationType = 'json' | 'date' | 'boolean' | 'enum' | 'ulid' | un
 
 export type InsertionType = 'required' | 'optional' | 'virtual' | 'withDefault';
 
+export type ConstraintType = 'primaryKey' | 'unique';
+
+export type ConstraintDefinition = [ConstraintType, ...string[]];
+
 export interface ColumnMetadata {
   name: string;
   dbName: string;
@@ -57,7 +61,7 @@ export interface SerializableTableMetadata {
   dbName: string;
   columns: Record<string, SerializableColumnMetadata>;
   indexes?: IndexDefinition[];
-  constrains?: string[][];
+  constrains?: ConstraintDefinition[];
   renamedFrom?: string;
 }
 
@@ -77,7 +81,7 @@ export interface TableMetadata {
   dbName: string;
   columns: Record<string, ColumnMetadata>;
   indexes?: IndexDefinition[];
-  constrains?: string[][];
+  constrains?: ConstraintDefinition[];
   aliasedFrom?: string;
   renamedFrom?: string;
 }

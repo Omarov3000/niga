@@ -1,0 +1,23 @@
+{
+  "name": "@w/fe-bin-browser",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "main": "src/index.ts",
+  "scripts": {
+    "tsc": "tsc",
+    "tsc:watch": "tsc -w",
+    "test": "vitest run --browser.headless",
+    "test:watch": "vitest",
+    "check": "pnpm tsc && pnpm test",
+    "lint1": "biome lint --write --unsafe --error-on-warnings src",
+    "prepare": "playwright install chromium"
+  },
+
+  "dependencies": {
+    "@w/bin": "workspace:*",
+    "@sqlite.org/sqlite-wasm": "^3.50.4-build1"
+  },
+  "devDependencies": {
+  }
+}

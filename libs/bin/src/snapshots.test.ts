@@ -149,4 +149,58 @@ describe('snapshot and migration', () => {
 
     expect(() => mutatedDb._prepareSnapshot(baseSnapshot.snapshot)).toThrow(ColumnMutationNotSupportedError);
   });
+
+  it('captures table constraints in snapshots', async () => {
+    const users = b.table(
+      'users',
+      {
+        id: b.text(),
+        email: b.text(),
+        firstName: b.text(),
+        lastName: b.text(),
+      },
+      undefined,
+      (t) => [b.primaryKey(t.id), b.unique(t.email), b.unique(t.firstName, t.lastName)]
+    );
+
+    await runScenario([
+      {
+        schema: { users },
+        assert: (prepared) => {
+          expect(prepared.hasChanges).toBe(true);
+          expect(prepared.migration.sql).toContain('CREATE TABLE users');
+          expect(prepared.migration.sql).toContain('PRIMARY KEY (id)');
+          expect(prepared.migration.sql).toContain('UNIQUE (email)');
+          expect(prepared.migration.sql).toContain('UNIQUE (first_name, last_name)');
+
+          const userSnapshot = prepared.snapshot.find(s => s.name === 'users');
+          expect(userSnapshot?.constrains).toMatchObject([
+            ['primaryKey', 'id'],
+            ['unique', 'email'],
+            ['unique', 'first_name', 'last_name']
+          ]);
+        },
+      },
+      {
+        schema: { users },
+        assert: (prepared) => {
+          expect(prepared.hasChanges).toBe(false);
+          expect(prepared.migration.sql).toBe('');
+        },
+      },
+    ]);
+  });
+
+  it('throws error on constraint changes', () => {
+    const usersNoConstraints = b.table('users', { id: b.text(), email: b.text() });
+    const usersPrimaryKey = b.table('users', { id: b.text(), email: b.text() }, undefined, (t) => [b.primaryKey(t.id)]);
+
+    const db1 = b.db({ schema: { users: usersNoConstraints } });
+    const snapshot1 = db1._prepareSnapshot();
+
+    const db2 = b.db({ schema: { users: usersPrimaryKey } });
+
+    expect(() => db2._prepareSnapshot(snapshot1.snapshot))
+      .toThrow("Constraint changes are not supported. Table 'users' constraint changes detected.");
+  });
 });

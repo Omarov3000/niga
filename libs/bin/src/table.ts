@@ -1,5 +1,5 @@
 import { Column, ColumnUpdateExpression } from './column';
-import type { IndexDefinition, TableMetadata, ColumnMetadata, BinDriver, SecurityRule, QueryContext } from './types';
+import type { IndexDefinition, TableMetadata, ColumnMetadata, BinDriver, SecurityRule, QueryContext, ConstraintDefinition } from './types';
 import { FilterObject, sql } from './utils/sql';
 import type { RawSql } from './utils/sql';
 import { analyze } from './security/analyze';
@@ -40,6 +40,7 @@ export interface TableConstructorOptions<Name extends string, TCols extends Reco
   name: Name;
   columns: TCols;
   indexes?: IndexDefinition[];
+  constrains?: ConstraintDefinition[];
 }
 
 export class Table<Name extends string, TCols extends Record<string, Column<any, any, any>>> {
@@ -293,6 +294,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
       dbName: tableDbName,
       columns: columnMetadata,
       indexes: options.indexes ?? [],
+      constrains: options.constrains ?? [],
     } as TableMetadata;
   }
 }

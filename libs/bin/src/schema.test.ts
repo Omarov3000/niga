@@ -157,4 +157,180 @@ describe('schema generation', () => {
     expect(db.users).toBeDefined();
     expect(db.posts).toBeDefined();
   });
+
+  it('single column primary key constraint', () => {
+    const users = b.table(
+      'users',
+      {
+        id: b.text(),
+        name: b.text(),
+      },
+      undefined,
+      (t) => [b.primaryKey(t.id)]
+    );
+
+    const db = b.db({ schema: { users } });
+
+    expect(db.getSchemaDefinition()).toBe(dedent`
+      CREATE TABLE users (
+        id TEXT,
+        name TEXT,
+        PRIMARY KEY (id)
+      );
+    `);
+  });
+
+  it('multi-column primary key constraint', () => {
+    const userRoles = b.table(
+      'user_roles',
+      {
+        userId: b.text(),
+        roleId: b.text(),
+        assignedAt: b.date(),
+      },
+      undefined,
+      (t) => [b.primaryKey(t.userId, t.roleId)]
+    );
+
+    const db = b.db({ schema: { userRoles } });
+
+    expect(db.getSchemaDefinition()).toBe(dedent`
+      CREATE TABLE user_roles (
+        user_id TEXT,
+        role_id TEXT,
+        assigned_at INTEGER,
+        PRIMARY KEY (user_id, role_id)
+      );
+    `);
+  });
+
+  it('single column unique constraint', () => {
+    const users = b.table(
+      'users',
+      {
+        id: b.id(),
+        email: b.text(),
+        name: b.text(),
+      },
+      undefined,
+      (t) => [b.unique(t.email)]
+    );
+
+    const db = b.db({ schema: { users } });
+
+    expect(db.getSchemaDefinition()).toBe(dedent`
+      CREATE TABLE users (
+        id TEXT PRIMARY KEY,
+        email TEXT,
+        name TEXT,
+        UNIQUE (email)
+      );
+    `);
+  });
+
+  it('multi-column unique constraint', () => {
+    const users = b.table(
+      'users',
+      {
+        id: b.id(),
+        firstName: b.text(),
+        lastName: b.text(),
+        email: b.text(),
+      },
+      undefined,
+      (t) => [b.unique(t.firstName, t.lastName)]
+    );
+
+    const db = b.db({ schema: { users } });
+
+    expect(db.getSchemaDefinition()).toBe(dedent`
+      CREATE TABLE users (
+        id TEXT PRIMARY KEY,
+        first_name TEXT,
+        last_name TEXT,
+        email TEXT,
+        UNIQUE (first_name, last_name)
+      );
+    `);
+  });
+
+  it('multiple constraints of different types', () => {
+    const products = b.table(
+      'products',
+      {
+        id: b.id(),
+        sku: b.text(),
+        barcode: b.text(),
+        name: b.text(),
+        category: b.text(),
+      },
+      undefined,
+      (t) => [b.unique(t.sku), b.unique(t.barcode), b.unique(t.name, t.category)]
+    );
+
+    const db = b.db({ schema: { products } });
+
+    expect(db.getSchemaDefinition()).toBe(dedent`
+      CREATE TABLE products (
+        id TEXT PRIMARY KEY,
+        sku TEXT,
+        barcode TEXT,
+        name TEXT,
+        category TEXT,
+        UNIQUE (sku),
+        UNIQUE (barcode),
+        UNIQUE (name, category)
+      );
+    `);
+  });
+
+  it('constraints with indexes', () => {
+    const users = b.table(
+      'users',
+      {
+        id: b.text(),
+        email: b.text(),
+        name: b.text(),
+        age: b.integer(),
+      },
+      (t) => [b.index().on(t.name), b.index().on(t.age)],
+      (t) => [b.primaryKey(t.id), b.unique(t.email)]
+    );
+
+    const db = b.db({ schema: { users } });
+
+    expect(db.getSchemaDefinition()).toBe(dedent`
+      CREATE TABLE users (
+        id TEXT,
+        email TEXT,
+        name TEXT,
+        age INTEGER,
+        PRIMARY KEY (id),
+        UNIQUE (email)
+      );
+
+      CREATE INDEX users_age_idx ON users(age);
+      CREATE INDEX users_name_idx ON users(name);
+    `);
+  });
+
+  it('constraint builder validates empty columns', () => {
+    const users = b.table('users', {
+      id: b.id(),
+      name: b.text(),
+    });
+
+    expect(() => b.primaryKey()).toThrow('primaryKey constraint requires at least one column');
+    expect(() => b.unique()).toThrow('unique constraint requires at least one column');
+  });
+
+  it('constraint builder validates duplicate columns', () => {
+    const users = b.table('users', {
+      id: b.id(),
+      name: b.text(),
+    });
+
+    expect(() => b.primaryKey(users.id, users.id)).toThrow('primaryKey constraint columns must be unique');
+    expect(() => b.unique(users.name, users.name)).toThrow('unique constraint columns must be unique');
+  });
 });

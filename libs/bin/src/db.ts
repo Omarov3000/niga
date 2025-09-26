@@ -7,7 +7,8 @@ import type {
   SerializableColumnMetadata,
   PreparedSnapshot,
   TableSnapshot,
-  IndexDefinition
+  IndexDefinition,
+  ConstraintDefinition
 } from './types';
 import { ColumnMutationNotSupportedError } from './types';
 import { deepEqual } from 'fast-equals';
@@ -194,7 +195,10 @@ function quoteIdentifier(name: string): string {
 
 function serializeCreateTable(table: SerializableTableMetadata): string {
   const columnSql = Object.values(table.columns).map((column) => serializeColumnDefinition(column, true));
-  return `CREATE TABLE ${table.dbName} (\n${columnSql.join(',\n')}\n);`;
+  const constraintSql = serializeTableConstraints(table.constrains);
+
+  const allDefinitions = [...columnSql, ...constraintSql];
+  return `CREATE TABLE ${table.dbName} (\n${allDefinitions.join(',\n')}\n);`;
 }
 
 function createIndexStatements(table: SerializableTableMetadata): string[] {
@@ -282,6 +286,7 @@ function diffSnapshots(previous: TableSnapshot[], current: TableSnapshot[]): str
     matchedPrev.add(prev.dbName);
     statements.push(...diffTableColumns(prev, curr));
     statements.push(...diffIndexes(prev, curr));
+    statements.push(...diffConstraints(prev, curr));
   });
 
   previous.forEach((prev) => {
@@ -372,6 +377,17 @@ function indexesEqual(a: NormalizedIndex, b: NormalizedIndex): boolean {
   return deepEqual(a, b);
 }
 
+function diffConstraints(previous: TableSnapshot, current: TableSnapshot): string[] {
+  const prevConstrains = previous.constrains ?? [];
+  const currConstrains = current.constrains ?? [];
+
+  if (!deepEqual(prevConstrains, currConstrains)) {
+    throw new Error(`Constraint changes are not supported. Table '${current.name}' constraint changes detected.`);
+  }
+
+  return [];
+}
+
 function serializeColumnDefinition(column: SerializableColumnMetadata, indent = false): string {
   const parts: string[] = [column.dbName, column.type.toUpperCase()];
 
@@ -408,6 +424,24 @@ function sanitizeColumnForComparison(column: SerializableColumnMetadata): Serial
   delete (copy as any).name;
   delete copy.renamedFrom;
   return copy;
+}
+
+function serializeTableConstraints(constrains?: ConstraintDefinition[]): string[] {
+  if (!constrains || constrains.length === 0) return [];
+
+  return constrains.map((constraint) => {
+    const [type, ...columns] = constraint;
+    const columnList = columns.join(', ');
+
+    switch (type) {
+      case 'primaryKey':
+        return `  PRIMARY KEY (${columnList})`;
+      case 'unique':
+        return `  UNIQUE (${columnList})`;
+      default:
+        throw new Error(`Unknown constraint type: ${type}`);
+    }
+  });
 }
 
 function createIndexSql(tableDbName: string, index: IndexDefinition | NormalizedIndex): string {
