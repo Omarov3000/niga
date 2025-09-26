@@ -5,6 +5,7 @@ import type { RawSql } from './utils/sql';
 import { analyze } from './security/analyze';
 import { toSnakeCase } from './utils/casing';
 import { normalizeQueryAnalysisToRuntime } from './security/normalize-analysis';
+import { getDefaultValueFromZodSchema } from './zod-integration/get-default-value-from-zod-schema';
 
 type ColumnLike = Column<any, any, any>;
 
@@ -61,11 +62,14 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
         continue;
       }
 
-      // TODO: if appDefault is not set return
-      // for text = '', for numbers = 0, for boolean = false, for json - getDefaultValueFromZodSchema, for date new Date(), for enum - first from values, etc
       const appDef = col.__meta__.appDefault;
       if (appDef !== undefined) {
         (result as any)[key] = typeof appDef === 'function' ? (appDef as () => unknown)() : appDef;
+        continue;
+      }
+      const derivedDefault = deriveImplicitDefault(col);
+      if (derivedDefault !== undefined) {
+        (result as any)[key] = derivedDefault;
         continue;
       }
       // leave undefined when no override or app default
@@ -293,4 +297,35 @@ export class IndexBuilder {
     this.index.columns = columns.map((c) => c.__meta__.dbName);
     return { ...this.index };
   }
+}
+
+function deriveImplicitDefault(column: Column<any, any, any>): unknown {
+  const meta = column.__meta__;
+
+  switch (meta.appType) {
+    case 'json':
+      if (meta.jsonSchema) {
+        return getDefaultValueFromZodSchema(meta.jsonSchema);
+      }
+      return {};
+    case 'date':
+      return new Date();
+    case 'boolean':
+      return false;
+    case 'enum':
+      if (meta.enumValues && meta.enumValues.length > 0) {
+        return meta.enumValues[0];
+      }
+      break;
+  }
+
+  switch (meta.type) {
+    case 'text':
+      return '';
+    case 'integer':
+    case 'real':
+      return 0;
+  }
+
+  return undefined;
 }

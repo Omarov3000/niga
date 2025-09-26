@@ -101,6 +101,32 @@ describe('table.make()', () => {
       });
     });
 
+    it('fills implicit defaults for common column types', () => {
+      const profileSchema = z.object({ theme: z.string(), tags: z.array(z.string()) });
+      const users = b.table('users', {
+        id: b.id(),
+        name: b.text(),
+        age: b.integer(),
+        score: b.real(),
+        isActive: b.boolean(),
+        createdAt: b.date(),
+        role: b.enum(['admin', 'user']),
+        settings: b.json(profileSchema),
+      });
+
+      const result = users.make();
+
+      expect(result).toMatchObject({
+        name: '',
+        age: 0,
+        score: 0,
+        isActive: false,
+        role: 'admin',
+        settings: { theme: '', tags: [] },
+      });
+      expect(result.createdAt).toBeInstanceOf(Date);
+    });
+
     it('handles json columns', () => {
       const schema = z.object({ count: z.number(), tags: z.array(z.string()) });
       const posts = b.table('posts', {
