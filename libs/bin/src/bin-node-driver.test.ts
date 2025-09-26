@@ -193,7 +193,7 @@ describe('select', () => {
       id: b.id(),
       createdAt: b.date(),
       isActive: b.boolean(),
-      role: b.enum(['admin', 'user'] as const, 'user'),
+      role: b.enum(['admin', 'user']).default('user'),
       profile: b.json(profileZ),
     });
     const db = await prepareForTest({ users });

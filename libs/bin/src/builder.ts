@@ -61,14 +61,13 @@ const boolean = () => {
     }
   });
 };
-// TODO: remove appDefault by default
-function enum_<const T extends string>(values: readonly T[], _default?: NoInfer<T>) {
+
+function enum_<const T extends string>(values: readonly T[]) {
   const col = new Column<'enum', T, 'optional'>({
     kind: 'public',
     name: 'enum',
     type: 'integer',
     appType: 'enum',
-    appDefault: _default,
     encode: (enumValue: T) => values.indexOf(enumValue),
     decode: (data: number | string) => {
       // Enum columns are stored as integers (indexes)

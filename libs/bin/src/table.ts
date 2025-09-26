@@ -62,7 +62,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
       }
 
       // TODO: if appDefault is not set return
-      // for text = '', for numbers = 0, for boolean = false, for json - getDefaultValueFromZodSchema, for date new Date()
+      // for text = '', for numbers = 0, for boolean = false, for json - getDefaultValueFromZodSchema, for date new Date(), for enum - first from values, etc
       const appDef = col.__meta__.appDefault;
       if (appDef !== undefined) {
         (result as any)[key] = typeof appDef === 'function' ? (appDef as () => unknown)() : appDef;

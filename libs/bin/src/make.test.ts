@@ -90,8 +90,8 @@ describe('table.make()', () => {
     it('handles enum columns with defaults', () => {
       const users = b.table('users', {
         id: b.id(),
-        role: b.enum(['admin', 'user', 'guest'], 'user'),
-        status: b.enum(['active', 'inactive'], 'active'),
+        role: b.enum(['admin', 'user', 'guest']).default('user'),
+        status: b.enum(['active', 'inactive']).default('active'),
       });
 
       const result = users.make();
@@ -202,7 +202,7 @@ describe('table.make()', () => {
         name: b.text().notNull().default('Anonymous'),
         email: b.text().unique(),
         age: b.integer().default(18),
-        role: b.enum(['admin', 'user'], 'user'),
+        role: b.enum(['admin', 'user']).default('user'),
         isActive: b.boolean().default(true),
         createdAt: b.date().$defaultFn(() => new Date('2024-01-01')),
         profile: b.json(z.object({ bio: z.string() })),

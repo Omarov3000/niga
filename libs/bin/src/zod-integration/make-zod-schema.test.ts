@@ -17,7 +17,7 @@ describe('makeInsertSchema()', () => {
       isActive: b.boolean(),
       createdAt: b.date(),
       settings: b.json(profileSchema),
-      role: b.enum(['admin', 'user', 'guest'], 'guest').notNull(),
+      role: b.enum(['admin', 'user', 'guest']).default('guest').notNull(),
     });
 
     const schema = makeInsertSchema(users);
@@ -80,7 +80,7 @@ describe('makeSelectSchema()', () => {
       isActive: b.boolean(),
       createdAt: b.date().notNull(),
       settings: b.json(profileSchema),
-      role: b.enum(['admin', 'user', 'guest'], 'guest').notNull(),
+      role: b.enum(['admin', 'user', 'guest']).default('guest').notNull(),
     });
 
     const schema = makeSelectSchema(users);

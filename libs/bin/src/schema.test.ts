@@ -92,7 +92,7 @@ describe('schema generation', () => {
   });
 
   it('enum stored as INTEGER', () => {
-    const roles = b.table('roles', { role: b.enum(['a', 'b', 'c'] as const, 'a') });
+    const roles = b.table('roles', { role: b.enum(['a', 'b', 'c']) });
     const db = b.db({ schema: { roles } });
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE roles (

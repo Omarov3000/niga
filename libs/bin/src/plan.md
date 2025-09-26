@@ -1,7 +1,3 @@
-[ ] snake_case when emitting SQL. b.z.object() needs to transform snake_case to camelCase
-[ ] ensure proper API for security rules
-[ ] todos in the code
-
 # Overview
 
 we need to build a typesafe orm for sqlite. This refined plan stays in sync with the current code and highlights what's done vs next.
@@ -222,67 +218,3 @@ interface SchemaSnapshot {
     constrains?: string[][]
   }
 }
-
-interface BinDriver {
-  exec: (sql: string) => any
-  run: (sql: StructuredSql) => any
-}
-
-// usage
-import * as schema from 'schema'
-const db = b.db({
-  schema,
-  // advanced security rules (note this db should run queiries without security checks to avoid dead locks
-})
-
-// Data-aware security rules - access to insert/update data
-db.users.secure((query, user: { id: string; role: string }) => {
-  switch (query.type) {
-    case 'insert':
-      // Users can only create records for themselves
-      return query.data?.userId === user.id;
-    case 'update':
-      // Users cannot change ownership
-      return !query.data.hasOwnProperty('userId') || query.data.userId === user.id;
-    case 'delete':
-      if (user.role === 'admin') return true;
-      // Users can only delete their own records with proper WHERE clause
-      return hasWhereClauseCheck(query.sql, user.id.equalityCheck(user.id));
-    case 'select':
-      // Always allow SELECT (handled by WHERE clause analysis)
-      return true;
-  }
-})
-
-// Complex security rules with async checks
-db.users.secure(async (query, user: { id: string }) => {
-    const { type } = db.query`select ${db.groups.type} from ${db.groups} where ${db.groups.userId.eq(user.id)}`.executeAndTakeFirst({ type: z.enum(['moderators']) })
-    if (type == 'moderators') return true // only moderators can access this table
-    return false
-  })
-```
-
-node driver (illustrative)
-
-```tsx
-import Database from 'better-sqlite3'
-
-export class BinNodeDriver implements BinDriver {
-  db: ReturnType<typeof Database>
-
-  constructor(public path = ':memory:') {
-    this.db = new Database(path)
-  }
-
-  exec = (sql: string) => {
-    safeSplit(sql, ';').forEach((s) => this.db.exec(s))
-  }
-
-  run = ({sql, params}: StructuredSql) => {
-    const q = this.db.prepare(sql)
-    if (sql.startsWith('SELECT')) return q.all(params)
-    q.run(params)
-    return []
-  }
-}
-```
