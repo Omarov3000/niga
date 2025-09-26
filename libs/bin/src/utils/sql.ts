@@ -15,9 +15,12 @@ export function sql(strings: TemplateStringsArray, ...values: any[]): RawSql {
         query += serialized.query;
         params.push(...serialized.params);
       } else if (value instanceof Column) {
-        const table = value.__table__?.getName();
-        const col = value.__meta__.name;
-        query += table ? `${table}.${col}` : col;
+        const table = value.__table__;
+        if (!table) {
+          throw new Error('Column must be attached to a table before serializing to SQL');
+        }
+        const col = value.__meta__.dbName;
+        query += `${table.getDbName()}.${col}`;
       } else {
         query += "?"; // use ? as placeholder
         params.push(value);
@@ -29,7 +32,7 @@ export function sql(strings: TemplateStringsArray, ...values: any[]): RawSql {
 }
 
 function serializeFilterObject(filter: FilterObject): { query: string; params: any[] } {
-  const column = filter.left.table ? `${filter.left.table}.${filter.left.name}` : filter.left.name;
+  const column = `${filter.left.table}.${filter.left.name}`;
 
   switch (filter.operator) {
     case "IS NULL":
@@ -72,15 +75,17 @@ type ComparisonOperator = "=" | "!=" | "<" | "<=" | ">" | ">=";
 
 export class SqlPart {}
 
+type ColumnReference = { type: "column"; name: string; table: string; runtime: { name: string; table: string } };
+
 export class FilterObject extends SqlPart {
   type: "binary_expr" = "binary_expr";
   operator: ComparisonOperator | "LIKE" | "NOT LIKE" | "BETWEEN" | "NOT BETWEEN" | "IN" | "NOT IN" | "IS NULL" | "IS NOT NULL";
-  left: { type: "column"; name: string; table?: string };
+  left: ColumnReference;
   right?: { type: "literal"; value: any };
 
   constructor(
     operator: ComparisonOperator | "LIKE" | "NOT LIKE" | "BETWEEN" | "NOT BETWEEN" | "IN" | "NOT IN" | "IS NULL" | "IS NOT NULL",
-    left: { type: "column"; name: string; table?: string },
+    left: ColumnReference,
     right?: { type: "literal"; value: any }
   ) {
     super();

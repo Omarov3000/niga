@@ -7,6 +7,7 @@ describe("analyze - unit tests", () => {
     it("extracts simple columns", () => {
       const result = analyze(sql`SELECT id, name FROM users`);
       expect(result).toEqual({
+        type: "select",
         accessedTables: [
           { name: "users", columns: ["id", "name"], filterBranches: [[]] },
         ],
@@ -16,6 +17,7 @@ describe("analyze - unit tests", () => {
     it("extracts star column", () => {
       const result = analyze(sql`SELECT * FROM users`);
       expect(result).toEqual({
+        type: "select",
         accessedTables: [{ name: "users", columns: [], filterBranches: [[]] }],
       });
     });
@@ -23,6 +25,7 @@ describe("analyze - unit tests", () => {
     it("resolves column alias", () => {
       const result = analyze(sql`SELECT id AS user_id FROM users`);
       expect(result).toEqual({
+        type: "select",
         accessedTables: [{ name: "users", columns: ["id"], filterBranches: [[]] }],
       });
     });
@@ -30,6 +33,7 @@ describe("analyze - unit tests", () => {
     it("resolves table alias", () => {
       const result = analyze(sql`SELECT u.id FROM users u`);
       expect(result).toEqual({
+        type: "select",
         accessedTables: [{ name: "users", columns: ["id"], filterBranches: [[]] }],
       });
     });
@@ -39,6 +43,7 @@ describe("analyze - unit tests", () => {
     it("handles simple comparison with literal", () => {
       const result = analyze(sql`SELECT * FROM users WHERE age > 18`);
       expect(result).toEqual({
+        type: "select",
         accessedTables: [
           {
             name: "users",
@@ -52,6 +57,7 @@ describe("analyze - unit tests", () => {
     it("handles comparison with param", () => {
       const result = analyze(sql`SELECT * FROM users WHERE name = ${"bob"}`);
       expect(result).toEqual({
+        type: "select",
         accessedTables: [
           {
             name: "users",
@@ -67,6 +73,7 @@ describe("analyze - unit tests", () => {
         sql`SELECT * FROM users WHERE age >= ${18} AND active = 1`
       );
       expect(result).toEqual({
+        type: "select",
         accessedTables: [
           {
             name: "users",
@@ -85,6 +92,7 @@ describe("analyze - unit tests", () => {
         sql`SELECT * FROM users WHERE age < 18 OR active = 1`
       );
       expect(result).toEqual({
+        type: "select",
         accessedTables: [
           {
             name: "users",
@@ -101,6 +109,7 @@ describe("analyze - unit tests", () => {
     it("handles filters with table alias", () => {
       const result = analyze(sql`SELECT * FROM users u WHERE u.id = 1`);
       expect(result).toEqual({
+        type: "select",
         accessedTables: [
           {
             name: "users",
@@ -118,6 +127,7 @@ describe("analyze - unit tests", () => {
         sql`SELECT u.id, o.id FROM users u INNER JOIN orders o ON u.id = o.user_id`
       );
       expect(result).toEqual({
+        type: "select",
         accessedTables: [
           { name: "users", columns: ["id"], filterBranches: [[]] },
           { name: "orders", columns: ["id", "user_id"], filterBranches: [[]] },
@@ -130,6 +140,7 @@ describe("analyze - unit tests", () => {
         sql`SELECT u.id, o.id FROM users u LEFT JOIN orders o ON u.id = o.user_id`
       );
       expect(result).toEqual({
+        type: "select",
         accessedTables: [
           { name: "users", columns: ["id"], filterBranches: [[]] },
           { name: "orders", columns: ["id", "user_id"], filterBranches: [[]] },
@@ -140,6 +151,7 @@ describe("analyze - unit tests", () => {
     it("handles CROSS JOIN", () => {
       const result = analyze(sql`SELECT * FROM users CROSS JOIN roles`);
       expect(result).toEqual({
+        type: "select",
         accessedTables: [
           { name: "users", columns: [], filterBranches: [[]] },
           { name: "roles", columns: [], filterBranches: [[]] },
@@ -152,6 +164,7 @@ describe("analyze - unit tests", () => {
         sql`SELECT * FROM users u JOIN orders o ON u.id = o.user_id AND o.active = 1`
       );
       expect(result).toEqual({
+        type: "select",
         accessedTables: [
           { name: "users", columns: ["id"], filterBranches: [[]] },
           {
@@ -170,6 +183,7 @@ describe("analyze - unit tests", () => {
         sql`SELECT (SELECT COUNT(*) FROM orders) AS order_count FROM users`
       );
       expect(result).toEqual({
+        type: "select",
         accessedTables: [
           { name: "orders", columns: [], filterBranches: [[]] },
           { name: "users", columns: [], filterBranches: [[]] },
@@ -182,6 +196,7 @@ describe("analyze - unit tests", () => {
         sql`SELECT * FROM users WHERE id IN (SELECT user_id FROM orders)`
       );
       expect(result).toEqual({
+        type: "select",
         accessedTables: [
           { name: "users", columns: ["id"], filterBranches: [[]] },
           { name: "orders", columns: ["user_id"], filterBranches: [[]] },
@@ -194,6 +209,7 @@ describe("analyze - unit tests", () => {
         sql`SELECT * FROM users WHERE EXISTS (SELECT 1 FROM orders)`
       );
       expect(result).toEqual({
+        type: "select",
         accessedTables: [
           { name: "users", columns: [], filterBranches: [[]] },
           { name: "orders", columns: [], filterBranches: [[]] },
@@ -204,6 +220,7 @@ describe("analyze - unit tests", () => {
     it("handles subquery in FROM", () => {
       const result = analyze(sql`SELECT * FROM (SELECT id FROM users) sub`);
       expect(result).toEqual({
+        type: "select",
         accessedTables: [{ name: "users", columns: ["id"], filterBranches: [[]] }],
       });
     });
@@ -215,6 +232,7 @@ describe("analyze - unit tests", () => {
         sql`SELECT user_id, COUNT(*) FROM orders GROUP BY user_id`
       );
       expect(result).toEqual({
+        type: "select",
         accessedTables: [
           { name: "orders", columns: ["user_id"], filterBranches: [[]] },
         ],
@@ -226,6 +244,7 @@ describe("analyze - unit tests", () => {
         sql`SELECT user_id, COUNT(*) FROM orders GROUP BY user_id HAVING COUNT(*) > 1`
       );
       expect(result).toEqual({
+        type: "select",
         accessedTables: [
           {
             name: "orders",
@@ -241,6 +260,7 @@ describe("analyze - unit tests", () => {
         sql`SELECT user_id, COUNT(*) FROM orders GROUP BY user_id HAVING COUNT(*) > ${2}`
       );
       expect(result).toEqual({
+        type: "select",
         accessedTables: [
           {
             name: "orders",
@@ -258,6 +278,7 @@ describe("analyze - unit tests", () => {
         sql`SELECT id FROM users UNION SELECT id FROM admins`
       );
       expect(result).toEqual({
+        type: "select",
         accessedTables: [
           { name: "users", columns: ["id"], filterBranches: [[]] },
           { name: "admins", columns: ["id"], filterBranches: [[]] },
@@ -270,6 +291,7 @@ describe("analyze - unit tests", () => {
         sql`SELECT id FROM users UNION ALL SELECT id FROM admins`
       );
       expect(result).toEqual({
+        type: "select",
         accessedTables: [
           { name: "users", columns: ["id"], filterBranches: [[]] },
           { name: "admins", columns: ["id"], filterBranches: [[]] },
@@ -282,6 +304,7 @@ describe("analyze - unit tests", () => {
         sql`SELECT id FROM users INTERSECT SELECT id FROM admins`
       );
       expect(result).toEqual({
+        type: "select",
         accessedTables: [
           { name: "users", columns: ["id"], filterBranches: [[]] },
           { name: "admins", columns: ["id"], filterBranches: [[]] },
@@ -294,6 +317,7 @@ describe("analyze - unit tests", () => {
         sql`SELECT id FROM users EXCEPT SELECT id FROM banned_users`
       );
       expect(result).toEqual({
+        type: "select",
         accessedTables: [
           { name: "users", columns: ["id"], filterBranches: [[]] },
           { name: "banned_users", columns: ["id"], filterBranches: [[]] },
@@ -317,6 +341,7 @@ describe("analyze - integration tests", () => {
     `);
 
     expect(result).toEqual({
+      type: "select",
       accessedTables: [
         {
           name: "users",
@@ -347,6 +372,7 @@ describe("analyze - integration tests", () => {
     `);
 
     expect(result).toEqual({
+      type: "select",
       accessedTables: [
         {
           name: "users",
@@ -371,6 +397,7 @@ describe("analyze - integration tests", () => {
     `);
 
     expect(result).toEqual({
+      type: "select",
       accessedTables: [
         { name: "users", columns: ["id"], filterBranches: [[]] },
         { name: "orders", columns: ["user_id", "order_id"], filterBranches: [[]] },
@@ -393,6 +420,7 @@ describe("analyze - integration tests", () => {
     `);
 
     expect(result).toEqual({
+      type: "select",
       accessedTables: [
         {
           name: "users",
@@ -413,6 +441,7 @@ describe("analyze - integration tests", () => {
     it("extracts table from INSERT query", () => {
       const result = analyze(sql`INSERT INTO users (name, email) VALUES (${'John'}, ${'john@example.com'})`);
       expect(result).toEqual({
+        type: "insert",
         accessedTables: [
           { name: "users", columns: [], filterBranches: [[]] }
         ],
@@ -422,6 +451,7 @@ describe("analyze - integration tests", () => {
     it("extracts table from UPDATE query", () => {
       const result = analyze(sql`UPDATE users SET name = ${'Jane'} WHERE id = ${123}`);
       expect(result).toEqual({
+        type: "update",
         accessedTables: [
           { name: "users", columns: ["id"], filterBranches: [[{ column: "id", operator: "=", value: 123 }]] }
         ],
@@ -431,6 +461,7 @@ describe("analyze - integration tests", () => {
     it("extracts table from DELETE query", () => {
       const result = analyze(sql`DELETE FROM users WHERE active = ${null}`);
       expect(result).toEqual({
+        type: "delete",
         accessedTables: [
           { name: "users", columns: ["active"], filterBranches: [[{ column: "active", operator: "=", value: null }]] }
         ],
@@ -440,6 +471,7 @@ describe("analyze - integration tests", () => {
     it("handles UPDATE with complex WHERE clause", () => {
       const result = analyze(sql`UPDATE posts SET title = ${'Updated'} WHERE user_id = ${1} AND status = ${'draft'}`);
       expect(result).toEqual({
+        type: "update",
         accessedTables: [
           { name: "posts", columns: ["user_id", "status"], filterBranches: [[{ column: "user_id", operator: "=", value: 1 }, { column: "status", operator: "=", value: "draft" }]] }
         ],
@@ -449,6 +481,7 @@ describe("analyze - integration tests", () => {
     it("handles DELETE with JOIN-like subquery", () => {
       const result = analyze(sql`DELETE FROM comments WHERE post_id IN (SELECT id FROM posts WHERE user_id = ${456})`);
       expect(result).toEqual({
+        type: "delete",
         accessedTables: [
           { name: "comments", columns: ["post_id"], filterBranches: [[]] },
           { name: "posts", columns: ["id", "user_id"], filterBranches: [[{ column: "user_id", operator: "=", value: 456 }]] }
@@ -460,6 +493,7 @@ describe("analyze - integration tests", () => {
       const result = analyze(sql`INSERT INTO audit_log (user_id, event_type) SELECT id, ${'login'} FROM users WHERE last_login > ${new Date('2023-01-01').getTime()}`);
       // INSERT with SELECT is not fully implemented yet - just expect the INSERT table
       expect(result).toEqual({
+        type: "insert",
         accessedTables: [
           { name: "audit_log", columns: [], filterBranches: [[]] }
         ],

@@ -2,6 +2,8 @@ import { Column } from './column';
 import type { IndexDefinition, TableMetadata, ColumnMetadata, BinDriver, SecurityRule, QueryContext } from './types';
 import type { RawSql } from './utils/sql';
 import { analyze } from './security/analyze';
+import { toSnakeCase } from './utils/casing';
+import { normalizeQueryAnalysisToRuntime } from './security/normalize-analysis';
 
 type ColumnLike = Column<any, any, any>;
 
@@ -94,7 +96,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
       const value = (dataToInsert as any)[key];
       if (value === undefined) continue; // omit undefined to allow DB defaults
       const encoded = col.__meta__.encode ? col.__meta__.encode(value as any) : value;
-      columnNames.push(key);
+      columnNames.push(col.__meta__.dbName);
       params.push(encoded);
     }
 
@@ -116,7 +118,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
 
     // Generate raw SQL INSERT statement
     const placeholders = params.map(() => '?').join(', ');
-    const query = `INSERT INTO ${this.__meta__.name} (${columnNames.join(', ')}) VALUES (${placeholders})`;
+    const query = `INSERT INTO ${this.__meta__.dbName} (${columnNames.join(', ')}) VALUES (${placeholders})`;
     const fullQuery = { query, params };
 
     await this.checkSecurity(fullQuery, dataToInsert);
@@ -170,7 +172,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
       if (!col || col.__meta__.insertType === 'virtual') continue;
 
       const encoded = col.__meta__.encode ? col.__meta__.encode(value as any) : value;
-      setClause.push(`${key} = ?`);
+      setClause.push(`${col.__meta__.dbName} = ?`);
       params.push(encoded);
     }
 
@@ -181,7 +183,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     // Add WHERE clause parameters
     params.push(...options.where.params);
 
-    const query = `UPDATE ${this.__meta__.name} SET ${setClause.join(', ')} WHERE ${options.where.query}`;
+    const query = `UPDATE ${this.__meta__.dbName} SET ${setClause.join(', ')} WHERE ${options.where.query}`;
     const fullQuery = { query, params };
 
     // Parse for security analysis and check security
@@ -198,7 +200,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
   ): Promise<void> {
     const driver = this.__db__.getDriver();
 
-    const query = `DELETE FROM ${this.__meta__.name} WHERE ${options.where.query}`;
+    const query = `DELETE FROM ${this.__meta__.dbName} WHERE ${options.where.query}`;
     const params = [...options.where.params];
     const fullQuery = { query, params };
 
@@ -233,7 +235,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
 
   private async checkSecurity<TUser = any>(rawSql: RawSql, data?: any): Promise<void> {
     const user = this.__db__.getCurrentUser();
-    const analysis = analyze(rawSql);
+    const analysis = normalizeQueryAnalysisToRuntime(analyze(rawSql), this.__db__.getSchema());
     const accessedTables = Array.from(new Set(analysis.accessedTables.map((table) => table.name)));
 
     const queryContext: QueryContext = {
@@ -247,22 +249,27 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
   }
 
   readonly __meta__: TableMetadata;
-  readonly __db__!: { getDriver: () => BinDriver; getCurrentUser: () => any };
+  readonly __db__!: { getDriver: () => BinDriver; getCurrentUser: () => any; getSchema: () => Record<string, Table<any, any>> };
   // type helpers exposed on instance for precise typing
   readonly __selectionType__!: SelectableForCols<TCols>;
   readonly __insertionType__!: InsertableForCols<TCols>;
   private _securityRules: SecurityRule[] = [];
 
   constructor(options: TableConstructorOptions<Name, TCols>) {
+    const tableDbName = toSnakeCase(options.name);
     const columnMetadata: Record<string, ColumnMetadata> = {};
     Object.entries(options.columns).forEach(([key, col]) => {
-      col.__table__ = { getName: () => options.name };
+      const columnDbName = toSnakeCase(key);
+      col.__table__ = { getName: () => options.name, getDbName: () => tableDbName };
+      col.__meta__.name = key as any;
+      col.__meta__.dbName = columnDbName;
       (this as any)[key] = col;
-      columnMetadata[key] = { ...col.__meta__, name: key } as ColumnMetadata;
+      columnMetadata[key] = { ...col.__meta__, name: key, dbName: columnDbName } as ColumnMetadata;
     });
 
     this.__meta__ = {
       name: options.name,
+      dbName: tableDbName,
       columns: columnMetadata,
       indexes: options.indexes ?? [],
     } as TableMetadata;
@@ -278,7 +285,7 @@ export class IndexBuilder {
   }
 
   on(...columns: Column[]): IndexDefinition {
-    this.index.columns = columns.map((c) => c.__meta__.name);
+    this.index.columns = columns.map((c) => c.__meta__.dbName);
     return { ...this.index };
   }
 }

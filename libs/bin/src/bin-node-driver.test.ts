@@ -7,10 +7,10 @@ import type { Table } from './table';
 import type { Db } from './db';
 import { sql } from './utils/sql';
 
-let driver: BinTursoDriver;
+let driver: BinNodeDriver;
 
 beforeEach(async () => {
-  driver = new BinTursoDriver(':memory:');
+  driver = new BinNodeDriver(':memory:');
 });
 
 async function prepareForTest<TSchema extends Record<string, Table<any, any>>>(
@@ -199,7 +199,7 @@ describe('select', () => {
     const db = await prepareForTest({ users });
 
     const now = new Date(1700000000000);
-    await runQuery('INSERT INTO users (id, createdAt, isActive, role, profile) VALUES (?, ?, ?, ?, ?)', ['u1', now.getTime(), 1, 0, JSON.stringify({ bio: 'Dev' })]);
+    await runQuery('INSERT INTO users (id, created_at, is_active, role, profile) VALUES (?, ?, ?, ?, ?)', ['u1', now.getTime(), 1, 0, JSON.stringify({ bio: 'Dev' })]);
 
     const row = await db
       .query`SELECT ${db.users.id}, ${db.users.createdAt}, ${db.users.isActive}, ${db.users.role}, ${db.users.profile} FROM users WHERE ${db.users.createdAt.gte(now)} AND ${db.users.isActive.eq(true)} AND ${db.users.role.eq('admin')}`
@@ -350,11 +350,11 @@ describe('update', () => {
     expect(updateCallCount).toBe(1);
 
     // Verify updatedAt was updated to the onUpdate value
-    const updatedUser = await runQueryAndGetFirst('SELECT id, name, updatedAt FROM users WHERE id = ?', ['user-1']);
+    const updatedUser = await runQueryAndGetFirst('SELECT id, name, updated_at FROM users WHERE id = ?', ['user-1']);
     expect(updatedUser).toMatchObject({
       id: 'user-1',
       name: 'Johnny Doe',
-      updatedAt: 1700000000000 // The fixed timestamp from onUpdate
+      updated_at: 1700000000000 // The fixed timestamp from onUpdate
     });
   });
 

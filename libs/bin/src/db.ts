@@ -3,9 +3,11 @@ import type { ZodTypeAny } from 'zod';
 import { sql } from './utils/sql';
 import type { Table } from './table';
 import { analyze } from './security/analyze';
+import { camelCaseKeys } from './utils/casing';
+import { normalizeQueryAnalysisToRuntime } from './security/normalize-analysis';
 
 export interface DbConstructorOptions {
-  schema: Record<string, { __meta__: TableMetadata }>;
+  schema: Record<string, Table<any, any>>;
 }
 
 export class Db {
@@ -23,6 +25,7 @@ export class Db {
           return this.driver;
         },
         getCurrentUser: () => this.currentUser,
+        getSchema: () => this.options.schema,
       };
     });
   }
@@ -31,6 +34,7 @@ export class Db {
     this.driver = driver;
   }
 
+  // TODO: rename to _connectUser
   connectUser<TUser = any>(user: TUser): void {
     this.currentUser = user;
   }
@@ -43,7 +47,7 @@ export class Db {
     };
 
     const runSecurityChecks = async () => {
-      const analysis = analyze(rawSql);
+      const analysis = normalizeQueryAnalysisToRuntime(analyze(rawSql), this.options.schema);
       const accessedTables = Array.from(new Set(analysis.accessedTables.map((table) => table.name)));
 
       if (accessedTables.length === 0) {
@@ -70,14 +74,16 @@ export class Db {
         const driver = ensureDriver();
         await runSecurityChecks();
         const rows = await Promise.resolve(driver.run(rawSql));
-        return zodSchema.array().parse(rows) as ReturnType<T['array']>['_output'];
+        const normalized = rows.map((row: Record<string, unknown>) => camelCaseKeys(row));
+        return zodSchema.array().parse(normalized) as ReturnType<T['array']>['_output'];
       },
       executeAndTakeFirst: async <T extends ZodTypeAny>(zodSchema: T) => {
         const driver = ensureDriver();
         await runSecurityChecks();
         const rows = await Promise.resolve(driver.run(rawSql));
         if (!rows || rows.length === 0) throw new Error('No rows returned');
-        return zodSchema.parse(rows[0]) as ReturnType<T['parse']>;
+        const normalized = camelCaseKeys(rows[0]);
+        return zodSchema.parse(normalized) as ReturnType<T['parse']>;
       },
     };
   }
@@ -88,10 +94,10 @@ export class Db {
       parts.push(serializeCreateTable(__meta__));
       if (__meta__.indexes && __meta__.indexes.length > 0) {
         const idxLines = __meta__.indexes.map((idx) => {
-          const indexName = idx.name ?? `${__meta__.name}_${idx.columns.join('_')}_idx`;
-          const unique = idx.unique ? 'UNIQUE ' : '';
-          return `CREATE ${unique}INDEX ${indexName} ON ${__meta__.name}(${idx.columns.join(', ')});`;
-        });
+      const indexName = idx.name ?? `${__meta__.dbName}_${idx.columns.join('_')}_idx`;
+      const unique = idx.unique ? 'UNIQUE ' : '';
+      return `CREATE ${unique}INDEX ${indexName} ON ${__meta__.dbName}(${idx.columns.join(', ')});`;
+    });
         parts.push(idxLines.join('\n'));
       }
     });
@@ -102,7 +108,7 @@ export class Db {
 function serializeCreateTable(table: TableMetadata): string {
   const columnSql: string[] = [];
   Object.values(table.columns).forEach((c) => {
-    const defs: string[] = [c.name, c.type.toUpperCase()];
+    const defs: string[] = [c.dbName, c.type.toUpperCase()];
     if (c.generatedAlwaysAs) {
       defs.push(`GENERATED ALWAYS AS (${c.generatedAlwaysAs})`);
     } else {
@@ -121,5 +127,5 @@ function serializeCreateTable(table: TableMetadata): string {
     columnSql.push(`  ${defs.join(' ')}`);
   });
 
-  return `CREATE TABLE ${table.name} (\n${columnSql.join(',\n')}\n);`;
+  return `CREATE TABLE ${table.dbName} (\n${columnSql.join(',\n')}\n);`;
 }

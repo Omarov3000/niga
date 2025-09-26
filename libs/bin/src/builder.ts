@@ -4,6 +4,7 @@ import { Column } from './column';
 import { Db } from './db';
 import { IndexBuilder, Table } from './table';
 import { getDefaultValueFromZodSchema } from './zod-integration/get-default-value-from-zod-schema';
+import { toSnakeCase } from './utils/casing';
 
 const text = () => new Column<'text', string, 'optional'>({ kind: 'public', name: 'text', type: 'text' });
 const integer = () => new Column<'integer', number, 'optional'>({ kind: 'public', name: 'integer', type: 'integer' });
@@ -94,6 +95,7 @@ function table<Name extends string, TCols extends Record<string, Column<any, any
   // Assign canonical column names on provided columns to match object keys
   Object.entries(columns).forEach(([key, col]) => {
     (col as any).__meta__.name = key as any;
+    (col as any).__meta__.dbName = toSnakeCase(key);
   });
 
   const indexes = (indexesBuilder ? indexesBuilder(columns as any) : []) as any[];

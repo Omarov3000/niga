@@ -10,6 +10,7 @@ export type InsertionType = 'required' | 'optional' | 'virtual' | 'withDefault';
 
 export interface ColumnMetadata {
   name: string;
+  dbName: string;
   type: ColumnType;
   insertType: InsertionType;
   notNull?: boolean;
@@ -32,6 +33,7 @@ export interface ColumnMetadata {
 
 export type SerializableColumnMetadata = Pick<ColumnMetadata,
   'name' |
+  'dbName' |
   'type' |
   'notNull' |
   'generatedAlwaysAs' |
@@ -50,6 +52,7 @@ export interface IndexDefinition {
 
 export interface SerializableTableMetadata {
   name: string;
+  dbName: string;
   columns: Record<string, SerializableColumnMetadata>;
   indexes?: IndexDefinition[];
   constrains?: string[][];
@@ -57,6 +60,7 @@ export interface SerializableTableMetadata {
 
 export interface TableMetadata {
   name: string;
+  dbName: string;
   columns: Record<string, ColumnMetadata>;
   indexes?: IndexDefinition[];
   constrains?: string[][];

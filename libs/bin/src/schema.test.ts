@@ -40,7 +40,7 @@ describe('schema generation', () => {
 
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE extras (
-        createdAt INTEGER,
+        created_at INTEGER,
         active INTEGER
       );
     `);
@@ -52,7 +52,7 @@ describe('schema generation', () => {
     const db = b.db({ schema: { t } });
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE t (
-        jsonColumn TEXT
+        json_column TEXT
       );
     `);
     expect(t.__meta__.columns.jsonColumn.jsonSchema).toBe(schema);
@@ -86,7 +86,7 @@ describe('schema generation', () => {
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE posts (
         id TEXT PRIMARY KEY,
-        authorId TEXT REFERENCES users(id)
+        author_id TEXT REFERENCES users(id)
       );
     `);
   });

@@ -63,9 +63,11 @@ export class Column<
 
   references(get: () => Column<any, any, any>): Column<Name, Type, InsertType> {
     const target = get();
-    const tableName = target.__table__?.getName();
-    if (!tableName) return this.cloneMeta();
-    return this.cloneMeta({ foreignKey: `${tableName}.${target.__meta__.name}` });
+    const targetTable = target.__table__;
+    if (!targetTable) {
+      throw new Error('Referenced column must be attached to a table');
+    }
+    return this.cloneMeta({ foreignKey: `${targetTable.getDbName()}.${target.__meta__.dbName}` });
   }
 
   //#endregion
@@ -76,7 +78,7 @@ export class Column<
     const encoded = this.__meta__.encode ? this.__meta__.encode(value as unknown as any) : value;
     return new FilterObject(
       "=",
-      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
+      this.getSqlColumnReference(),
       { type: "literal", value: encoded }
     );
   }
@@ -85,7 +87,7 @@ export class Column<
     const encoded = this.__meta__.encode ? this.__meta__.encode(value as unknown as any) : value;
     return new FilterObject(
       "!=",
-      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
+      this.getSqlColumnReference(),
       { type: "literal", value: encoded }
     );
   }
@@ -93,7 +95,7 @@ export class Column<
   like(value: string) {
     return new FilterObject(
       "LIKE",
-      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
+      this.getSqlColumnReference(),
       { type: "literal", value }
     );
   }
@@ -101,7 +103,7 @@ export class Column<
   notLike(value: string) {
     return new FilterObject(
       "NOT LIKE",
-      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
+      this.getSqlColumnReference(),
       { type: "literal", value }
     );
   }
@@ -110,7 +112,7 @@ export class Column<
     const encoded = this.__meta__.encode ? this.__meta__.encode(value as unknown as any) : value;
     return new FilterObject(
       ">",
-      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
+      this.getSqlColumnReference(),
       { type: "literal", value: encoded }
     );
   }
@@ -119,7 +121,7 @@ export class Column<
     const encoded = this.__meta__.encode ? this.__meta__.encode(value as unknown as any) : value;
     return new FilterObject(
       ">=",
-      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
+      this.getSqlColumnReference(),
       { type: "literal", value: encoded }
     );
   }
@@ -128,7 +130,7 @@ export class Column<
     const encoded = this.__meta__.encode ? this.__meta__.encode(value as unknown as any) : value;
     return new FilterObject(
       "<",
-      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
+      this.getSqlColumnReference(),
       { type: "literal", value: encoded }
     );
   }
@@ -137,7 +139,7 @@ export class Column<
     const encoded = this.__meta__.encode ? this.__meta__.encode(value as unknown as any) : value;
     return new FilterObject(
       "<=",
-      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
+      this.getSqlColumnReference(),
       { type: "literal", value: encoded }
     );
   }
@@ -146,7 +148,7 @@ export class Column<
     const enc = (v: any) => (this.__meta__.encode ? this.__meta__.encode(v) : v);
     return new FilterObject(
       "BETWEEN",
-      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
+      this.getSqlColumnReference(),
       { type: "literal", value: [enc(value1), enc(value2)] }
     );
   }
@@ -155,7 +157,7 @@ export class Column<
     const enc = (v: any) => (this.__meta__.encode ? this.__meta__.encode(v) : v);
     return new FilterObject(
       "NOT BETWEEN",
-      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
+      this.getSqlColumnReference(),
       { type: "literal", value: [enc(value1), enc(value2)] }
     );
   }
@@ -163,14 +165,14 @@ export class Column<
   isNull() {
     return new FilterObject(
       "IS NULL",
-      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() }
+      this.getSqlColumnReference()
     );
   }
 
   isNotNull() {
     return new FilterObject(
       "IS NOT NULL",
-      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() }
+      this.getSqlColumnReference()
     );
   }
 
@@ -178,7 +180,7 @@ export class Column<
     const encValues = (values as any[]).map((v) => (this.__meta__.encode ? this.__meta__.encode(v) : v));
     return new FilterObject(
       "IN",
-      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
+      this.getSqlColumnReference(),
       { type: "literal", value: encValues }
     );
   }
@@ -187,7 +189,7 @@ export class Column<
     const encValues = (values as any[]).map((v) => (this.__meta__.encode ? this.__meta__.encode(v) : v));
     return new FilterObject(
       "NOT IN",
-      { type: "column", name: this.__meta__.name, table: this.__table__?.getName() },
+      this.getSqlColumnReference(),
       { type: "literal", value: encValues }
     );
   }
@@ -222,7 +224,7 @@ export class Column<
   //#endregion
 
   readonly __meta__: ColumnMetadata;
-  __table__?: { getName: () => string };
+  __table__?: { getName: () => string; getDbName: () => string };
   private _valueSample?: Type | (() => Type);
 
   private static makeMeta(base: ColumnMetadata, partial?: Partial<ColumnMetadata>): ColumnMetadata {
@@ -231,11 +233,12 @@ export class Column<
 
   constructor(init:
     | { kind: 'public'; name: Name; type: ColumnType; appType?: ApplicationType; appDefault?: Type | (() => Type); encode?: (data: Type) => number | string; decode?: (data: number | string) => Type }
-    | { kind: 'internal'; meta: ColumnMetadata; table?: { getName: () => string }; valueSample?: Type | (() => Type) }
+    | { kind: 'internal'; meta: ColumnMetadata; table?: { getName: () => string; getDbName: () => string }; valueSample?: Type | (() => Type) }
   ) {
     if (init.kind === 'public') {
       this.__meta__ = {
         name: init.name,
+        dbName: init.name,
         type: init.type,
         appType: init.appType,
         insertType: init.appDefault !== undefined ? 'required' : 'optional',
@@ -258,5 +261,21 @@ export class Column<
       table: this.__table__,
       valueSample: this._valueSample,
     });
+  }
+
+  private getSqlColumnReference() {
+    if (!this.__table__) {
+      throw new Error(`Column ${this.__meta__.name} must be attached to a table to build SQL expressions`);
+    }
+
+    return {
+      type: 'column' as const,
+      name: this.__meta__.dbName,
+      table: this.__table__.getDbName(),
+      runtime: {
+        name: this.__meta__.name,
+        table: this.__table__.getName(),
+      },
+    };
   }
 }
