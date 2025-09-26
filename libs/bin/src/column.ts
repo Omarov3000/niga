@@ -212,6 +212,16 @@ export class Column<
 
   //#endregion
 
+  // TODO: implement
+  // asc(): OrderObject
+  // desc(): OrderObject
+
+  // TODO: implement
+  // count(): Column<..., "virtual">
+  // max(): Column<..., "virtual">
+  // increment(): Column<..., "virtual">
+
+
   //#region SECURITY
 
   // check that where condition with = operator is present

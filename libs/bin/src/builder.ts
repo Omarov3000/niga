@@ -192,4 +192,7 @@ export const b = {
     id: zId,
     object: z.object,
   },
+  // TODO: constraints
+  // primaryKey
+  // unique
 };

@@ -20,13 +20,13 @@ export interface ColumnMetadata {
   unique?: boolean;
   default?: number | string | boolean | null;
   appType?: ApplicationType;
-  serverTime?: boolean;
+  serverTime?: boolean; // TODO: how?
   appDefault?: (() => unknown) | unknown;
   appOnUpdate?: (() => unknown) | unknown;
   encode?: (data: unknown) => number | string;
   decode?: (data: number | string) => unknown;
   aliasedFrom?: string;
-  definition?: string;
+  definition?: string // eg COUNT(*) for virtual columns // TODO: how?
   jsonSchema?: ZodTypeAny;
   enumValues?: readonly string[];
   renamedFrom?: string;
