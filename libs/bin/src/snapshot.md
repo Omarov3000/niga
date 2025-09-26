@@ -1,3 +1,8 @@
+TASK: implement snapshot and migration.
+
+Details:
+
+
 # Bin Snapshot & Migration Specification
 
 ## Scope
