@@ -200,8 +200,7 @@ function buildSnapshotFromSchema(schema: Record<string, Table<any, any>>): Table
 
 function buildColumnsSnapshot(columns: Record<string, ColumnMetadata | SerializableColumnMetadata>): Record<string, SerializableColumnMetadata> {
   const entries = Object.entries(columns)
-    .map(([key, column]) => [key, cloneColumn(column)] as [string, SerializableColumnMetadata])
-    .sort((a, b) => a[1].dbName.localeCompare(b[1].dbName));
+    .map(([key, column]) => [key, cloneColumn(column)] as [string, SerializableColumnMetadata]);
   return Object.fromEntries(entries);
 }
 

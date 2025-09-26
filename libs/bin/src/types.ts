@@ -86,6 +86,7 @@ export interface BinDriver {
   exec: (sql: string) => Promise<any>;
   run: (sql: RawSql) => Promise<any>;
   beginTransaction: () => Promise<TxDriver>;
+  batch: (statements: RawSql[]) => Promise<any[]>;
 }
 
 export interface TxDriver {

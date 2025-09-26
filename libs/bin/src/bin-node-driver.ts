@@ -25,6 +25,27 @@ export class BinNodeDriver implements BinDriver {
     return [];
   };
 
+  batch = async (statements: RawSql[]) => {
+    if (statements.length === 0) return [];
+
+    const results: any[] = [];
+    const tx = this.db.transaction((stmts: RawSql[]) => {
+      for (const { query, params } of stmts) {
+        const trimmed = query.trim().toUpperCase();
+        const prepared = this.db.prepare(query);
+        if (trimmed.startsWith('SELECT')) {
+          results.push(prepared.all(params));
+        } else {
+          prepared.run(params);
+          results.push([]);
+        }
+      }
+    });
+
+    tx(statements);
+    return results;
+  };
+
   beginTransaction = async (): Promise<TxDriver> => {
     this.db.exec('BEGIN');
     const self = this;

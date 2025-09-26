@@ -5,14 +5,23 @@ import type { RawSql } from './utils/sql';
 import { b } from './builder';
 import { hasWhereClauseCheck } from './security/has-where-clause-check';
 
+const runStatement = async ({ query }: RawSql) => {
+  const normalized = query.trim().toUpperCase();
+  if (normalized.startsWith('SELECT')) {
+    return [{ id: 'post-1', title: 'Post', role: 'admin' }];
+  }
+  return [];
+};
+
 const mockBinDriver = {
   exec: async () => {},
-  run: async ({ query }: RawSql) => {
-    const normalized = query.trim().toUpperCase();
-    if (normalized.startsWith('SELECT')) {
-      return [{ id: 'post-1', title: 'Post', role: 'admin' }];
+  run: runStatement,
+  batch: async (statements: RawSql[]) => {
+    const results: any[] = [];
+    for (const statement of statements) {
+      results.push(await runStatement(statement));
     }
-    return [];
+    return results;
   },
   beginTransaction: async () => ({
     run: async () => {},

@@ -64,6 +64,14 @@ export class BinTursoDriver implements BinDriver {
     }
   };
 
+  batch = async (statements: RawSql[]) => {
+    const results: any[] = [];
+    for (const statement of statements) {
+      results.push(await this.run(statement));
+    }
+    return results;
+  };
+
   beginTransaction = async (): Promise<TxDriver> => {
     throw new Error('Transactions are not implemented for this driver');
   };

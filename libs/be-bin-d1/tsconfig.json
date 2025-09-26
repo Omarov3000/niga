@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "esnext",
     "lib": ["esnext"],
-    "types": [],
+    "types": ["./types.d.ts", "@cloudflare/vitest-pool-workers"],
     "module": "esnext",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,

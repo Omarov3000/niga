@@ -5,6 +5,7 @@ import { Db } from './db';
 import { IndexBuilder, Table } from './table';
 import { getDefaultValueFromZodSchema } from './zod-integration/get-default-value-from-zod-schema';
 import { toSnakeCase } from './utils/casing';
+import { BinDriver } from './types';
 
 const text = () => new Column<'text', string, 'optional'>({ kind: 'public', name: 'text', type: 'text' });
 const integer = () => new Column<'integer', number, 'optional'>({ kind: 'public', name: 'integer', type: 'integer' });
@@ -116,6 +117,16 @@ function db<TSchema extends Record<string, Table<any, any>>>(opts: { schema: TSc
   return instance as Db & TSchema;
 }
 
+async function testDb<TSchema extends Record<string, Table<any, any>>>(
+  opts: { schema: TSchema; name?: string },
+  driver: BinDriver
+): Promise<Db & TSchema> {
+  const instance = db(opts)
+  await instance._connectDriver(driver);
+  await driver.exec(instance.getSchemaDefinition());
+  return instance as Db & TSchema;
+}
+
 const zText = () => z.string();
 
 const zInteger = () => z.number().int();
@@ -181,6 +192,7 @@ export const b = {
   table,
   index,
   db,
+  testDb,
   z: {
     text: zText,
     integer: zInteger,
