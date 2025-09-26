@@ -13,7 +13,7 @@ describe('security rules end-to-end', () => {
         content: b.text(),
         userId: b.text().notNull()
       }).secure((query, user: { id: string; role: string }) => {
-        if (query.type === 'delete') {
+        if (query.type === 'delete' && user.role !== 'admin') {
           throw new Error('RBAC: delete requires admin role');
         }
       });
@@ -49,7 +49,7 @@ describe('security rules end-to-end', () => {
 
       await expect(posts.update({
         data: { title: 'Updated Post' },
-        where: sql`userId = 'user123'`
+        where: sql`${posts.userId.eq('user123')}`
       })).resolves.not.toThrow();
     });
 
@@ -108,7 +108,7 @@ describe('security rules end-to-end', () => {
       // Should allow update when WHERE clause keeps ownership restriction
       await expect(documents.update({
         data: { title: 'Updated Title' },
-        where: sql`ownerId = ${user.id}`
+        where: sql`${documents.ownerId.eq(user.id)}`
       })).resolves.not.toThrow();
 
       // Should reject update if WHERE clause is missing ownership filter
@@ -120,12 +120,12 @@ describe('security rules end-to-end', () => {
       // Should reject update if attempting to change ownerId
       await expect(documents.update({
         data: { ownerId: 'hacker' },
-        where: sql`ownerId = ${user.id}`
+        where: sql`${documents.ownerId.eq(user.id)}`
       })).rejects.toThrow('Column ownerId is immutable');
 
       // Should allow delete when WHERE clause keeps ownership restriction
       await expect(documents.delete({
-        where: sql`ownerId = ${user.id}`
+        where: sql`${documents.ownerId.eq(user.id)}`
       })).resolves.not.toThrow();
 
       // Should reject delete without ownership filter
