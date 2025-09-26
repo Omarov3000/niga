@@ -8,14 +8,16 @@ import { BinDriver, fakeBinDriver } from './types';
 
 
 
-export function runSharedBinDriverTests(makeDriver: () => BinDriver) {
+export function runSharedBinDriverTests(makeDriver: () => BinDriver, opts: { skipTableCleanup?: boolean } = {}) {
 
 const driverRef = { driver: makeDriver() }
 const clearRef: { current?: Array<() => Promise<void>> } = { current: [] };
 
-afterEach(async () => {
+  afterEach(async () => {
   const clearFns = [...(clearRef.current ?? [])];
-  clearRef.current = [];
+    clearRef.current = [];
+
+  if (opts.skipTableCleanup) return;
   for (const fn of clearFns.reverse()) {
     await fn();
   }
