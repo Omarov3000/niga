@@ -89,6 +89,13 @@ export interface BinDriver {
   batch: (statements: RawSql[]) => Promise<any[]>;
 }
 
+export const fakeBinDriver: BinDriver = {
+  exec: async () => { throw new Error('not implemented') },
+  run: async () => { throw new Error('not implemented') },
+  beginTransaction: async () => { throw new Error('not implemented') },
+  batch: async () => { throw new Error('not implemented') },
+}
+
 export interface TxDriver {
   run: (sql: RawSql) => Promise<void>;
   commit: () => Promise<void>;
