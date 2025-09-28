@@ -126,3 +126,42 @@ export class OrderObject extends SqlPart {
     this.direction = direction;
   }
 }
+
+export function inlineParams(rawSql: RawSql): string {
+  let { query, params } = rawSql;
+  let paramIndex = 0;
+
+  return query.replace(/\?/g, () => {
+    if (paramIndex >= params.length) {
+      return '?';
+    }
+
+    const param = params[paramIndex++];
+
+    if (param === null) {
+      return 'NULL';
+    }
+
+    if (typeof param === 'string') {
+      return `'${param.replace(/'/g, "''")}'`;
+    }
+
+    if (typeof param === 'number') {
+      return param.toString();
+    }
+
+    if (typeof param === 'boolean') {
+      return param ? '1' : '0';
+    }
+
+    if (param instanceof Date) {
+      return `'${param.toISOString()}'`;
+    }
+
+    if (param instanceof Buffer || param instanceof Uint8Array) {
+      return `X'${Array.from(param).map(b => b.toString(16).padStart(2, '0')).join('')}'`;
+    }
+
+    return `'${String(param).replace(/'/g, "''")}'`;
+  });
+}

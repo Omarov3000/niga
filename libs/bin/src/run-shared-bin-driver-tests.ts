@@ -10,7 +10,7 @@ import { BinDriver, fakeBinDriver } from './types';
 
 export function runSharedBinDriverTests(makeDriver: () => BinDriver, opts: { skipTableCleanup?: boolean } = {}) {
 
-const driverRef = { driver: makeDriver() }
+const driver = makeDriver()
 const clearRef: { current?: Array<() => Promise<void>> } = { current: [] };
 
   afterEach(async () => {
@@ -32,7 +32,7 @@ describe('insert', () => {
       email: b.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     await users.insert({
       id: 'test-123',
@@ -41,7 +41,7 @@ describe('insert', () => {
       age: 20,
     });
 
-    const rows = await driverRef.driver.run({ query: 'SELECT id, name, email, age FROM users WHERE id = ?', params: ['test-123'] });
+    const rows = await driver.run({ query: 'SELECT id, name, email, age FROM users WHERE id = ?', params: ['test-123'] });
 
     expect(rows).toMatchObject([
       { id: 'test-123', name: 'John Doe', email: 'john@example.com', age: 20 },
@@ -56,10 +56,10 @@ describe('insert', () => {
       views: b.integer().default(0),
     });
 
-    const db = await b.testDb({ schema: { posts } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { posts } }, driver, clearRef);
 
     // Check if table exists
-    const tables = await driverRef.driver.run({ query: "SELECT name FROM sqlite_master WHERE type='table' AND name='posts'", params: [] });
+    const tables = await driver.run({ query: "SELECT name FROM sqlite_master WHERE type='table' AND name='posts'", params: [] });
 
     await posts.insert({
       id: 'post-123',
@@ -69,9 +69,9 @@ describe('insert', () => {
     });
 
     // Check row count
-    const count = await driverRef.driver.run({ query: 'SELECT COUNT(*) as count FROM posts', params: [] });
+    const count = await driver.run({ query: 'SELECT COUNT(*) as count FROM posts', params: [] });
 
-    const rows = await driverRef.driver.run({ query: 'SELECT id, title, published, views FROM posts WHERE id = ?', params: ['post-123'] });
+    const rows = await driver.run({ query: 'SELECT id, title, published, views FROM posts WHERE id = ?', params: ['post-123'] });
 
     expect(rows).toMatchObject([
       { id: 'post-123', title: 'Test Post', published: 1, views: 42 },
@@ -84,13 +84,13 @@ describe('insert', () => {
       name: b.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     const returned = await users.insert({ id: 'user-123', name: 'Alice' });
 
     expect(returned).toMatchObject({ id: 'user-123', name: 'Alice' });
 
-    const rows = await driverRef.driver.run({ query: 'SELECT id, name FROM users WHERE id = ?', params: ['user-123'] });
+    const rows = await driver.run({ query: 'SELECT id, name FROM users WHERE id = ?', params: ['user-123'] });
 
     expect(rows).toMatchObject([{ id: 'user-123', name: 'Alice' }]);
   });
@@ -102,7 +102,7 @@ describe('insert', () => {
       age: b.integer(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     const model = await users.insert({
       id: 'type-safe-test',
@@ -112,7 +112,7 @@ describe('insert', () => {
 
     expect(model).toMatchObject({ id: 'type-safe-test', name: 'Type Safe User', age: 30 });
 
-    const rows = await driverRef.driver.run({ query: 'SELECT name, age FROM users WHERE id = ?', params: ['type-safe-test'] });
+    const rows = await driver.run({ query: 'SELECT name, age FROM users WHERE id = ?', params: ['type-safe-test'] });
 
     expect(rows).toMatchObject([{ name: 'Type Safe User', age: 30 }]);
   });
@@ -124,7 +124,7 @@ describe('insert', () => {
       age: b.integer(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     const models = await users.insertMany([
       { id: 'u1', name: 'Alice', age: 30 },
@@ -152,11 +152,11 @@ describe('select', () => {
       age: b.integer(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driverRef.driver , clearRef);
+    const db = await b.testDb({ schema: { users } }, driver , clearRef);
 
     // Seed some rows directly
-    await driverRef.driver.run({ query: 'INSERT INTO users (id, name, age) VALUES (?, ?, ?)', params: ['u1', 'Alice', 30] });
-    await driverRef.driver.run({ query: 'INSERT INTO users (id, name, age) VALUES (?, ?, ?)', params: ['u2', 'Bob', 25] });
+    await driver.run({ query: 'INSERT INTO users (id, name, age) VALUES (?, ?, ?)', params: ['u1', 'Alice', 30] });
+    await driver.run({ query: 'INSERT INTO users (id, name, age) VALUES (?, ?, ?)', params: ['u2', 'Bob', 25] });
 
     const rows = await db
       .query`SELECT ${db.users.id}, ${db.users.name}, ${db.users.age} FROM users WHERE ${db.users.age.gte(25)}`
@@ -168,9 +168,9 @@ describe('select', () => {
 
   it('executeAndTakeFirst returns a single parsed row', async () => {
     const users = b.table('users', { id: b.id(), name: b.text() });
-    const db = await b.testDb({ schema: { users } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
-    await driverRef.driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: ['u1', 'Alice'] });
+    await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: ['u1', 'Alice'] });
 
     const row = await db
       .query`SELECT ${db.users.id}, ${db.users.name} FROM users WHERE ${db.users.id.eq('u1')}`
@@ -188,10 +188,10 @@ describe('select', () => {
       role: b.enum(['admin', 'user']).default('user'),
       profile: b.json(profileZ),
     });
-    const db = await b.testDb({ schema: { users } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     const now = new Date(1700000000000);
-    await driverRef.driver.run({ query: 'INSERT INTO users (id, created_at, is_active, role, profile) VALUES (?, ?, ?, ?, ?)', params: ['u1', now.getTime(), 1, 0, JSON.stringify({ bio: 'Dev' })] });
+    await driver.run({ query: 'INSERT INTO users (id, created_at, is_active, role, profile) VALUES (?, ?, ?, ?, ?)', params: ['u1', now.getTime(), 1, 0, JSON.stringify({ bio: 'Dev' })] });
 
     const row = await db
       .query`SELECT ${db.users.id}, ${db.users.createdAt}, ${db.users.isActive}, ${db.users.role}, ${db.users.profile} FROM users WHERE ${db.users.createdAt.gte(now)} AND ${db.users.isActive.eq(true)} AND ${db.users.role.eq('admin')}`
@@ -216,11 +216,11 @@ describe('select', () => {
       price: b.integer(),
       name: b.text(),
     });
-    const db = await b.testDb({ schema: { items } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { items } }, driver, clearRef);
 
-    await driverRef.driver.run({ query: 'INSERT INTO items (id, price, name) VALUES (?, ?, ?)', params: ['i1', 10, 'A'] });
-    await driverRef.driver.run({ query: 'INSERT INTO items (id, price, name) VALUES (?, ?, ?)', params: ['i2', 20, 'B'] });
-    await driverRef.driver.run({ query: 'INSERT INTO items (id, price, name) VALUES (?, ?, ?)', params: ['i3', 30, null] });
+    await driver.run({ query: 'INSERT INTO items (id, price, name) VALUES (?, ?, ?)', params: ['i1', 10, 'A'] });
+    await driver.run({ query: 'INSERT INTO items (id, price, name) VALUES (?, ?, ?)', params: ['i2', 20, 'B'] });
+    await driver.run({ query: 'INSERT INTO items (id, price, name) VALUES (?, ?, ?)', params: ['i3', 30, null] });
 
     const rows = await db
       .query`SELECT ${db.items.id}, ${db.items.price} FROM items WHERE ${db.items.price.between(10, 25)} AND ${db.items.id.inArray(['i1','i2'])} AND ${db.items.name.isNull()}`
@@ -245,7 +245,7 @@ describe('ordering', () => {
       age: b.integer(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     // Insert test data in random order
     await users.insertMany([
@@ -300,7 +300,7 @@ describe('ordering', () => {
       price: b.integer(),
     });
 
-    const db = await b.testDb({ schema: { products } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { products } }, driver, clearRef);
 
     // Insert test data
     await products.insertMany([
@@ -338,7 +338,7 @@ describe('ordering', () => {
       status: b.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     await users.insertMany([
       { id: 'u1', name: 'Alice', age: 25, status: 'active' },
@@ -369,7 +369,7 @@ describe('aggregate functions', () => {
       status: b.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     await users.insertMany([
       { id: 'u1', name: 'Alice', age: 25, status: 'active' },
@@ -401,7 +401,7 @@ describe('aggregate functions', () => {
       category: b.text(),
     });
 
-    const db = await b.testDb({ schema: { products } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { products } }, driver, clearRef);
 
     await products.insertMany([
       { id: 'p1', name: 'Phone', price: 800, category: 'electronics' },
@@ -439,7 +439,7 @@ describe('aggregate functions', () => {
       bonus: b.integer().default(0),
     });
 
-    const db = await b.testDb({ schema: { accounts } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { accounts } }, driver, clearRef);
 
     await accounts.insertMany([
       { id: 'acc1', balance: 100, bonus: 10 },
@@ -477,7 +477,7 @@ describe('aggregate functions', () => {
       region: b.text(),
     });
 
-    const db = await b.testDb({ schema: { sales } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { sales } }, driver, clearRef);
 
     await sales.insertMany([
       { id: 's1', product: 'Widget A', amount: 100, region: 'North' },
@@ -514,7 +514,7 @@ describe('update', () => {
       email: b.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     // Insert test data
     await users.insert({
@@ -538,12 +538,12 @@ describe('update', () => {
     });
 
     // Verify user-1 was updated
-    const updatedUserResults = await driverRef.driver.run({ query: 'SELECT id, name, age FROM users WHERE id = ?', params: ['user-1'] });
+    const updatedUserResults = await driver.run({ query: 'SELECT id, name, age FROM users WHERE id = ?', params: ['user-1'] });
     const updatedUser = updatedUserResults[0];
     expect(updatedUser).toMatchObject({ id: 'user-1', name: 'Johnny Doe', age: 26 });
 
     // Verify user-2 was not affected
-    const unchangedUserResults = await driverRef.driver.run({ query: 'SELECT id, name, age FROM users WHERE id = ?', params: ['user-2'] });
+    const unchangedUserResults = await driver.run({ query: 'SELECT id, name, age FROM users WHERE id = ?', params: ['user-2'] });
     const unchangedUser = unchangedUserResults[0];
     expect(unchangedUser).toMatchObject({ id: 'user-2', name: 'Jane Smith', age: 30 });
   });
@@ -556,7 +556,7 @@ describe('update', () => {
       views: b.integer().default(0),
     });
 
-    const db = await b.testDb({ schema: { posts } }, driverRef.driver , clearRef);
+    const db = await b.testDb({ schema: { posts } }, driver , clearRef);
 
     // Insert test data
     await posts.insert({
@@ -573,7 +573,7 @@ describe('update', () => {
     });
 
     // Verify update (boolean stored as integer)
-    const updatedPostResults = await driverRef.driver.run({ query: 'SELECT id, title, published, views FROM posts WHERE id = ?', params: ['post-1'] });
+    const updatedPostResults = await driver.run({ query: 'SELECT id, title, published, views FROM posts WHERE id = ?', params: ['post-1'] });
     const updatedPost = updatedPostResults[0];
     expect(updatedPost).toMatchObject({
       id: 'post-1',
@@ -594,7 +594,7 @@ describe('update', () => {
       }),
     });
 
-    const db = await b.testDb({ schema: { users } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     // Insert test data
     await users.insert({
@@ -613,7 +613,7 @@ describe('update', () => {
     expect(updateCallCount).toBe(1);
 
     // Verify updatedAt was updated to the onUpdate value
-    const updatedUserResults = await driverRef.driver.run({ query: 'SELECT id, name, updated_at FROM users WHERE id = ?', params: ['user-1'] });
+    const updatedUserResults = await driver.run({ query: 'SELECT id, name, updated_at FROM users WHERE id = ?', params: ['user-1'] });
     const updatedUser = updatedUserResults[0];
     expect(updatedUser).toMatchObject({
       id: 'user-1',
@@ -629,7 +629,7 @@ describe('update', () => {
       balance: b.integer().default(0),
     });
 
-    const db = await b.testDb({ schema: { accounts } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { accounts } }, driver, clearRef);
 
     await accounts.insert({
       id: 'acc-1',
@@ -642,7 +642,7 @@ describe('update', () => {
       where: accounts.userId.eq('user-1'),
     });
 
-    const updatedAccountResults = await driverRef.driver.run({ query: 'SELECT balance FROM accounts WHERE user_id = ?', params: ['user-1'] });
+    const updatedAccountResults = await driver.run({ query: 'SELECT balance FROM accounts WHERE user_id = ?', params: ['user-1'] });
     const updatedAccount = updatedAccountResults[0];
     expect(updatedAccount.balance).toBe(250);
   });
@@ -655,7 +655,7 @@ describe('update', () => {
       status: b.text().default('active'),
     });
 
-    const db = await b.testDb({ schema: { users } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     // Insert test data
     await users.insertMany([
@@ -671,7 +671,7 @@ describe('update', () => {
     });
 
     // Verify only user-2 was updated
-    const allUsers = await driverRef.driver.run({ query: 'SELECT id, status FROM users ORDER BY id', params: [] });
+    const allUsers = await driver.run({ query: 'SELECT id, status FROM users ORDER BY id', params: [] });
     expect(allUsers).toMatchObject([
       { id: 'user-1', status: 'active' }, // age 25, not updated
       { id: 'user-2', status: 'senior' }, // age 30, updated
@@ -685,7 +685,7 @@ describe('update', () => {
       name: b.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     await users.insert({
       id: 'user-1',
@@ -706,7 +706,7 @@ describe('update', () => {
       age: b.integer(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     await users.insert({
       id: 'user-1',
@@ -721,7 +721,7 @@ describe('update', () => {
     })).resolves.not.toThrow();
 
     // Verify the update actually worked
-    const updatedUserResults = await driverRef.driver.run({ query: 'SELECT id, name, age FROM users WHERE id = ?', params: ['user-1'] });
+    const updatedUserResults = await driver.run({ query: 'SELECT id, name, age FROM users WHERE id = ?', params: ['user-1'] });
     const updatedUser = updatedUserResults[0];
     expect(updatedUser).toMatchObject({ id: 'user-1', name: 'Johnny', age: 26 });
   });
@@ -732,7 +732,7 @@ describe('update', () => {
       name: b.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     // Create a malformed RawSql object that should trigger parsing errors
     const malformedSql: any = {
@@ -756,7 +756,7 @@ describe('delete', () => {
       age: b.integer(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driverRef.driver   , clearRef);
+    const db = await b.testDb({ schema: { users } }, driver   , clearRef);
 
     // Insert test data
     await users.insertMany([
@@ -771,7 +771,7 @@ describe('delete', () => {
     });
 
     // Verify user-2 was deleted
-    const remainingUsers = await driverRef.driver.run({ query: 'SELECT id, name FROM users ORDER BY id', params: [] });
+    const remainingUsers = await driver.run({ query: 'SELECT id, name FROM users ORDER BY id', params: [] });
     expect(remainingUsers).toMatchObject([
       { id: 'user-1', name: 'John Doe' },
       { id: 'user-3', name: 'Bob Johnson' },
@@ -786,7 +786,7 @@ describe('delete', () => {
       status: b.text().default('active'),
     });
 
-    const db = await b.testDb({ schema: { users } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     // Insert test data
     await users.insertMany([
@@ -802,7 +802,7 @@ describe('delete', () => {
     });
 
     // Verify only active users remain
-    const remainingUsers = await driverRef.driver.run({ query: 'SELECT id, name, status FROM users ORDER BY id', params: [] });
+    const remainingUsers = await driver.run({ query: 'SELECT id, name, status FROM users ORDER BY id', params: [] });
     expect(remainingUsers).toMatchObject([
       { id: 'user-1', name: 'John', status: 'active' },
       { id: 'user-4', name: 'Alice', status: 'active' },
@@ -817,7 +817,7 @@ describe('delete', () => {
       published: b.boolean().default(false),
     });
 
-    const db = await b.testDb({ schema: { posts } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { posts } }, driver, clearRef);
 
     // Insert test data
     await posts.insertMany([
@@ -833,7 +833,7 @@ describe('delete', () => {
     });
 
     // Verify only published posts and high-view drafts remain
-    const remainingPosts = await driverRef.driver.run({ query: 'SELECT id, title, views, published FROM posts ORDER BY id', params: [] });
+    const remainingPosts = await driver.run({ query: 'SELECT id, title, views, published FROM posts ORDER BY id', params: [] });
     expect(remainingPosts).toMatchObject([
       { id: 'post-2', title: 'Published 1', views: 100, published: 1 },
       { id: 'post-4', title: 'Published 2', views: 50, published: 1 },
@@ -846,7 +846,7 @@ describe('delete', () => {
       name: b.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     // Insert test data
     await users.insertMany([
@@ -862,7 +862,7 @@ describe('delete', () => {
     });
 
     // Verify only user-2 and user-4 remain
-    const remainingUsers = await driverRef.driver.run({ query: 'SELECT id, name FROM users ORDER BY id', params: [] });
+    const remainingUsers = await driver.run({ query: 'SELECT id, name FROM users ORDER BY id', params: [] });
     expect(remainingUsers).toMatchObject([
       { id: 'user-2', name: 'Jane' },
       { id: 'user-4', name: 'Alice' },
@@ -875,7 +875,7 @@ describe('delete', () => {
       name: b.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     await users.insert({
       id: 'user-1',
@@ -888,7 +888,7 @@ describe('delete', () => {
     })).resolves.not.toThrow();
 
     // Verify the delete actually worked
-    const remainingUsers = await driverRef.driver.run({ query: 'SELECT id FROM users', params: [] });
+    const remainingUsers = await driver.run({ query: 'SELECT id FROM users', params: [] });
     expect(remainingUsers).toHaveLength(0);
   });
 
@@ -898,7 +898,7 @@ describe('delete', () => {
       name: b.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     // Create a malformed RawSql object that should trigger parsing errors
     const malformedSql: any = {
@@ -918,7 +918,7 @@ describe('delete', () => {
       name: b.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     await users.insertMany([
       { id: 'user-1', name: 'John' },
@@ -931,7 +931,7 @@ describe('delete', () => {
     });
 
     // Verify no users were deleted
-    const remainingUsers = await driverRef.driver.run({ query: 'SELECT id FROM users', params: [] });
+    const remainingUsers = await driver.run({ query: 'SELECT id FROM users', params: [] });
     expect(remainingUsers).toHaveLength(2);
   });
 });
@@ -943,7 +943,7 @@ describe('transaction', () => {
       name: b.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driverRef.driver, clearRef);
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
 
     await expect(
       db.transaction(async (tx) => {
@@ -953,7 +953,7 @@ describe('transaction', () => {
       })
     ).rejects.toThrow();
 
-    const rows = await driverRef.driver.run({ query: 'SELECT id, name FROM users WHERE id = ?', params: ['u1'] });
+    const rows = await driver.run({ query: 'SELECT id, name FROM users WHERE id = ?', params: ['u1'] });
     expect(rows).toMatchObject([]);
   });
 });
@@ -965,19 +965,19 @@ describe('batch', () => {
       name: b.text(),
     })
 
-    await b.testDb({ schema: { users } }, driverRef.driver, clearRef)
+    await b.testDb({ schema: { users } }, driver, clearRef)
 
     await expect(
-      driverRef.driver.batch([
+      driver.batch([
         { query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: ['u1', 'Alice'] },
         { query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: ['u1', 'Duplicate'] },
       ])
     ).rejects.toThrow()
 
-    const rows = await driverRef.driver.run({ query: 'SELECT id, name FROM users WHERE id = ?', params: ['u1'] })
+    const rows = await driver.run({ query: 'SELECT id, name FROM users WHERE id = ?', params: ['u1'] })
     expect(rows).toMatchObject([])
   })
 })
 
-  return {driverRef, clearRef}
+  return {driver, clearRef}
 }

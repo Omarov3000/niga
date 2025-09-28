@@ -87,6 +87,7 @@ export interface TableMetadata {
 }
 
 export interface BinDriver {
+  logging: boolean;
   exec: (sql: string) => Promise<any>;
   run: (sql: RawSql) => Promise<any>;
   beginTransaction: () => Promise<TxDriver>;
@@ -94,6 +95,7 @@ export interface BinDriver {
 }
 
 export const fakeBinDriver: BinDriver = {
+  logging: false,
   exec: async () => { throw new Error('not implemented') },
   run: async () => { throw new Error('not implemented') },
   beginTransaction: async () => { throw new Error('not implemented') },

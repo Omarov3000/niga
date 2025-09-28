@@ -2,6 +2,7 @@ import { default as sqlite3Module } from '@sqlite.org/sqlite-wasm'
 import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 import type { BinDriver, TxDriver } from '@w/bin/src/types'
 import type { RawSql } from '@w/bin/src/utils/sql'
+import { inlineParams } from '@w/bin/src/utils/sql'
 
 // Static initialization
 const warn = console.warn // sqlite3Module complains about opfs on the main thread
@@ -19,12 +20,15 @@ function safeSplit(sql: string, delimiter: string): string[] {
 }
 
 export class BinBrowserDriver implements BinDriver {
+  logging: boolean = false;
+
   constructor(
     private db: Database,
   ) {
   }
 
   exec = async (sql: string) => {
+    if (this.logging) console.info('BinBrowserDriver.exec:', { sql });
     safeSplit(sql, ';').forEach((s) => {
       if (s.trim().length > 0) {
         this.db.exec(s)
@@ -33,6 +37,7 @@ export class BinBrowserDriver implements BinDriver {
   }
 
   run = async ({ query, params }: RawSql) => {
+    if (this.logging) console.info('BinBrowserDriver.run:', inlineParams({ query, params }));
     let stmt: any
     try {
       stmt = this.db.prepare(query)
@@ -61,6 +66,7 @@ export class BinBrowserDriver implements BinDriver {
   }
 
   batch = async (statements: RawSql[]) => {
+    if (this.logging) console.info('BinBrowserDriver.batch:', statements.map(s => inlineParams(s)).join('; '));
     if (statements.length === 0) return []
 
     const results: any[] = []
@@ -90,10 +96,12 @@ export class BinBrowserDriver implements BinDriver {
   }
 
   beginTransaction = async (): Promise<TxDriver> => {
+    if (this.logging) console.info('BinBrowserDriver.beginTransaction');
     this.db.exec('BEGIN')
     const self = this
     return {
       run: async ({ query, params }) => {
+        if (self.logging) console.info('BinBrowserDriver.tx.run:', inlineParams({ query, params }));
         const q = self.db.prepare(query)
         if (query.trim().toUpperCase().startsWith('SELECT')) {
           throw new Error('you cannot run SELECT inside a transaction')
@@ -103,9 +111,11 @@ export class BinBrowserDriver implements BinDriver {
         q.finalize()
       },
       commit: async () => {
+        if (self.logging) console.info('BinBrowserDriver.tx.commit');
         self.db.exec('COMMIT')
       },
       rollback: async () => {
+        if (self.logging) console.info('BinBrowserDriver.tx.rollback');
         self.db.exec('ROLLBACK')
       },
     }

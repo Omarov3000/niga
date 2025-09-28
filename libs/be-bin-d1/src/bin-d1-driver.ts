@@ -1,14 +1,18 @@
 import type { BinDriver, TxDriver } from '@w/bin/src/types'
 import type { RawSql } from '@w/bin/src/utils/sql'
+import { inlineParams } from '@w/bin/src/utils/sql'
 import type { D1Database, D1Result } from '@cloudflare/workers-types'
 
 const MAX_PARAMETERS_PER_STATEMENT = 100
 const MAX_STATEMENTS_PER_BATCH = 50
 
 export class BinD1Driver implements BinDriver {
+  logging: boolean = false;
+
   constructor(private readonly db: D1Database) {}
 
   exec = async (sql: string) => {
+    if (this.logging) console.info('BinD1Driver.exec:', { sql });
     const statements = safeSplit(sql, ';')
     for (const statement of statements) {
       if (statement.trim().length === 0) continue
@@ -18,11 +22,13 @@ export class BinD1Driver implements BinDriver {
   }
 
   run = async (rawSql: RawSql) => {
+    if (this.logging) console.info('BinD1Driver.run:', inlineParams(rawSql));
     const [result] = await this.batch([rawSql])
     return result ?? []
   }
 
   batch = async (statements: RawSql[]) => {
+    if (this.logging) console.info('BinD1Driver.batch:', statements.map(s => inlineParams(s)).join('; '));
     if (statements.length === 0) return []
 
     const preparedStatements: ReturnType<D1Database['prepare']>[] = []
@@ -67,22 +73,26 @@ export class BinD1Driver implements BinDriver {
   }
 
   beginTransaction = async (): Promise<TxDriver> => {
+    if (this.logging) console.info('BinD1Driver.beginTransaction');
     const queued: RawSql[] = []
 
     return {
       run: async (rawSql) => {
+        if (this.logging) console.info('BinD1Driver.tx.run:', inlineParams(rawSql));
         if (isSelect(rawSql.query)) {
           throw new Error('you cannot run SELECT inside a transaction')
         }
         queued.push(rawSql)
       },
       commit: async () => {
+        if (this.logging) console.info('BinD1Driver.tx.commit');
         if (queued.length === 0) return
 
         await this.batch([...queued])
         queued.length = 0
       },
       rollback: async () => {
+        if (this.logging) console.info('BinD1Driver.tx.rollback');
         queued.length = 0
       },
     }
