@@ -30,7 +30,7 @@ export interface ColumnMetadata {
   encode?: (data: unknown) => number | string;
   decode?: (data: number | string) => unknown;
   aliasedFrom?: string;
-  definition?: string // eg COUNT(*) for virtual columns // TODO: how?
+  definition?: string // eg COUNT(*) for virtual columns
   jsonSchema?: ZodTypeAny;
   enumValues?: readonly string[];
   renamedFrom?: string;

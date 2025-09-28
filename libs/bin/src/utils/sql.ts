@@ -23,8 +23,13 @@ export function sql(strings: TemplateStringsArray, ...values: any[]): RawSql {
         if (!table) {
           throw new Error('Column must be attached to a table before serializing to SQL');
         }
-        const col = value.__meta__.dbName;
-        query += `${table.getDbName()}.${col}`;
+        // Use definition for virtual columns with aggregate functions
+        if (value.__meta__.definition) {
+          query += `${value.__meta__.definition} AS ${value.__meta__.dbName}`;
+        } else {
+          const col = value.__meta__.dbName;
+          query += `${table.getDbName()}.${col}`;
+        }
       } else {
         query += "?"; // use ? as placeholder
         params.push(value);

@@ -220,10 +220,56 @@ export class Column<
     return new OrderObject(this.getSqlColumnReference(), "DESC");
   }
 
-  // TODO: implement
-  // count(): Column<..., "virtual">
-  // max(): Column<..., "virtual">
-  // increment(): Column<..., "virtual">
+  count(): Column<string, number, 'virtual'> {
+    if (!this.__table__) {
+      throw new Error('Column must be attached to a table to use count()');
+    }
+    return new Column<string, number, 'virtual'>({
+      kind: 'internal',
+      meta: {
+        name: 'userCount',
+        dbName: 'userCount',
+        type: 'integer',
+        insertType: 'virtual',
+        definition: `COUNT(${this.__table__.getDbName()}.${this.__meta__.dbName})`
+      },
+      table: this.__table__
+    });
+  }
+
+  max(): Column<string, Type, 'virtual'> {
+    if (!this.__table__) {
+      throw new Error('Column must be attached to a table to use max()');
+    }
+    return new Column<string, Type, 'virtual'>({
+      kind: 'internal',
+      meta: {
+        name: 'maxValue',
+        dbName: 'maxValue',
+        type: this.__meta__.type,
+        insertType: 'virtual',
+        definition: `MAX(${this.__table__.getDbName()}.${this.__meta__.dbName})`
+      },
+      table: this.__table__
+    });
+  }
+
+  increment(amount: number = 1): Column<string, number, 'virtual'> {
+    if (!this.__table__) {
+      throw new Error('Column must be attached to a table to use increment()');
+    }
+    return new Column<string, number, 'virtual'>({
+      kind: 'internal',
+      meta: {
+        name: 'nextValue',
+        dbName: 'nextValue',
+        type: 'integer',
+        insertType: 'virtual',
+        definition: `${this.__table__.getDbName()}.${this.__meta__.dbName} + ${amount}`
+      },
+      table: this.__table__
+    });
+  }
 
 
   //#region SECURITY

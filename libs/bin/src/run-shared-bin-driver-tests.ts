@@ -360,6 +360,151 @@ describe('ordering', () => {
   });
 });
 
+describe('aggregate functions', () => {
+  it('should support COUNT() aggregate function', async () => {
+    const users = b.table('users', {
+      id: b.id(),
+      name: b.text(),
+      age: b.integer(),
+      status: b.text(),
+    });
+
+    const db = await b.testDb({ schema: { users } }, driverRef.driver, clearRef);
+
+    await users.insertMany([
+      { id: 'u1', name: 'Alice', age: 25, status: 'active' },
+      { id: 'u2', name: 'Bob', age: 35, status: 'active' },
+      { id: 'u3', name: 'Charlie', age: 20, status: 'inactive' },
+      { id: 'u4', name: 'David', age: 30, status: 'active' },
+    ]);
+
+    // Test COUNT(*) equivalent
+    const totalUsers = await db
+      .query`SELECT ${db.users.id.count()} FROM users`
+      .executeAndTakeFirst(b.z.object({ userCount: b.z.integer() }));
+
+    expect(totalUsers?.userCount).toBe(4);
+
+    // Test COUNT with WHERE clause
+    const activeUsers = await db
+      .query`SELECT ${db.users.id.count()} FROM users WHERE ${db.users.status.eq('active')}`
+      .executeAndTakeFirst(b.z.object({ userCount: b.z.integer() }));
+
+    expect(activeUsers?.userCount).toBe(3);
+  });
+
+  it('should support MAX() aggregate function', async () => {
+    const products = b.table('products', {
+      id: b.id(),
+      name: b.text(),
+      price: b.integer(),
+      category: b.text(),
+    });
+
+    const db = await b.testDb({ schema: { products } }, driverRef.driver, clearRef);
+
+    await products.insertMany([
+      { id: 'p1', name: 'Phone', price: 800, category: 'electronics' },
+      { id: 'p2', name: 'Laptop', price: 1200, category: 'electronics' },
+      { id: 'p3', name: 'Book', price: 25, category: 'books' },
+      { id: 'p4', name: 'Tablet', price: 400, category: 'electronics' },
+    ]);
+
+    // Test MAX(price)
+    const maxPrice = await db
+      .query`SELECT ${db.products.price.max()} FROM products`
+      .executeAndTakeFirst(b.z.object({ maxValue: b.z.integer() }));
+
+    expect(maxPrice?.maxValue).toBe(1200);
+
+    // Test MAX with WHERE clause
+    const maxElectronicsPrice = await db
+      .query`SELECT ${db.products.price.max()} FROM products WHERE ${db.products.category.eq('electronics')}`
+      .executeAndTakeFirst(b.z.object({ maxValue: b.z.integer() }));
+
+    expect(maxElectronicsPrice?.maxValue).toBe(1200);
+
+    // Test MAX on text column
+    const maxName = await db
+      .query`SELECT ${db.products.name.max()} FROM products`
+      .executeAndTakeFirst(b.z.object({ maxValue: b.z.text() }));
+
+    expect(maxName?.maxValue).toBe('Tablet'); // Alphabetically last
+  });
+
+  it('should support increment() virtual column', async () => {
+    const accounts = b.table('accounts', {
+      id: b.id(),
+      balance: b.integer(),
+      bonus: b.integer().default(0),
+    });
+
+    const db = await b.testDb({ schema: { accounts } }, driverRef.driver, clearRef);
+
+    await accounts.insertMany([
+      { id: 'acc1', balance: 100, bonus: 10 },
+      { id: 'acc2', balance: 250, bonus: 25 },
+      { id: 'acc3', balance: 500, bonus: 50 },
+    ]);
+
+    // Test increment() with default amount (1)
+    const incrementedBalances = await db
+      .query`SELECT ${db.accounts.id}, ${db.accounts.balance.increment()} FROM accounts ORDER BY ${db.accounts.id.asc()}`
+      .execute(b.z.object({ id: b.z.id(), nextValue: b.z.integer() }));
+
+    expect(incrementedBalances).toMatchObject([
+      { id: 'acc1', nextValue: 101 },
+      { id: 'acc2', nextValue: 251 },
+      { id: 'acc3', nextValue: 501 },
+    ]);
+
+    // Test increment() with custom amount
+    const bonusBalances = await db
+      .query`SELECT ${db.accounts.id}, ${db.accounts.balance.increment(100)} FROM accounts WHERE ${db.accounts.balance.gte(200)} ORDER BY ${db.accounts.id.asc()}`
+      .execute(b.z.object({ id: b.z.id(), nextValue: b.z.integer() }));
+
+    expect(bonusBalances).toMatchObject([
+      { id: 'acc2', nextValue: 350 },
+      { id: 'acc3', nextValue: 600 },
+    ]);
+  });
+
+  it('should combine multiple aggregate functions', async () => {
+    const sales = b.table('sales', {
+      id: b.id(),
+      product: b.text(),
+      amount: b.integer(),
+      region: b.text(),
+    });
+
+    const db = await b.testDb({ schema: { sales } }, driverRef.driver, clearRef);
+
+    await sales.insertMany([
+      { id: 's1', product: 'Widget A', amount: 100, region: 'North' },
+      { id: 's2', product: 'Widget B', amount: 200, region: 'North' },
+      { id: 's3', product: 'Widget A', amount: 150, region: 'South' },
+      { id: 's4', product: 'Widget C', amount: 300, region: 'North' },
+    ]);
+
+    // Combine COUNT and MAX in same query
+    const stats = await db
+      .query`SELECT
+        ${db.sales.id.count()},
+        ${db.sales.amount.max()}
+        FROM sales
+        WHERE ${db.sales.region.eq('North')}`
+      .executeAndTakeFirst(b.z.object({
+        userCount: b.z.integer(),
+        maxValue: b.z.integer()
+      }));
+
+    expect(stats).toMatchObject({
+      userCount: 3,
+      maxValue: 300
+    });
+  });
+});
+
 describe('update', () => {
   it('should update data with WHERE clause', async () => {
     const users = b.table('users', {
