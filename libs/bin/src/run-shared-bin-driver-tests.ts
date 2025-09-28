@@ -1,12 +1,11 @@
-import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, expectTypeOf } from 'vitest';
 import { b } from './builder';
 import { z } from 'zod';
 import type { Table } from './table';
 import type { Db } from './db';
 import { sql } from './utils/sql';
 import { BinDriver, fakeBinDriver } from './types';
-
-
+import { ShallowPrettify } from './utils';
 
 export function runSharedBinDriverTests(makeDriver: () => BinDriver, opts: { skipTableCleanup?: boolean } = {}) {
 
@@ -144,7 +143,7 @@ describe('insert', () => {
   });
 });
 
-describe('select', () => {
+describe('query', () => {
   it('executes simple select via db.query and parses with zod', async () => {
     const users = b.table('users', {
       id: b.id(),
@@ -235,9 +234,8 @@ describe('select', () => {
     expect(rows2.length).toBe(1);
     expect(rows2[0].id).toBe('i3');
   });
-});
 
-describe('ordering', () => {
+  describe('ordering', () => {
   it('should support column.asc() and column.desc() in ORDER BY clauses', async () => {
     const users = b.table('users', {
       id: b.id(),
@@ -503,6 +501,309 @@ describe('aggregate functions', () => {
       maxValue: 300
     });
   });
+});
+});
+
+describe('select', () => {
+  it('selects many', async () => {
+    const users = b.table('users', {
+      id: b.integer().notNull(),
+      name: b.text().notNull(),
+      hasPet: b.boolean(), // optional
+    });
+
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+
+    await driver.run({ query: 'INSERT INTO users (id, name, has_pet) VALUES (?, ?, ?)', params: [1, 'Alice', 1] });
+    await driver.run({ query: 'INSERT INTO users (id, name, has_pet) VALUES (?, ?, ?)', params: [2, 'Bob', 0] });
+
+    const result = await db.users.select().execute();
+
+    expect(result).toHaveLength(2);
+    expect(result).toEqual(expect.arrayContaining([
+      { id: 1, name: 'Alice', hasPet: true },
+      { id: 2, name: 'Bob', hasPet: false }
+    ]));
+
+    type _Received = ShallowPrettify<(typeof result)[number]>;
+    type Expected = { id: number; name: string; hasPet: boolean | undefined };
+    expectTypeOf(result).toEqualTypeOf<Expected[]>();
+  });
+
+  it('selects partial with alias', async () => {
+    const users = b.table('users', {
+      id: b.integer().notNull(),
+      name: b.text().notNull(),
+    });
+
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+
+    await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: [1, 'Alice'] });
+
+    const result = await db.users.select({ columns: { userId: db.users.id } }).executeAndTakeFirst();
+
+    expect(result).toMatchObject({ userId: 1 });
+
+    type _Received = ShallowPrettify<typeof result>;
+    type Expected = { userId: number };
+    expectTypeOf(result).toEqualTypeOf<Expected>();
+  });
+
+  it('selects with where', async () => {
+    const users = b.table('users', {
+      id: b.integer().notNull(),
+      name: b.text().notNull(),
+    });
+
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+
+    await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: [1, 'Alice'] });
+    await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: [2, 'Bob'] });
+
+    const result = await db.users.select({ where: db.users.id.eq(1) }).execute();
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ id: 1, name: 'Alice' });
+  });
+
+  it('selects with order by', async () => {
+    const users = b.table('users', {
+      id: b.integer().notNull(),
+      name: b.text().notNull(),
+    });
+
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+
+    await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: [1, 'Bob'] });
+    await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: [2, 'Alice'] });
+
+    const result = await db.users.select({ orderBy: db.users.name.asc() }).execute();
+
+    expect(result).toHaveLength(2);
+    expect(result[0].name).toBe('Alice');
+    expect(result[1].name).toBe('Bob');
+  });
+
+  it('selects with limit and offset', async () => {
+    const users = b.table('users', {
+      id: b.integer().notNull(),
+      name: b.text().notNull(),
+    });
+
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+
+    for (let i = 0; i < 15; i++) {
+      await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: [i + 1, `User${i}`] });
+    }
+
+    const result = await db.users.select({ limit: 3, offset: 2 }).execute();
+
+    expect(result).toHaveLength(3);
+  });
+
+  it('selects with group by', async () => {
+    const users = b.table('users', {
+      id: b.integer().notNull(),
+      age: b.integer().notNull(),
+    });
+
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+
+    await driver.run({ query: 'INSERT INTO users (id, age) VALUES (?, ?)', params: [1, 25] });
+    await driver.run({ query: 'INSERT INTO users (id, age) VALUES (?, ?)', params: [2, 25] });
+    await driver.run({ query: 'INSERT INTO users (id, age) VALUES (?, ?)', params: [3, 30] });
+
+    const result = await db.users.select({ columns: { age: db.users.age, count: db.users.id.count() }, groupBy: db.users.age }).execute();
+
+    expect(result).toHaveLength(2);
+    expect(result).toEqual(expect.arrayContaining([
+      { age: 25, count: 2 },
+      { age: 30, count: 1 }
+    ]));
+
+    type _Received = ShallowPrettify<(typeof result)[number]>;
+    type Expected = { age: number; count: number };
+    expectTypeOf(result).toEqualTypeOf<Expected[]>();
+  });
+
+  describe('joins', () => {
+    it('joins', async () => {
+      const users = b.table('users', {
+        id: b.integer().notNull(),
+        name: b.text().notNull(),
+      });
+
+      const pets = b.table('pets', {
+        id: b.integer().notNull(),
+        name: b.text().notNull(),
+        ownerId: b.integer().notNull(),
+      });
+
+      const db = await b.testDb({ schema: { users, pets } }, driver, clearRef);
+
+      await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: [1, 'Alice'] });
+      await driver.run({ query: 'INSERT INTO pets (id, name, owner_id) VALUES (?, ?, ?)', params: [1, 'Fluffy', 1] });
+
+      const query = db.users.select().join(db.pets, db.users.id.eq(db.pets.ownerId));
+      const result = await query.execute();
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        users: { id: 1, name: 'Alice' },
+        pets: { id: 1, name: 'Fluffy', ownerId: 1 }
+      });
+
+      type _Received = ShallowPrettify<(typeof result)[number]>;
+      type Expected = { users: { id: number; name: string }; pets: { id: number; name: string; ownerId: number } };
+      expectTypeOf(result).toEqualTypeOf<Expected[]>();
+    });
+
+    it('joins with flat return type', async () => {
+      const users = b.table('users', {
+        id: b.integer().notNull(),
+        name: b.text().notNull(),
+      });
+
+      const pets = b.table('pets', {
+        id: b.integer().notNull(),
+        name: b.text().notNull(),
+        ownerId: b.integer().notNull(),
+      });
+
+      const db = await b.testDb({ schema: { users, pets } }, driver, clearRef);
+
+      await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: [1, 'Alice'] });
+      await driver.run({ query: 'INSERT INTO pets (id, name, owner_id) VALUES (?, ?, ?)', params: [1, 'Fluffy', 1] });
+
+      const result = await db.users.select({ columns: { id: db.users.id, petId: db.pets.id } }).join(db.pets, db.users.id.eq(db.pets.ownerId)).execute();
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({ id: 1, petId: 1 });
+
+      type _Received = ShallowPrettify<(typeof result)[number]>;
+      type Expected = { id: number; petId: number };
+      expectTypeOf(result).toEqualTypeOf<Expected[]>();
+    });
+
+    it('self join', async () => {
+      const users = b.table('users', {
+        id: b.integer().notNull(),
+        name: b.text().notNull(),
+        parentId: b.integer(),
+      });
+
+      const db = await b.testDb({ schema: { users } }, driver, clearRef);
+
+      await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: [1, 'Parent'] });
+      await driver.run({ query: 'INSERT INTO users (id, name, parent_id) VALUES (?, ?, ?)', params: [2, 'Child', 1] });
+
+      const parent = db.users.as('parent');
+      const query = db.users.select().leftJoin(parent, db.users.parentId.eq(parent.id));
+      const result = await query.execute();
+
+      expect(result).toHaveLength(2);
+      const childResult = result.find(r => r.users.name === 'Child');
+      expect(childResult).toMatchObject({
+        users: { id: 2, name: 'Child', parentId: 1 },
+        parent: { id: 1, name: 'Parent', parentId: null }
+      });
+
+      type _Received = ShallowPrettify<(typeof result)[number]>;
+      type Expected = { users: { id: number; name: string; parentId: number | undefined }; parent: { id: number; name: string; parentId: number | undefined } };
+      expectTypeOf(result).toEqualTypeOf<Expected[]>();
+    });
+
+    it('triple join', async () => {
+      const users = b.table('users', {
+        id: b.integer().notNull(),
+        name: b.text().notNull(),
+      });
+
+      const pets = b.table('pets', {
+        id: b.integer().notNull(),
+        name: b.text().notNull(),
+        ownerId: b.integer().notNull(),
+      });
+
+      const toys = b.table('toys', {
+        id: b.integer().notNull(),
+        name: b.text().notNull(),
+        petId: b.integer().notNull(),
+      });
+
+      const db = await b.testDb({ schema: { users, pets, toys } }, driver, clearRef);
+
+      await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: [1, 'Alice'] });
+      await driver.run({ query: 'INSERT INTO pets (id, name, owner_id) VALUES (?, ?, ?)', params: [1, 'Fluffy', 1] });
+      await driver.run({ query: 'INSERT INTO toys (id, name, pet_id) VALUES (?, ?, ?)', params: [1, 'Ball', 1] });
+
+      const query = db.users.select().join(db.pets, db.users.id.eq(db.pets.ownerId)).join(db.toys, db.pets.id.eq(db.toys.petId));
+      const result = await query.execute();
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        users: { id: 1, name: 'Alice' },
+        pets: { id: 1, name: 'Fluffy', ownerId: 1 },
+        toys: { id: 1, name: 'Ball', petId: 1 }
+      });
+
+      type _Received = ShallowPrettify<(typeof result)[number]>;
+      type Expected = { users: { id: number; name: string }; pets: { id: number; name: string; ownerId: number }; toys: { id: number; name: string; petId: number } };
+      expectTypeOf(result).toEqualTypeOf<Expected[]>();
+    });
+  })
+
+  describe('encode/decode and snake casing', () => {
+    it('properly decodes boolean values and handles snake case column names', async () => {
+      const users = b.table('users', {
+        id: b.integer().notNull(),
+        firstName: b.text().notNull(), // camelCase -> snake_case
+        isActive: b.boolean(),         // camelCase -> snake_case
+        hasPermissions: b.boolean().notNull(), // camelCase -> snake_case
+      });
+
+      const db = await b.testDb({ schema: { users } }, driver, clearRef);
+
+      await driver.run({
+        query: 'INSERT INTO users (id, first_name, is_active, has_permissions) VALUES (?, ?, ?, ?)',
+        params: [1, 'John', 1, 0]
+      });
+      await driver.run({
+        query: 'INSERT INTO users (id, first_name, has_permissions) VALUES (?, ?, ?)',
+        params: [2, 'Jane', 1]
+      });
+
+      const result = await db.users.select().execute();
+
+      expect(result).toHaveLength(2);
+
+      // Verify that boolean 1 decodes to true and 0 decodes to false
+      expect(result[0]).toMatchObject({
+        id: 1,
+        firstName: 'John',
+        isActive: true,      // 1 should decode to true
+        hasPermissions: false // 0 should decode to false
+      });
+
+      // Verify that NULL boolean decodes to null (not false)
+      expect(result[1]).toMatchObject({
+        id: 2,
+        firstName: 'Jane',
+        isActive: null,      // NULL should stay null
+        hasPermissions: true // 1 should decode to true
+      });
+
+      // Test WHERE clause with boolean values
+      const activeUsers = await db.users.select({ where: db.users.isActive.eq(true) }).execute();
+      expect(activeUsers).toHaveLength(1);
+      expect(activeUsers[0].firstName).toBe('John');
+
+      // Test WHERE clause with column that has snake_case name
+      const johnUser = await db.users.select({ where: db.users.firstName.eq('John') }).execute();
+      expect(johnUser).toHaveLength(1);
+      expect(johnUser[0].isActive).toBe(true);
+    });
+  })
 });
 
 describe('update', () => {

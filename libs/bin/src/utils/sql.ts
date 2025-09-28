@@ -73,6 +73,17 @@ function serializeFilterObject(filter: FilterObject): { query: string; params: a
       if (!filter.right) {
         throw new Error(`Operator ${filter.operator} requires a value`);
       }
+
+      // Handle column-to-column comparisons
+      if (filter.right.type === 'column') {
+        const rightColumn = `${filter.right.value.table}.${filter.right.value.name}`;
+        return {
+          query: `${column} ${filter.operator} ${rightColumn}`,
+          params: []
+        };
+      }
+
+      // Handle literal values
       return {
         query: `${column} ${filter.operator} ?`,
         params: [filter.right.value]

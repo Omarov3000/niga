@@ -86,7 +86,8 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     Object.entries(clonedColumns).forEach(([key, col]) => {
       aliased[key] = col as any;
     });
-    // aliased.__columns__ = aliased.__meta__.columns; // TODO: fix this
+    // Set __columns__ to the cloned column objects (not metadata)
+    (aliased as any).__columns__ = clonedColumns;
     return aliased as Table<Alias, TCols> & TCols;
   }
 
@@ -99,7 +100,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     'columns'
   > {
     return new SelectQueryBuilder(
-      { __tables__: { [this.__meta__.name]: this } } as any,
+      this,
       undefined,
       options
     ) as any;
@@ -417,36 +418,241 @@ export class SelectQueryBuilder<
   TJoined extends JoinedTables<any>,
   TMode extends SelectionMode
 > {
+  private joinClauses: Array<{ type: 'INNER' | 'LEFT'; table: Table<any, any>; on: RawSql }> = [];
+
   constructor(
     private source: TSource,
     private joined: TJoined | undefined,
     private options?: SelectArgs<TColMapOrDefault>
   ) {}
 
-  join<TJoin extends Table<any, any>>(other: TJoin, on: any): SelectQueryBuilder<
+  join<TJoin extends Table<any, any>>(other: TJoin, on: FilterObject): SelectQueryBuilder<
     TSource,
     TColMapOrDefault,
     JoinResult<TJoined, TJoin>,
     TColMapOrDefault extends undefined ? 'tables' : 'columns'
     >{
-    return new SelectQueryBuilder(this.source, other as any, this.options) as any; // TODO: fix
+    const builder = new SelectQueryBuilder(this.source, this.joined, this.options) as any;
+    builder.joinClauses = [...this.joinClauses, { type: 'INNER', table: other, on: sql`${on}` }];
+    return builder;
   };
 
-  leftJoin<TJoin extends Table<any, any>>(other: TJoin, on: any): SelectQueryBuilder<
+  leftJoin<TJoin extends Table<any, any>>(other: TJoin, on: FilterObject): SelectQueryBuilder<
     TSource,
     TColMapOrDefault,
     JoinResult<TJoined, TJoin>,
     TColMapOrDefault extends undefined ? 'tables' : 'columns'
     >{
-    return new SelectQueryBuilder(this.source, other as any, this.options) as any; // TODO: fix
+    const builder = new SelectQueryBuilder(this.source, this.joined, this.options) as any;
+    builder.joinClauses = [...this.joinClauses, { type: 'LEFT', table: other, on: sql`${on}` }];
+    return builder;
   };
 
   async execute(): Promise<SelectResult<TColMapOrDefault extends undefined ? TSource['__columns__'] : TColMapOrDefault, TJoined, TMode>[]> {
-    throw new Error("not implemented");
+    const driver = this.source.__db__.getDriver();
+    const query = this.buildQuery();
+
+    // Security check
+    const user = this.source.__db__.getCurrentUser();
+    const analysis = normalizeQueryAnalysisToRuntime(analyze(query), this.source.__db__.getSchema());
+    const accessedTables = Array.from(new Set(analysis.accessedTables.map((table) => table.name)));
+
+    const queryContext: QueryContext = {
+      type: analysis.type,
+      accessedTables,
+      analysis
+    };
+
+    await this.source.enforceSecurityRules(queryContext, user);
+
+    const rawResults = await driver.run(query);
+    return this.processResults(rawResults);
   }
 
   async executeAndTakeFirst(): Promise<SelectResult<TColMapOrDefault extends undefined ? TSource['__columns__'] : TColMapOrDefault, TJoined, TMode>> {
-    throw new Error("not implemented");
+    const results = await this.execute();
+    if (results.length === 0) {
+      throw new Error('No rows found');
+    }
+    return results[0];
+  }
+
+  private buildQuery(): RawSql {
+    const parts: string[] = [];
+    const params: any[] = [];
+
+    // SELECT clause
+    if (this.options?.columns) {
+      const columnParts: string[] = [];
+      Object.entries(this.options.columns).forEach(([alias, column]) => {
+        if (column.__meta__.definition) {
+          columnParts.push(`${column.__meta__.definition} AS ${alias}`);
+        } else {
+          const table = column.__table__;
+          if (table) {
+            columnParts.push(`${table.getDbName()}.${column.__meta__.dbName} AS ${alias}`);
+          }
+        }
+      });
+      parts.push(`SELECT ${columnParts.join(', ')}`);
+    } else {
+      // Select all columns from source table and joined tables
+      const columnParts: string[] = [];
+
+      if (this.joinClauses.length > 0) {
+        // For joins, use aliases to avoid column name conflicts
+        // Add source table columns with alias
+        Object.entries(this.source.__meta__.columns).forEach(([key, meta]) => {
+          if (meta.insertType !== 'virtual') {
+            const alias = `${this.source.__meta__.name}_${meta.dbName}`;
+            columnParts.push(`${this.source.__meta__.dbName}.${meta.dbName} AS ${alias}`);
+          }
+        });
+
+        // Add joined table columns with alias
+        this.joinClauses.forEach(({ table }) => {
+          Object.entries(table.__meta__.columns).forEach(([key, meta]) => {
+            if (meta.insertType !== 'virtual') {
+              const alias = `${table.__meta__.name}_${meta.dbName}`;
+              columnParts.push(`${table.__meta__.dbName}.${meta.dbName} AS ${alias}`);
+            }
+          });
+        });
+      } else {
+        // For simple selects, no need for aliases
+        Object.entries(this.source.__meta__.columns).forEach(([key, meta]) => {
+          if (meta.insertType !== 'virtual') {
+            columnParts.push(`${this.source.__meta__.dbName}.${meta.dbName}`);
+          }
+        });
+      }
+
+      parts.push(`SELECT ${columnParts.join(', ')}`);
+    }
+
+    // FROM clause
+    parts.push(`FROM ${this.source.__meta__.dbName}`);
+
+    // JOIN clauses
+    this.joinClauses.forEach(({ type, table, on }) => {
+      const tableRef = table.__meta__.aliasedFrom ? `${table.__meta__.aliasedFrom} AS ${table.__meta__.dbName}` : table.__meta__.dbName;
+      const joinType = type === 'INNER' ? 'INNER JOIN' : 'LEFT JOIN';
+      parts.push(`${joinType} ${tableRef} ON ${on.query}`);
+      params.push(...on.params);
+    });
+
+    // WHERE clause
+    if (this.options?.where) {
+      const whereClause = this.options.where instanceof FilterObject ? sql`${this.options.where}` : this.options.where;
+      parts.push(`WHERE ${whereClause.query}`);
+      params.push(...whereClause.params);
+    }
+
+    // GROUP BY clause
+    if (this.options?.groupBy) {
+      const groupByCols = Array.isArray(this.options.groupBy) ? this.options.groupBy : [this.options.groupBy];
+      const groupByParts = groupByCols.map(col => {
+        const table = col.__table__;
+        return table ? `${table.getDbName()}.${col.__meta__.dbName}` : col.__meta__.dbName;
+      });
+      parts.push(`GROUP BY ${groupByParts.join(', ')}`);
+    }
+
+    // ORDER BY clause
+    if (this.options?.orderBy) {
+      const orderByClauses = Array.isArray(this.options.orderBy) ? this.options.orderBy : [this.options.orderBy];
+      const orderByParts = orderByClauses.map(order => {
+        const orderSql = sql`${order}`;
+        params.push(...orderSql.params);
+        return orderSql.query;
+      });
+      parts.push(`ORDER BY ${orderByParts.join(', ')}`);
+    }
+
+    // LIMIT clause
+    if (this.options?.limit !== undefined) {
+      parts.push(`LIMIT ?`);
+      params.push(this.options.limit);
+    }
+
+    // OFFSET clause
+    if (this.options?.offset !== undefined) {
+      parts.push(`OFFSET ?`);
+      params.push(this.options.offset);
+    }
+
+    return { query: parts.join(' '), params };
+  }
+
+  private processResults(rawResults: any[]): any[] {
+    if (this.options?.columns) {
+      // For explicit column selection, return flat objects
+      return rawResults.map(row => {
+        const result: any = {};
+        Object.entries(this.options!.columns!).forEach(([alias, column]) => {
+          let value = row[alias];
+          if (column.__meta__.decode && value !== null && value !== undefined) {
+            value = column.__meta__.decode(value);
+          }
+          result[alias] = value;
+        });
+        return result;
+      });
+    } else if (this.joinClauses.length > 0) {
+      // For joins without explicit columns, group by table
+      return rawResults.map(row => {
+        const result: any = {};
+
+        // Process source table
+        const sourceData: any = {};
+        Object.entries(this.source.__meta__.columns).forEach(([key, meta]) => {
+          if (meta.insertType !== 'virtual') {
+            const alias = `${this.source.__meta__.name}_${meta.dbName}`;
+            let value = row[alias];
+            if (meta.decode && value !== null && value !== undefined) {
+              value = meta.decode(value);
+            }
+            sourceData[key] = value;
+          }
+        });
+        result[this.source.__meta__.name] = sourceData;
+
+        // Process joined tables
+        this.joinClauses.forEach(({ table }) => {
+          const tableData: any = {};
+          Object.entries(table.__meta__.columns).forEach(([key, meta]) => {
+            if (meta.insertType !== 'virtual') {
+              const alias = `${table.__meta__.name}_${meta.dbName}`;
+              let value = row[alias];
+              if (meta.decode && value !== null && value !== undefined) {
+                value = meta.decode(value);
+              }
+              tableData[key] = value;
+            }
+          });
+          result[table.__meta__.name] = tableData;
+        });
+
+        return result;
+      });
+    } else {
+      // For simple selects, return flat objects with source table data
+      return rawResults.map(row => {
+        const result: any = {};
+        Object.entries(this.source.__meta__.columns).forEach(([key, meta]) => {
+          if (meta.insertType !== 'virtual') {
+            // Use alias if there are joins, otherwise use the original column name
+            const columnKey = this.joinClauses.length > 0 ? `${this.source.__meta__.name}_${meta.dbName}` : meta.dbName;
+            let value = row[columnKey];
+            if (meta.decode && value !== null && value !== undefined) {
+              value = meta.decode(value);
+            }
+            result[key] = value;
+          }
+        });
+        return result;
+      });
+    }
   }
 }
 
