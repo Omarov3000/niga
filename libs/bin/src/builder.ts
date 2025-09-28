@@ -142,8 +142,8 @@ function table<Name extends string, TCols extends Record<string, Column<any, any
 
 const index = () => new IndexBuilder();
 
-function db<TSchema extends Record<string, Table<any, any>>>(opts: { schema: TSchema; name?: string }): Db & TSchema {
-  const instance = new Db({ schema: opts.schema as any, name: opts.name });
+function db<TSchema extends Record<string, Table<any, any>>>(opts: { schema: TSchema; name?: string; origin?: 'client' | 'server' }): Db & TSchema {
+  const instance = new Db({ schema: opts.schema as any, name: opts.name, origin: opts.origin });
   Object.entries(opts.schema).forEach(([key, table]) => {
     (instance as any)[key] = table;
   });
@@ -155,7 +155,7 @@ const quoteIdentifier = (name: string) => `"${name.replaceAll('"', '""')}"`;
 type ClearRef = { current?: Array<() => Promise<void>> } | undefined;
 
 async function testDb<TSchema extends Record<string, Table<any, any>>>(
-  opts: { schema: TSchema; name?: string },
+  opts: { schema: TSchema; name?: string; origin?: 'client' | 'server' },
   driver: BinDriver,
   clearRef?: ClearRef
 ): Promise<Db & TSchema> {

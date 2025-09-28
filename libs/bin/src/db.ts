@@ -22,15 +22,18 @@ import { normalizeQueryAnalysisToRuntime } from './security/normalize-analysis';
 export interface DbConstructorOptions {
   schema: Record<string, Table<any, any>>;
   name?: string;
+  origin?: 'client' | 'server';
 }
 
 export class Db {
   private driver?: BinDriver;
   private currentUser?: any;
   readonly name: string;
+  readonly origin?: 'client' | 'server';
 
   constructor(private options: DbConstructorOptions) {
     this.name = options.name ?? 'bin';
+    this.origin = options.origin;
     // expose tables on the db instance and wire driver access for table methods
     Object.entries(this.options.schema).forEach(([name, table]) => {
       (this as any)[name] = table;
