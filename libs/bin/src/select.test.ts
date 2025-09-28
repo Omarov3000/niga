@@ -30,7 +30,7 @@ describe('select', () => {
 
     // TODO: expect call
 
-    type Received = ShallowPrettify<(typeof result)[number]>;
+    type _Received = ShallowPrettify<(typeof result)[number]>;
     type Expected = { id: string; name: string; hasPet: boolean | undefined };
     expectTypeOf(result).toEqualTypeOf<Expected[]>();
   });
@@ -47,9 +47,48 @@ describe('select', () => {
 
     // TODO: expect call
 
-    type Received = ShallowPrettify<typeof result>;
+    type _Received = ShallowPrettify<typeof result>;
     type Expected = { userId: string };
     expectTypeOf(result).toEqualTypeOf<Expected>();
+  });
+
+  it('selects with where', async () => {
+    const users = b.table('users', {
+      id: b.id(),
+      name: b.text().notNull(),
+    });
+
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+
+    const result = await db.users.select({ where: db.users.id.eq('1') }).execute();
+
+    // TODO: expect call
+  });
+
+  it('selects with order by', async () => {
+    const users = b.table('users', {
+      id: b.id(),
+      name: b.text().notNull(),
+    });
+
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+
+    const result = await db.users.select({ orderBy: db.users.id.asc() }).execute();
+
+    // TODO: expect call
+  });
+
+  it('selects with limit and offset', async () => {
+    const users = b.table('users', {
+      id: b.id(),
+      name: b.text().notNull(),
+    });
+
+    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+
+    const result = await db.users.select({ limit: 10, offset: 10 }).execute();
+
+    // TODO: expect call
   });
 
   it('selects with group by', async () => {
@@ -64,7 +103,7 @@ describe('select', () => {
 
     // TODO: expect call
 
-    type Received = ShallowPrettify<(typeof result)[number]>;
+    type _Received = ShallowPrettify<(typeof result)[number]>;
     type Expected = { age: number; count: number };
     expectTypeOf(result).toEqualTypeOf<Expected[]>();
   });
@@ -85,15 +124,11 @@ describe('select', () => {
       const db = await b.testDb({ schema: { users, pets } }, driver, clearRef);
 
       const query = db.users.select().join(db.pets, db.users.id.eq(db.pets.ownerId));
-      type QueryType = typeof query;
-      type Mode = QueryType extends SelectQueryBuilder<any, any, any, infer M>
-  ? M
-  : never;
       const result = await query.execute();
 
       // TODO: expect call
 
-      type Received = ShallowPrettify<(typeof result)[number]>;
+      type _Received = ShallowPrettify<(typeof result)[number]>;
       type Expected = { users: { id: string; name: string }; pets: { id: string; name: string; ownerId: string } };
       expectTypeOf(result).toEqualTypeOf<Expected[]>();
     });
@@ -116,7 +151,7 @@ describe('select', () => {
 
       // TODO: expect call
 
-      type Received = ShallowPrettify<(typeof result)[number]>;
+      type _Received = ShallowPrettify<(typeof result)[number]>;
       type Expected = { id: string; petId: string };
       expectTypeOf(result).toEqualTypeOf<Expected[]>();
     });
@@ -136,9 +171,8 @@ describe('select', () => {
 
       // TODO: expect call
 
-      type Received = ShallowPrettify<(typeof result)[number]>;
+      type _Received = ShallowPrettify<(typeof result)[number]>;
       type Expected = { users: { id: string; name: string; parentId: string | undefined }; parent: { id: string; name: string; parentId: string | undefined } };
-      type Diff = DiffAb<Received, Expected>;
       expectTypeOf(result).toEqualTypeOf<Expected[]>();
     });
 
@@ -167,9 +201,8 @@ describe('select', () => {
 
       // TODO: expect call
 
-      type Received = ShallowPrettify<(typeof result)[number]>;
+      type _Received = ShallowPrettify<(typeof result)[number]>;
       type Expected = { users: { id: string; name: string }; pets: { id: string; name: string; ownerId: string }; toys: { id: string; name: string; petId: string } };
-      type Diff = DiffAb<Received, Expected>;
       expectTypeOf(result).toEqualTypeOf<Expected[]>();
     });
   })
