@@ -16,6 +16,7 @@
     "vitest": "^3.2.4",
     "typescript": "^5.9.2",
     "@vitest/browser": "^3.2.4",
-    "playwright": "^1.55.1"
+    "playwright": "^1.55.1",
+    "vite-node": "^3.2.4"
   }
 }
