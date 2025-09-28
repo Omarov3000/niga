@@ -220,6 +220,8 @@ export class Column<
     return new OrderObject(this.getSqlColumnReference(), "DESC");
   }
 
+  //#region VIRTUAL COLUMNS
+
   count(): Column<string, number, 'virtual'> {
     if (!this.__table__) {
       throw new Error('Column must be attached to a table to use count()');
@@ -271,6 +273,7 @@ export class Column<
     });
   }
 
+  //#endregion
 
   //#region SECURITY
 
