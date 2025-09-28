@@ -70,8 +70,8 @@ it('self join', () => {
   const parent = db.users.as('parent')
   const usersWithParent = db.users.select().leftJoin(parent, db.users.id.eq(parent.parentId)).execute()
   type Expected = {
-    id: string;
-    parentId?: string;
+    users: { id: string; name: string };
+    parent: { id: string; name: string; parentId: string };
   }[];
   type _test = Expect<Equal<typeof usersWithParent, Expected>>
 })

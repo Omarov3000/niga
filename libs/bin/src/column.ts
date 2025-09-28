@@ -90,7 +90,15 @@ export class Column<
 
   //#region FILTERS
 
-  eq(value: Type) {
+  eq(value: Type | Column<any, Type, any>) {
+    if (value instanceof Column) {
+      return new FilterObject(
+        "=",
+        this.getSqlColumnReference(),
+        { type: "column", value: value.getSqlColumnReference() }
+      );
+    }
+
     const encoded = this.__meta__.encode ? this.__meta__.encode(value as unknown as any) : value;
     return new FilterObject(
       "=",

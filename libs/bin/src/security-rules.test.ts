@@ -4,6 +4,7 @@ import { sql } from './utils/sql';
 import type { RawSql } from './utils/sql';
 import { b } from './builder';
 import { hasWhereClauseCheck } from './security/has-where-clause-check';
+import { BinDriver } from './types';
 
 const runStatement = async ({ query }: RawSql) => {
   const normalized = query.trim().toUpperCase();
@@ -13,7 +14,7 @@ const runStatement = async ({ query }: RawSql) => {
   return [];
 };
 
-const mockBinDriver = {
+const mockBinDriver: BinDriver = {
   exec: async () => {},
   run: runStatement,
   batch: async (statements: RawSql[]) => {
@@ -27,7 +28,8 @@ const mockBinDriver = {
     run: async () => {},
     commit: async () => {},
     rollback: async () => {}
-  })
+  }),
+  logging: false
 };
 
 describe('security rules end-to-end', () => {

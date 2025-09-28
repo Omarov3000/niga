@@ -93,17 +93,17 @@ type ComparisonOperator = "=" | "!=" | "<" | "<=" | ">" | ">=";
 export class SqlPart {}
 
 type ColumnReference = { type: "column"; name: string; table: string; runtime: { name: string; table: string } };
-
+type Right = { type: "literal"; value: any } | { type: 'column', value: ColumnReference };
 export class FilterObject extends SqlPart {
   type: "binary_expr" = "binary_expr";
   operator: ComparisonOperator | "LIKE" | "NOT LIKE" | "BETWEEN" | "NOT BETWEEN" | "IN" | "NOT IN" | "IS NULL" | "IS NOT NULL";
   left: ColumnReference;
-  right?: { type: "literal"; value: any };
+  right?: Right;
 
   constructor(
     operator: ComparisonOperator | "LIKE" | "NOT LIKE" | "BETWEEN" | "NOT BETWEEN" | "IN" | "NOT IN" | "IS NULL" | "IS NOT NULL",
     left: ColumnReference,
-    right?: { type: "literal"; value: any }
+    right?: Right
   ) {
     super();
     this.operator = operator;

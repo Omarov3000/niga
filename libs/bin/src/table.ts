@@ -1,6 +1,6 @@
 import { Column, ColumnUpdateExpression } from './column';
 import type { IndexDefinition, TableMetadata, ColumnMetadata, BinDriver, SecurityRule, QueryContext, ConstraintDefinition } from './types';
-import { FilterObject, sql } from './utils/sql';
+import { FilterObject, OrderObject, sql } from './utils/sql';
 import type { RawSql } from './utils/sql';
 import { analyze } from './security/analyze';
 import { toSnakeCase } from './utils/casing';
@@ -9,7 +9,7 @@ import { getDefaultValueFromZodSchema } from './zod-integration/get-default-valu
 
 type ColumnLike = Column<any, any, any>;
 
-type ColumnsOnly<T> = OmitNever<{ [K in keyof T]: T[K] extends ColumnLike ? T[K] : never }>;
+export type ColumnsOnly<T> = OmitNever<{ [K in keyof T]: T[K] extends ColumnLike ? T[K] : never }>;
 
 type RawSelectable<T> = {
   [K in keyof T]: T[K] extends Column<any, infer V, infer I>
@@ -36,6 +36,30 @@ type OptionalInsertFields<T> = {
 export type SelectableForCols<T> = OmitNever<RawSelectable<T>>;
 export type InsertableForCols<T> = OmitNever<RequiredInsertFields<T>> & Partial<OmitNever<OptionalInsertFields<T>>>;
 
+type SelectColumnMap = Record<string, Column<any, any, any>>;
+
+type ColumnSelectableValue<TCol extends Column<any, any, any>> =
+  TCol extends Column<any, infer TValue, infer InsertType>
+    ? InsertType extends 'optional'
+      ? TValue | undefined
+      : TValue
+    : never;
+
+type ColumnsSelectionResult<TColumns extends SelectColumnMap> = {
+  [K in keyof TColumns]: TColumns[K] extends Column<any, any, any>
+    ? ColumnSelectableValue<TColumns[K]>
+    : never;
+};
+
+type SelectArgs<TColumnMap extends SelectColumnMap | undefined = undefined> = {
+  columns?: TColumnMap;
+  where?: RawSql | FilterObject;
+  orderBy?: OrderObject | OrderObject[];
+  limit?: number;
+  offset?: number;
+  groupBy?: Column<any, any, any> | Array<Column<any, any, any>>;
+};
+
 export interface TableConstructorOptions<Name extends string, TCols extends Record<string, Column<any, any, any>>> {
   name: Name;
   columns: TCols;
@@ -44,6 +68,43 @@ export interface TableConstructorOptions<Name extends string, TCols extends Reco
 }
 
 export class Table<Name extends string, TCols extends Record<string, Column<any, any, any>>> {
+  as<Alias extends string>(alias: Alias): Table<Alias, TCols> & TCols {
+    const clonedColumns = Object.fromEntries(
+      Object.entries(this.__meta__.columns).map(([key, meta]) => {
+        const original = (this as any)[key] as Column<any, any, any>;
+        const cloned = new Column({ kind: 'internal', meta: { ...meta }, table: original.__table__ });
+        return [key, cloned];
+      })
+    ) as TCols;
+    const aliased = new Table<Alias, TCols>({
+      name: alias as any,
+      columns: clonedColumns,
+      indexes: this.__meta__.indexes ?? [],
+      constrains: this.__meta__.constrains ?? [],
+    }) as any;
+    (aliased as any).__meta__.aliasedFrom = this.__meta__.name;
+    Object.entries(clonedColumns).forEach(([key, col]) => {
+      aliased[key] = col as any;
+    });
+    // aliased.__columns__ = aliased.__meta__.columns; // TODO: fix this
+    return aliased as Table<Alias, TCols> & TCols;
+  }
+
+  select<
+    TColMap extends SelectColumnMap | undefined = undefined
+    >(options?: SelectArgs<TColMap>): SelectQueryBuilder<
+    this,
+    TColMap,
+      JoinedTables<{ [K in Name]: this }>,
+    'columns'
+  > {
+    return new SelectQueryBuilder(
+      { __tables__: { [this.__meta__.name]: this } } as any,
+      undefined,
+      options
+    ) as any;
+  }
+
   make<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf>>(
     this: TSelf,
     overrides?: Partial<InsertableForCols<TSelfCols>>
@@ -271,6 +332,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
   }
 
   readonly __meta__: TableMetadata;
+  readonly __columns__: TCols;
   readonly __db__!: { getDriver: () => BinDriver; getCurrentUser: () => any; getSchema: () => Record<string, Table<any, any>> };
   // type helpers exposed on instance for precise typing
   readonly __selectionType__!: SelectableForCols<TCols>;
@@ -296,6 +358,95 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
       indexes: options.indexes ?? [],
       constrains: options.constrains ?? [],
     } as TableMetadata;
+
+    this.__columns__ = options.columns
+  }
+}
+
+type JoinedTables<
+  Tables extends Record<string, Table<any, any>>
+> = {
+  __tables__: Tables;
+};
+
+type JoinResult<
+  T1 extends Table<any, any> | JoinedTables<any>,
+  T2 extends Table<any, any> | JoinedTables<any>
+> =
+  // Table × Table
+  T1 extends Table<infer N1 extends string, infer C1>
+    ? T2 extends Table<infer N2 extends string, infer C2>
+      ? JoinedTables<{
+          [K in N1]: Table<N1, C1>;
+        } & {
+          [K in N2]: Table<N2, C2>;
+        }>
+      : never
+    // JoinedTables × Table
+    : T1 extends JoinedTables<infer Ts>
+    ? T2 extends Table<infer N2 extends string, infer C2>
+      ? JoinedTables<Ts & { [K in N2]: Table<N2, C2> }>
+      : never
+    // Table × JoinedTables
+    : T1 extends Table<infer N1 extends string, infer C1>
+    ? T2 extends JoinedTables<infer Ts>
+      ? JoinedTables<{ [K in N1]: Table<N1, C1> } & Ts>
+      : never
+    : never;
+
+type JoinedSelection<JTs extends JoinedTables<any>> = {
+  [K in keyof JTs['__tables__']]:
+    JTs['__tables__'][K] extends Table<any, infer Cols>
+      ? ColumnsSelectionResult<Cols>
+      : never;
+};
+
+type SelectResult<
+  TColumnMap extends SelectColumnMap,
+  TJoined extends JoinedTables<any>,
+  TMode extends SelectionMode
+> = TMode extends 'columns'
+  ? ColumnsSelectionResult<TColumnMap> // flat join via explicit column map
+  : JoinedSelection<TJoined>; // normal join selection (grouped by table)
+
+type SelectionMode = 'columns' | 'tables';
+
+export class SelectQueryBuilder<
+  TSource extends Table<any, any>,
+  TColMapOrDefault extends SelectColumnMap | undefined,
+  TJoined extends JoinedTables<any>,
+  TMode extends SelectionMode
+> {
+  constructor(
+    private source: TSource,
+    private joined: TJoined | undefined,
+    private options?: SelectArgs<TColMapOrDefault>
+  ) {}
+
+  join<TJoin extends Table<any, any>>(other: TJoin, on: any): SelectQueryBuilder<
+    TSource,
+    TColMapOrDefault,
+    JoinResult<TJoined, TJoin>,
+    TColMapOrDefault extends undefined ? 'tables' : 'columns'
+    >{
+    return new SelectQueryBuilder(this.source, other as any, this.options) as any; // TODO: fix
+  };
+
+  leftJoin<TJoin extends Table<any, any>>(other: TJoin, on: any): SelectQueryBuilder<
+    TSource,
+    TColMapOrDefault,
+    JoinResult<TJoined, TJoin>,
+    TColMapOrDefault extends undefined ? 'tables' : 'columns'
+    >{
+    return new SelectQueryBuilder(this.source, other as any, this.options) as any; // TODO: fix
+  };
+
+  async execute(): Promise<SelectResult<TColMapOrDefault extends undefined ? TSource['__columns__'] : TColMapOrDefault, TJoined, TMode>[]> {
+    throw new Error("not implemented");
+  }
+
+  async executeAndTakeFirst(): Promise<SelectResult<TColMapOrDefault extends undefined ? TSource['__columns__'] : TColMapOrDefault, TJoined, TMode>> {
+    throw new Error("not implemented");
   }
 }
 
