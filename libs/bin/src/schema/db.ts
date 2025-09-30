@@ -190,6 +190,49 @@ export class Db {
       throw e;
     }
   }
+
+  async batch<T>(fn: (batch: any) => Promise<T>): Promise<T> {
+    if (!this.driver) throw new Error('No driver connected. Call _connectDriver first.');
+
+    const statements: Array<{ query: string; params: any[] }> = [];
+    const batchDriver: BinDriver = {
+      ...this.driver,
+      run: async (sql) => {
+        statements.push(sql);
+        return [];
+      },
+      exec: async (sql) => {
+        statements.push({ query: sql, params: [] });
+      },
+      beginTransaction: async () => {
+        throw new Error('Nested transactions not supported in batch');
+      },
+    };
+
+    const batchTables: Record<string, any> = {};
+    Object.entries(this.options.schema).forEach(([name, table]) => {
+      const batchTable = Object.create(table);
+      Object.defineProperty(batchTable, '__db__', {
+        value: {
+          getDriver: () => batchDriver,
+          getCurrentUser: () => this.currentUser,
+          getSchema: () => this.options.schema,
+        },
+        enumerable: false,
+        configurable: true,
+        writable: false,
+      });
+      batchTables[name] = batchTable;
+    });
+
+    const batchQuery = (_strings: TemplateStringsArray, _values: any[]) => {
+      throw new Error('batch.query is not supported inside a batch (reads are disabled)');
+    };
+
+    const result = await fn({ ...batchTables, query: batchQuery });
+    await this.driver.batch(statements);
+    return result;
+  }
 }
 
 function quoteIdentifier(name: string): string {
