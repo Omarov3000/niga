@@ -1,7 +1,7 @@
 import type { Database } from '@sqlite.org/sqlite-wasm'
-import type { BinDriver, TxDriver, TableSnapshot } from '@w/bin/src/types'
+import type { BinDriver, TxDriver, TableSnapshot } from '@w/bin'
 import type { RawSql } from '@w/bin/src/utils/sql'
-import type { Db } from '@w/bin/src/db'
+import type { Db } from '@w/bin'
 import { BinBrowserDriver, makeBrowserSQLite } from './bin-browser-driver'
 import { hashString128 } from './hash-string'
 

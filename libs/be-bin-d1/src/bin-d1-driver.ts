@@ -1,4 +1,4 @@
-import type { BinDriver, TxDriver } from '@w/bin/src/types'
+import type { BinDriver, TxDriver } from '@w/bin'
 import type { RawSql } from '@w/bin/src/utils/sql'
 import { inlineParams } from '@w/bin/src/utils/sql'
 import type { D1Database, D1Result } from '@cloudflare/workers-types'

@@ -1,6 +1,6 @@
 import { default as sqlite3Module } from '@sqlite.org/sqlite-wasm'
 import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
-import type { BinDriver, TxDriver } from '@w/bin/src/types'
+import type { BinDriver, TxDriver } from '@w/bin'
 import type { RawSql } from '@w/bin/src/utils/sql'
 import { inlineParams } from '@w/bin/src/utils/sql'
 

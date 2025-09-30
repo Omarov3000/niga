@@ -1,5 +1,5 @@
 import { test, expect } from 'vitest'
-import { b } from '@w/bin/src/builder'
+import { b } from '@w/bin'
 import {BinMigratingBrowserDriver } from './bin-migrating-browser-driver'
 
 test('creates tables on first use', async () => {
