@@ -8,6 +8,7 @@
     "allowJs": true,
     "checkJs": false,
     "noEmit": true,
+    "jsx": "react-jsx",
     "isolatedModules": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,

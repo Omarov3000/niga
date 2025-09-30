@@ -13,14 +13,17 @@
   "workspaces": ["apps/**", "libs/**"],
   "dependencies": {
     "dedent": "^1.7.0",
-    "ulidx": "^2.4.1"
+    "ulidx": "^2.4.1",
+    "react": "^19.1.0"
   },
   "devDependencies": {
     "turbo": "^2.5.5",
     "vitest": "^3.2.4",
+    "vitest-browser-react": "^1.0.1",
     "typescript": "^5.9.2",
     "@vitest/browser": "^3.2.4",
     "playwright": "^1.55.1",
-    "vite-node": "^3.2.4"
+    "vite-node": "^3.2.4",
+    "vite": "^7.1.7"
   }
 }
