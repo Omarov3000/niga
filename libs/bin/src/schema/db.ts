@@ -13,11 +13,11 @@ import type {
 import { ColumnMutationNotSupportedError } from './types';
 import { deepEqual } from 'fast-equals';
 import type { ZodTypeAny } from 'zod';
-import { sql } from './utils/sql';
+import { sql } from '../utils/sql';
 import type { Table } from './table';
-import { analyze } from './security/analyze';
-import { camelCaseKeys } from './utils/casing';
-import { normalizeQueryAnalysisToRuntime } from './security/normalize-analysis';
+import { camelCaseKeys } from '../utils/casing';
+import { normalizeQueryAnalysisToRuntime } from '../true-sql/normalize-analysis';
+import { analyze } from '../true-sql/analyze';
 
 export interface DbConstructorOptions {
   schema: Record<string, Table<any, any>>;

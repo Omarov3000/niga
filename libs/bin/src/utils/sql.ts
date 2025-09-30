@@ -1,6 +1,6 @@
 export type RawSql = { query: string; params: any[] }; // we get this as input
-import { Column } from '../column';
-import { Sql } from '../security/sql-types';
+import { Column } from '../schema/column';
+import { Sql } from '../true-sql/sql-types';
 
 export function sql(strings: TemplateStringsArray, ...values: any[]): RawSql {
   let query = "";

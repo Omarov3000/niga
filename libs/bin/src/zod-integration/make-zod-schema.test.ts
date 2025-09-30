@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import z from 'zod';
-import { b } from '../builder';
-import { Expect, Equal } from '../utils';
+import { b } from '../schema/builder';
+import { Expect, Equal } from '../utils/utils';
 import { makeInsertSchema, makeSelectSchema } from './make-zod-schema';
 
 describe('makeInsertSchema()', () => {

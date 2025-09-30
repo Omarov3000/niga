@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
-import { Table } from '../table';
-import { Column } from '../column';
-import { b } from '../builder';
-import { Equal, Expect } from '../utils';
+import { Table } from '../schema/table';
+import { Column } from '../schema/column';
+import { b } from '../schema/builder';
+import { Equal, Expect } from '../utils/utils';
 
 type ColumnBaseZodType<TCol extends Column<any, any, any>> =
   TCol extends Column<infer Name, infer Type, any>

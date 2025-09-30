@@ -1,6 +1,6 @@
 import type { ApplicationType, ColumnType, InsertionType, ColumnMetadata, SecurityCheckContext } from './types';
-import { FilterObject, OrderObject, sql } from './utils/sql';
-import type { RawSql } from './utils/sql';
+import { FilterObject, OrderObject, sql } from '../utils/sql';
+import type { RawSql } from '../utils/sql';
 
 export class Column<
   Name extends string = string,

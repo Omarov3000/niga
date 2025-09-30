@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { BinNodeDriver } from '../bin-node-driver';
 import { b } from './builder';
-import { BinNodeDriver } from './bin-node-driver';
-import type { Table } from './table';
-import { ColumnMutationNotSupportedError, type PreparedSnapshot, type TableSnapshot } from './types';
+import { Table } from './table';
+import { PreparedSnapshot, TableSnapshot, ColumnMutationNotSupportedError } from './types';
 
 const runScenario = async (
   steps: Array<{

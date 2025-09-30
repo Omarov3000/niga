@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
-import { BinDriver } from './types';
-import type { TxDriver } from './types';
+import { BinDriver } from './schema/types';
+import type { TxDriver } from './schema/types';
 import { RawSql, inlineParams } from './utils/sql';
 
 function safeSplit(sql: string, delimiter: string): string[] {

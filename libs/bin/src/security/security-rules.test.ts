@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
-import { sql } from './utils/sql';
-import type { RawSql } from './utils/sql';
-import { b } from './builder';
-import { hasWhereClauseCheck } from './security/has-where-clause-check';
-import { BinDriver } from './types';
+import { sql } from '../utils/sql';
+import type { RawSql } from '../utils/sql';
+import { b } from '../schema/builder';
+import { hasWhereClauseCheck } from './has-where-clause-check';
+import { BinDriver } from '../schema/types';
 
 const runStatement = async ({ query }: RawSql) => {
   const normalized = query.trim().toUpperCase();

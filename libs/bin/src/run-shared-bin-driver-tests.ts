@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, expectTypeOf } from 'vitest';
-import { b } from './builder';
+import { b } from './schema/builder';
 import { z } from 'zod';
-import type { Table } from './table';
-import type { Db } from './db';
+import type { Table } from './schema/table';
+import type { Db } from './schema/db';
 import { sql } from './utils/sql';
-import { BinDriver, fakeBinDriver } from './types';
-import { ShallowPrettify } from './utils';
+import { BinDriver, fakeBinDriver } from './schema/types';
+import { ShallowPrettify } from './utils/utils';
 
 export function runSharedBinDriverTests(makeDriver: () => BinDriver, opts: { skipTableCleanup?: boolean } = {}) {
 

@@ -1,7 +1,7 @@
 // @ts-ignore - Package has type issues with exports
 import { connect } from '@tursodatabase/database';
-import { BinDriver } from './types';
-import type { TxDriver } from './types';
+import { BinDriver } from './schema/types';
+import type { TxDriver } from './schema/types';
 import { RawSql, inlineParams } from './utils/sql';
 
 function safeSplit(sql: string, delimiter: string): string[] {

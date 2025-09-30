@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { sql } from '../utils/sql';
-import { analyze } from './analyze';
 import { hasWhereClauseCheck } from './has-where-clause-check';
-import type { SecurityCheckContext } from '../types';
+import type { SecurityCheckContext } from '../schema/types';
+import { analyze } from '../true-sql/analyze';
 
 const evaluate = (
   rawSql: ReturnType<typeof sql>,

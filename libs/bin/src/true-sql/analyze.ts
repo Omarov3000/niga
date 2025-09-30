@@ -1,6 +1,7 @@
-import { ComparisonOperator, rawQueryToSelectQuery, SelectQuery, SqlQuery } from './raw-query-to-select-query';
+
 import { RawSql } from '../utils/sql';
-import type { QueryType } from '../types';
+import type { QueryType } from '../schema/types';
+import { ComparisonOperator, rawQueryToSelectQuery, SelectQuery } from './raw-query-to-select-query';
 
 // Flattened view of accessed tables for Simplified Analysis
 type SimplifiedFilter = {

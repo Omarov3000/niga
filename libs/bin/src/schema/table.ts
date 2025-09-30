@@ -1,11 +1,11 @@
 import { Column, ColumnUpdateExpression } from './column';
-import type { IndexDefinition, TableMetadata, ColumnMetadata, BinDriver, SecurityRule, QueryContext, ConstraintDefinition } from './types';
-import { FilterObject, OrderObject, sql } from './utils/sql';
-import type { RawSql } from './utils/sql';
-import { analyze } from './security/analyze';
-import { toSnakeCase } from './utils/casing';
-import { normalizeQueryAnalysisToRuntime } from './security/normalize-analysis';
-import { getDefaultValueFromZodSchema } from './zod-integration/get-default-value-from-zod-schema';
+import { FilterObject, OrderObject, sql } from '../utils/sql';
+import type { RawSql } from '../utils/sql';
+import { toSnakeCase } from '../utils/casing';
+import { normalizeQueryAnalysisToRuntime } from '../true-sql/normalize-analysis';
+import { getDefaultValueFromZodSchema } from '../zod-integration/get-default-value-from-zod-schema';
+import { analyze } from '../true-sql/analyze';
+import { IndexDefinition, ConstraintDefinition, SecurityRule, QueryContext, TableMetadata, BinDriver, ColumnMetadata } from './types';
 
 type ColumnLike = Column<any, any, any>;
 

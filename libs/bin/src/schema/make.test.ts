@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
+import { ShallowPrettify, Expect, Equal } from '../utils/utils';
 import { b } from './builder';
-import { Expect, Equal, ShallowPrettify } from './utils';
 
 describe('table.make()', () => {
   describe('basic functionality', () => {

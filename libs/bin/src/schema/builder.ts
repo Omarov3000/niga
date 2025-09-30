@@ -1,11 +1,11 @@
 import { nanoid } from 'nanoid';
 import { z, type ZodTypeAny, infer as zInfer } from 'zod';
+import { IndexBuilder, Table } from './table';
+import { getDefaultValueFromZodSchema } from '../zod-integration/get-default-value-from-zod-schema';
+import { toSnakeCase } from '../utils/casing';
+import { BinDriver, type ConstraintDefinition, type ConstraintType } from './types';
 import { Column } from './column';
 import { Db } from './db';
-import { IndexBuilder, Table } from './table';
-import { getDefaultValueFromZodSchema } from './zod-integration/get-default-value-from-zod-schema';
-import { toSnakeCase } from './utils/casing';
-import { BinDriver, type ConstraintDefinition, type ConstraintType } from './types';
 
 const text = () => new Column<'text', string, 'optional'>({ kind: 'public', name: 'text', type: 'text' });
 const integer = () => new Column<'integer', number, 'optional'>({ kind: 'public', name: 'integer', type: 'integer' });

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { sql } from "../utils/sql";
-import { analyze } from "./analyze";
+import { analyze } from './analyze';
 
 describe("analyze - unit tests", () => {
   describe("columns & tables", () => {

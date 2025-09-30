@@ -1,5 +1,5 @@
-import type { QueryAnalysis } from './analyze';
-import type { SecurityCheckContext } from '../types';
+import { QueryAnalysis } from '../true-sql/analyze';
+import type { SecurityCheckContext } from '../schema/types';
 
 /**
  * Checks if a WHERE clause contains the required security condition.

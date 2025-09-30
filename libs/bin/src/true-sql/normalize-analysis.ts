@@ -1,5 +1,5 @@
 import type { QueryAnalysis } from './analyze';
-import type { Table } from '../table';
+import type { Table } from '../schema/table';
 
 export function normalizeQueryAnalysisToRuntime(
   analysis: QueryAnalysis,

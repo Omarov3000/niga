@@ -1,16 +1,10 @@
-we need to implement data syncing between 2 databases using bin orm. It's master-master architecture.
+we need to implement data syncing between client - server with offline support.
 
-introduce `SyncedTable extends Table`, `SyncedDb extends Db`, `b.syncedDb`
+introduce `SyncedTable`, `SyncedDb extends Db`, `b.syncedDb`
 
-SyncedTable has 3 new methods: `insertWithUndo`, `updateWithUndo`, `deleteWithUndo`. they have the same parameters as their regular counterparts. They produce `DbMutation`.
+SyncedTable has same methods as Table but it replaces mutating methods with: `insertWithUndo`, `updateWithUndo`, `deleteWithUndo`. they have the same parameters as their regular counterparts. They produce `DbMutation`.
 
 ```ts
-type NodeRejectionError = {
-  node: string
-  time: Date
-  message: string
-}
-
 interface DbInsertMutation {
   table: string
   type: 'insert'
@@ -20,22 +14,17 @@ interface DbInsertMutation {
     type: 'delete'
     ids: string[]
   }
-
-  rejection?: NodeRejectionError
 }
 
 interface DbUpdateMutation {
   table: string
   type: 'update'
-  data: Record<string, any>
-  where: RawSql
+  data: Record<string, any> // we should assert that it always contains id column (no arbitrary updates). no increments or other "relative" updates.
 
   undo: {
     type: 'update'
     data: Record<string, any>[] // before updating fileds we need to read the original data and save it here (with ids)
   }
-
-  rejection?: NodeRejectionError
 }
 
 interface DbDeleteMutation {
@@ -47,8 +36,6 @@ interface DbDeleteMutation {
     type: 'insert'
     data: Record<string, any>[]
   }
-
-  rejection?: NodeRejectionError
 }
 
 type DbMutation = DbInsertMutation | DbUpdateMutation | DbDeleteMutation
@@ -56,32 +43,113 @@ type DbMutation = DbInsertMutation | DbUpdateMutation | DbDeleteMutation
 type DbMutationBatch = {
   id: string // ulid from ulidx
   dbName: string
-  mutation: DbMutation[] // for batch updates
-  appliedLocally?: boolean
+  mutation: DbMutation[] // for batch updates. batch is a transaction
+  node: {
+    id: string
+    name: string // eg macos
+  }
 }
 ```
-
-Before applying a mutation locally it needs to be saved to `DbSyncQueue`.
 
 ```ts
-interface DbSyncQueue {
-  put: (mutation: DbMutationBatch) => Promise<void>
-  update: (id: string, opts: { appliedLocally?: boolean }) => Promise<void>
-  delete: (id: string) => Promise<void>
+// on client and server
+table _db_mutations_queue {
+  id: string // ulid
+  value: string // DbMutationBatch
+  // we don't use server commit sequence number (CSN) and allow server clock drift (which is unlikely)
+  server_timestamp_ms: integer // when mutation is applied on server it sets this field. locally it's 0 until it's updated from server (in this case we can set value to '')
+}
+
+// on client only
+table _db_mutations_queue_dead {}
+
+// on server only: detect conflicts
+table _latest_server_timestamp {
+  table: string
+  row_id: string
+  server_timestamp_ms: integer
 }
 ```
 
-After saving it needs to be applied locally. If fails it needs to be removed from the queue. If succeeds it needs to be update in the queue and then sent to the remote database.
+After applying mutation and storing it in queue table (in tx) it needs to be sent to the remote database.
 
 ```ts
 interface RemoteDb {
-  send: (batch: DbMutationBatch[]) => Promise<{ failed: string[] }>
-  get: (afterId: string) => Promise<DbMutationBatch[]> // afterId is ulid
+  send: (batch: DbMutationBatch[]) => Promise<{ succeeded: { id: string; server_timestamp_ms: number }[]; failed: string[] }>
+  get: (maxServerTimestampLocally: number) => Promise<DbMutationBatch[]>
+  pull: (opts: { required: { table: string; offset?: number }[] }): Promise<Blob> // tableName:(rowsNumber or -1 if all table was read) + apache-arrow representation of the rows data. Let's assume that this will be streamed from server but for now we can assume that it's a single blob.
 }
 ```
 
 If remote database returns `failed` ids we need to apply the undo of the mutations. Then store it in `DbSyncDeadQueue` with failure reason. If applying undo fails we need to indicate it clearly in `DbSyncDeadQueue`. All other ids from the batch needed to be removed from the queue.
 
-SyncedDb holds the SyncQueue and the RemoteDb. It should re-try flushing the queue on start. When remoteDb returns failed it performs undo properly. It also has `acceptSyncBatch` method that accepts `DbMutationBatch[]` and performs synchronization. This method is called by `RemoteDb.send`. On start SyncedDb should call `RemoteDb.get` and apply mutations. If one of the mutations fail we need to create a new reverse mutation with `rejection` and send it to the `RemoteDb.send`.
+`DbSyncDeadQueue` is used to communicate errors to users.
 
-Both remote and local databases should have table _mutations { id: string, succeededAt: Date } to track the mutations and avoid double application.
+`SyncedDb` holds the SyncQueue and the RemoteDb. It should re-try flushing the queue on start. When remoteDb returns failed it performs undo properly. It also has `acceptSyncBatch` method that accepts `DbMutationBatch[]` and performs synchronization. This method is called by `RemoteDb.send`. On start SyncedDb should call `RemoteDb.get` and apply mutations. If it's first start it needs to pull all tables.
+
+In case of network partition we retry send from DbSyncQueue up to 7 days. then it is moved DbSyncDeadQueue. DbSyncDeadQueue is cleared every 2 weeks.
+
+What should be ignored when implementing sync:
+1. schema evolution or Schema‑constraint violations
+
+# Conflict Cases & Solutions
+
+If one mutation in the batch is rejected (eg due to conflict) all batch is rejected.
+
+Client might re-try to send the batch. Before handling we should ignore if already applied.
+
+## 1. Uniqueness constraints
+- **Conflict**: insert or update can lead to uniqueness violation.
+- **Solution**: use **ULIDs** as IDs → uniqueness guaranteed → ignore.
+- Assumption: no 2 same objects can be inserted.
+
+## 2. Concurrent modification of same row on 2 devices
+Total order: sort by `(server_timestamp_ms, id)`
+
+Server vs device drift:
+  Device sends mutation, but server already applied a **newer mutation** for that row - reject the older mutation if conflict cannot be resolved.
+
+- **Case 2.1: update vs update**
+  - A: updates field(s)
+  - B: updates same/different field(s)
+  - **Solution**:
+    - Different fields → merge them.
+    - Same field → later `(server_timestamp_ms, id)` wins (LWW).
+    - we use simple merge and we treat arrays as atomic. No CRDT style merging.
+
+- **Case 2.2: update vs delete**
+  - A: deletes row
+  - B: updates row
+  - **Solution**: Reject what comes later.
+
+- **Case 2.3: delete vs delete**
+  - Both delete same row
+  - **Solution**: Row deleted. One of the deletes is rejected.
+
+- **Case 2.4: insert vs insert**
+  - impossible: ids are unique. Reject what comes later.
+
+- **Case 2.5: insert vs delete**
+  - A: inserts row
+  - B:
+    - inserts row
+    - deletes row
+  - **Solution**: Impossible - ids are unique. Reject what comes later.
+
+## 3. Out of order mutations arrival on server
+
+Problem: Update arrives before insert.
+
+Solution: Network doesn't preserve order. If we see newer mutation (by it's ulid) we should undo the older one and re-apply them.
+
+## 4. Cross‑device causality or Conflict beyond single‑row
+
+Example:
+
+- Device A inserts row X (ts=100).
+
+- Device B doesn’t see it yet and inserts a new row Y referencing X.
+
+- Before A’s insert reaches B, B’s insert Y arrives at server → FK violation.
+
+Solution: enforce constrains server side only. Reject mutations that violate them.

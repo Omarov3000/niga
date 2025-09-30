@@ -1,6 +1,6 @@
 import type { ZodTypeAny } from 'zod';
-import { RawSql } from './utils/sql';
-import type { QueryAnalysis } from './security/analyze';
+import { RawSql } from '../utils/sql';
+import type { QueryAnalysis } from '../true-sql/analyze';
 
 export type ColumnType = 'integer' | 'real' | 'text' | 'blob';
 

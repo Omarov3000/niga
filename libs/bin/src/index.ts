@@ -1,6 +1,6 @@
-export * from './types';
-export * from './column';
-export * from './table';
-export * from './db';
-export { b } from './builder';
-export { migrate } from './migrate';
+export * from './schema/types';
+export * from './schema/column';
+export * from './schema/table';
+export * from './schema/db';
+export { b } from './schema/builder';
+export { migrate } from './schema/migrate';
