@@ -1,11 +1,11 @@
 import { it, expect, describe } from "vitest";
-import { rawQueryToSelectQuery } from './raw-query-to-select-query';
+import { rawQueryToAst } from './raw-query-to-ast';
 import { sql } from '../utils/sql';
 
 describe("rawQueryToSelectQuery - unit tests", () => {
   describe("columns", () => {
     it("parses star column", () => {
-      const result = rawQueryToSelectQuery(sql`SELECT * FROM users`);
+      const result = rawQueryToAst(sql`SELECT * FROM users`);
       expect(result).toEqual({
         type: "select",
         columns: [{ type: "star" }],
@@ -14,7 +14,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
     });
 
     it("parses simple columns", () => {
-      const result = rawQueryToSelectQuery(sql`SELECT id, name FROM users`);
+      const result = rawQueryToAst(sql`SELECT id, name FROM users`);
       expect(result).toEqual({
         type: "select",
         columns: [
@@ -26,7 +26,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
     });
 
     it("parses column alias", () => {
-      const result = rawQueryToSelectQuery(sql`SELECT id AS user_id FROM users`);
+      const result = rawQueryToAst(sql`SELECT id AS user_id FROM users`);
       expect(result).toEqual({
         type: "select",
         columns: [{ type: "column", name: "id", alias: "user_id" }],
@@ -35,7 +35,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
     });
 
     it("parses table alias in column", () => {
-      const result = rawQueryToSelectQuery(sql`SELECT u.id FROM users u`);
+      const result = rawQueryToAst(sql`SELECT u.id FROM users u`);
       expect(result).toEqual({
         type: "select",
         columns: [{ type: "column", name: "id", table: "u" }],
@@ -46,7 +46,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
 
   describe("literals and params", () => {
     it("parses numeric literal", () => {
-      const result = rawQueryToSelectQuery(sql`SELECT 42 FROM users`);
+      const result = rawQueryToAst(sql`SELECT 42 FROM users`);
       expect(result).toEqual({
         type: "select",
         columns: [{ type: "literal", value: 42 }],
@@ -55,7 +55,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
     });
 
     it("parses string param", () => {
-      const result = rawQueryToSelectQuery(sql`SELECT ${"foo"} FROM users`);
+      const result = rawQueryToAst(sql`SELECT ${"foo"} FROM users`);
       expect(result).toEqual({
         type: "select",
         columns: [{ type: "param", index: 0 }],
@@ -64,7 +64,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
     });
 
     it("parses NULL literal", () => {
-      const result = rawQueryToSelectQuery(sql`SELECT NULL FROM users`);
+      const result = rawQueryToAst(sql`SELECT NULL FROM users`);
       expect(result).toEqual({
         type: "select",
         columns: [{ type: "literal", value: null }],
@@ -75,7 +75,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
 
   describe("where clause - comparison operators", () => {
     it("parses =", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`SELECT * FROM users WHERE id = ${1}`
       );
       expect(result).toEqual({
@@ -92,7 +92,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
     });
 
     it("parses !=", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`SELECT * FROM users WHERE name != ${"bob"}`
       );
       expect(result).toEqual({
@@ -109,7 +109,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
     });
 
     it("parses <", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`SELECT * FROM users WHERE age < ${30}`
       );
       expect(result).toEqual({
@@ -126,7 +126,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
     });
 
     it("parses <=", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`SELECT * FROM users WHERE age <= ${40}`
       );
       expect(result).toEqual({
@@ -143,7 +143,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
     });
 
     it("parses >=", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`SELECT * FROM users WHERE age >= ${18}`
       );
       expect(result).toEqual({
@@ -162,7 +162,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
 
   describe("where clause - logical operators", () => {
     it("parses AND", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`SELECT * FROM users WHERE id = ${1} AND name != ${"bob"}`
       );
       expect(result).toEqual({
@@ -189,7 +189,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
     });
 
     it("parses OR", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`SELECT * FROM users WHERE active = 1 OR admin = 1`
       );
       expect(result).toEqual({
@@ -218,7 +218,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
 
   describe("functions", () => {
     it("parses COUNT(*)", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`SELECT COUNT(*) AS total FROM users`
       );
       expect(result).toEqual({
@@ -238,7 +238,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
 
   describe("joins", () => {
     it("parses INNER JOIN", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`SELECT u.id, o.id FROM users u INNER JOIN orders o ON u.id = o.user_id`
       );
       expect(result).toEqual({
@@ -263,7 +263,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
     });
 
     it("parses CROSS JOIN", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`SELECT * FROM users CROSS JOIN roles`
       );
       expect(result).toEqual({
@@ -281,7 +281,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
 
   describe("subqueries", () => {
     it("parses scalar subquery", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`SELECT (SELECT COUNT(*) FROM orders) AS order_count FROM users`
       );
       expect(result).toEqual({
@@ -304,7 +304,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
     });
 
     it("parses IN subquery", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`SELECT * FROM users WHERE id IN (SELECT user_id FROM orders)`
       );
       expect(result).toEqual({
@@ -324,7 +324,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
     });
 
     it("parses EXISTS subquery", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`SELECT * FROM users WHERE EXISTS (SELECT 1 FROM orders)`
       );
       expect(result).toEqual({
@@ -345,7 +345,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
 
   describe("from subquery", () => {
     it("parses FROM (subquery)", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`SELECT * FROM (SELECT id FROM users) sub`
       );
       expect(result).toEqual({
@@ -366,7 +366,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
 
   describe("group by / having", () => {
     it("parses GROUP BY and HAVING", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`SELECT user_id, COUNT(*) FROM orders GROUP BY user_id HAVING COUNT(*) > 1`
       );
       expect(result).toEqual({
@@ -389,7 +389,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
 
   describe("order by / limit", () => {
     it("parses ORDER BY", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`SELECT * FROM users ORDER BY name DESC, id ASC`
       );
       expect(result).toEqual({
@@ -404,7 +404,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
     });
 
     it("parses LIMIT and OFFSET", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`SELECT * FROM users LIMIT 10 OFFSET 5`
       );
       expect(result).toEqual({
@@ -418,7 +418,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
 
   describe("with clause (CTE)", () => {
     it("parses simple CTE", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`WITH recent AS (SELECT * FROM orders) SELECT * FROM recent`
       );
       expect(result).toEqual({
@@ -445,7 +445,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
 
   describe("compound select", () => {
     it("parses UNION", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`SELECT id FROM users UNION SELECT id FROM admins`
       );
       expect(result).toEqual({
@@ -465,7 +465,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
     });
 
     it("parses UNION ALL", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`SELECT id FROM users UNION ALL SELECT id FROM admins`
       );
       expect(result).toEqual({
@@ -485,7 +485,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
     });
 
     it("parses INTERSECT", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`SELECT id FROM users INTERSECT SELECT id FROM admins`
       );
       expect(result).toEqual({
@@ -505,7 +505,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
     });
 
     it("parses EXCEPT", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`SELECT id FROM users EXCEPT SELECT id FROM banned_users`
       );
       expect(result).toEqual({
@@ -528,7 +528,7 @@ describe("rawQueryToSelectQuery - unit tests", () => {
 describe("rawQueryToSelectQuery - INSERT / UPDATE / DELETE", () => {
   describe("INSERT", () => {
     it("parses simple INSERT with values", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`INSERT INTO users (id, name) VALUES (1, 'Alice')`
       );
       expect(result).toEqual({
@@ -545,7 +545,7 @@ describe("rawQueryToSelectQuery - INSERT / UPDATE / DELETE", () => {
     });
 
     it("parses INSERT with multiple rows", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`INSERT INTO users (id, name) VALUES (1, 'Alice'), (2, 'Bob')`
       );
       expect(result).toEqual({
@@ -566,7 +566,7 @@ describe("rawQueryToSelectQuery - INSERT / UPDATE / DELETE", () => {
     });
 
     it("parses INSERT ... SELECT", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`INSERT INTO archive_users (id, name) SELECT id, name FROM users WHERE active = 0`
       );
       expect(result).toEqual({
@@ -591,7 +591,7 @@ describe("rawQueryToSelectQuery - INSERT / UPDATE / DELETE", () => {
     });
 
     it("parses INSERT with RETURNING", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`INSERT INTO users (name) VALUES ('Charlie') RETURNING id`
       );
       expect(result).toEqual({
@@ -606,7 +606,7 @@ describe("rawQueryToSelectQuery - INSERT / UPDATE / DELETE", () => {
 
   describe("UPDATE", () => {
     it("parses simple UPDATE", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`UPDATE users SET name = 'Alice' WHERE id = 1`
       );
       expect(result).toEqual({
@@ -625,7 +625,7 @@ describe("rawQueryToSelectQuery - INSERT / UPDATE / DELETE", () => {
     });
 
     it("parses UPDATE with multiple columns", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`UPDATE users SET name = 'Bob', active = 1 WHERE id = 2`
       );
       expect(result).toEqual({
@@ -646,7 +646,7 @@ describe("rawQueryToSelectQuery - INSERT / UPDATE / DELETE", () => {
 
 
     it("parses UPDATE with RETURNING", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`UPDATE users SET active = 1 WHERE id = 3 RETURNING id, name`
       );
       expect(result).toEqual({
@@ -669,7 +669,7 @@ describe("rawQueryToSelectQuery - INSERT / UPDATE / DELETE", () => {
 
   describe("DELETE", () => {
     it("parses simple DELETE", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`DELETE FROM users WHERE id = 1`
       );
       expect(result).toEqual({
@@ -686,7 +686,7 @@ describe("rawQueryToSelectQuery - INSERT / UPDATE / DELETE", () => {
 
 
     it("parses DELETE with RETURNING", () => {
-      const result = rawQueryToSelectQuery(
+      const result = rawQueryToAst(
         sql`DELETE FROM users WHERE active = 0 RETURNING id`
       );
       expect(result).toEqual({
@@ -708,7 +708,7 @@ describe("rawQueryToSelectQuery - INSERT / UPDATE / DELETE", () => {
 
 describe("rawQueryToSelectQuery - integration tests", () => {
   it("parses query with join + where + group by + having + order by + limit", () => {
-    const result = rawQueryToSelectQuery(sql`
+    const result = rawQueryToAst(sql`
       SELECT u.id, COUNT(o.id) AS order_count
       FROM users u
       LEFT JOIN orders o ON u.id = o.user_id
@@ -767,7 +767,7 @@ describe("rawQueryToSelectQuery - integration tests", () => {
   });
 
   it("parses query with CTE + subquery + compound select", () => {
-    const result = rawQueryToSelectQuery(sql`
+    const result = rawQueryToAst(sql`
       WITH active_users AS (
         SELECT * FROM users WHERE active = 1
       )

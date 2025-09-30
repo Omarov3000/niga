@@ -1,11 +1,10 @@
 import { Sql, ComparisonOperator, SelectQuery, SqlQuery } from './sql-types';
-
-export type { ComparisonOperator, SelectQuery, SqlQuery };
-
 import { parse } from "sql-parser-cst";
 import { RawSql } from '../utils/sql';
 
-export function rawQueryToSelectQuery(sql: RawSql): Sql.SqlQuery {
+export type { ComparisonOperator, SelectQuery, SqlQuery };
+
+export function rawQueryToAst(sql: RawSql): Sql.SqlQuery {
   // Replace ? placeholders with unique placeholder values that we can track
   let processedQuery = sql.query;
   const paramMarkers: string[] = [];

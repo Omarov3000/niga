@@ -1,7 +1,7 @@
 
 import { RawSql } from '../utils/sql';
 import type { QueryType } from '../schema/types';
-import { ComparisonOperator, rawQueryToSelectQuery, SelectQuery } from './raw-query-to-select-query';
+import { ComparisonOperator, rawQueryToAst, SelectQuery } from './raw-query-to-ast';
 
 // Flattened view of accessed tables for Simplified Analysis
 type SimplifiedFilter = {
@@ -23,7 +23,7 @@ export type QueryAnalysis = {
 };
 
 export function analyze(sql: RawSql): QueryAnalysis {
-  const sqlQuery = rawQueryToSelectQuery(sql);
+  const sqlQuery = rawQueryToAst(sql);
   const accessedTables: AccessedTable[] = [];
   const tableMap = new Map<string, AccessedTable>();
   const cteNames = new Set<string>();
