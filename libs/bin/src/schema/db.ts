@@ -18,6 +18,7 @@ import type { Table } from './table';
 import { camelCaseKeys } from '../utils/casing';
 import { normalizeQueryAnalysisToRuntime } from '../true-sql/normalize-analysis';
 import { analyze } from '../true-sql/analyze';
+import { rawQueryToAst } from '../true-sql/raw-query-to-ast';
 
 export interface DbConstructorOptions {
   schema: Record<string, Table<any, any>>;
@@ -106,6 +107,9 @@ export class Db {
         if (!rows || rows.length === 0) throw new Error('No rows returned');
         const normalized = camelCaseKeys(rows[0]);
         return zodSchema.parse(normalized) as ReturnType<T['parse']>;
+      },
+      toAst: () => {
+        return rawQueryToAst(rawSql);
       },
     };
   }

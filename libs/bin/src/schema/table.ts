@@ -5,6 +5,7 @@ import { toSnakeCase } from '../utils/casing';
 import { normalizeQueryAnalysisToRuntime } from '../true-sql/normalize-analysis';
 import { getDefaultValueFromZodSchema } from '../zod-integration/get-default-value-from-zod-schema';
 import { analyze } from '../true-sql/analyze';
+import { rawQueryToAst } from '../true-sql/raw-query-to-ast';
 import { IndexDefinition, ConstraintDefinition, SecurityRule, QueryContext, TableMetadata, BinDriver, ColumnMetadata } from './types';
 
 type ColumnLike = Column<any, any, any>;
@@ -475,6 +476,11 @@ export class SelectQueryBuilder<
       throw new Error('No rows found');
     }
     return results[0];
+  }
+
+  toAst() {
+    const query = this.buildQuery();
+    return rawQueryToAst(query);
   }
 
   private buildQuery(): RawSql {
