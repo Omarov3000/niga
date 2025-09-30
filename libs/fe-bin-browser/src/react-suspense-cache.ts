@@ -1,26 +1,28 @@
+import type { SuspensePromiseWrapper } from './use-promise'
+
 /**
- * A simple cache for storing promises that work with React Suspense.
- * Use with React's `use` hook to read promise values in components.
+ * A simple cache for storing promise wrappers that work with React Suspense.
+ * Use with `usePromiseWrapper` hook to read promise values in components.
  *
  * @example
  * ```tsx
  * const cache = new ReactSuspenseCache()
- * cache.put('user', fetchUser())
+ * cache.put('user', { status: 'initial', promise: fetchUser() })
  *
  * function UserProfile() {
- *   const user = use(cache.get('user')!)
+ *   const user = usePromiseWrapper(cache.get('user')!)
  *   return <div>{user.name}</div>
  * }
  * ```
  */
 export class ReactSuspenseCache {
-  private cache = new Map<string, Promise<any>>()
+  private cache = new Map<string, SuspensePromiseWrapper<any>>()
 
-  put(key: string, promise: Promise<any>): void {
-    this.cache.set(key, promise)
+  put<T>(key: string, wrapper: SuspensePromiseWrapper<T>): void {
+    this.cache.set(key, wrapper)
   }
 
-  get(key: string): Promise<any> | undefined {
+  get<T>(key: string): SuspensePromiseWrapper<T> | undefined {
     return this.cache.get(key)
   }
 
