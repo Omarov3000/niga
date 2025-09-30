@@ -1,8 +1,8 @@
 import { default as sqlite3Module } from '@sqlite.org/sqlite-wasm'
 import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 import type { BinDriver, TxDriver } from '@w/bin'
-import type { RawSql } from '@w/bin/src/utils/sql'
-import { inlineParams } from '@w/bin/src/utils/sql'
+import type { RawSql } from '@w/bin'
+import { _inlineParams } from '@w/bin'
 
 // Static initialization
 const warn = console.warn // sqlite3Module complains about opfs on the main thread
@@ -37,7 +37,7 @@ export class BinBrowserDriver implements BinDriver {
   }
 
   run = async ({ query, params }: RawSql) => {
-    if (this.logging) console.info('BinBrowserDriver.run:', inlineParams({ query, params }));
+    if (this.logging) console.info('BinBrowserDriver.run:', _inlineParams({ query, params }));
     let stmt: any
     try {
       stmt = this.db.prepare(query)
@@ -66,7 +66,7 @@ export class BinBrowserDriver implements BinDriver {
   }
 
   batch = async (statements: RawSql[]) => {
-    if (this.logging) console.info('BinBrowserDriver.batch:', statements.map(s => inlineParams(s)).join('; '));
+    if (this.logging) console.info('BinBrowserDriver.batch:', statements.map(s => _inlineParams(s)).join('; '));
     if (statements.length === 0) return []
 
     const results: any[] = []
@@ -101,7 +101,7 @@ export class BinBrowserDriver implements BinDriver {
     const self = this
     return {
       run: async ({ query, params }) => {
-        if (self.logging) console.info('BinBrowserDriver.tx.run:', inlineParams({ query, params }));
+        if (self.logging) console.info('BinBrowserDriver.tx.run:', _inlineParams({ query, params }));
         const q = self.db.prepare(query)
         if (query.trim().toUpperCase().startsWith('SELECT')) {
           throw new Error('you cannot run SELECT inside a transaction')

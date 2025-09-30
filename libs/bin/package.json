@@ -4,6 +4,12 @@
   "type": "module",
   "private": true,
   "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./migrate": "./src/index.migrate.ts",
+    "./node-driver": "./src/index.node-driver.ts",
+    "./run-shared-bin-driver-tests": "./src/run-shared-bin-driver-tests.ts"
+  },
   "scripts": {
     "tsc": "tsc",
     "tsc:watch": "tsc -w",

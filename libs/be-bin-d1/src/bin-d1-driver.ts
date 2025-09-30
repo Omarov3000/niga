@@ -1,6 +1,6 @@
 import type { BinDriver, TxDriver } from '@w/bin'
-import type { RawSql } from '@w/bin/src/utils/sql'
-import { inlineParams } from '@w/bin/src/utils/sql'
+import type { RawSql } from '@w/bin'
+import { _inlineParams } from '@w/bin'
 import type { D1Database, D1Result } from '@cloudflare/workers-types'
 
 const MAX_PARAMETERS_PER_STATEMENT = 100
@@ -22,13 +22,13 @@ export class BinD1Driver implements BinDriver {
   }
 
   run = async (rawSql: RawSql) => {
-    if (this.logging) console.info('BinD1Driver.run:', inlineParams(rawSql));
+    if (this.logging) console.info('BinD1Driver.run:', _inlineParams(rawSql));
     const [result] = await this.batch([rawSql])
     return result ?? []
   }
 
   batch = async (statements: RawSql[]) => {
-    if (this.logging) console.info('BinD1Driver.batch:', statements.map(s => inlineParams(s)).join('; '));
+    if (this.logging) console.info('BinD1Driver.batch:', statements.map(s => _inlineParams(s)).join('; '));
     if (statements.length === 0) return []
 
     const preparedStatements: ReturnType<D1Database['prepare']>[] = []
@@ -78,7 +78,7 @@ export class BinD1Driver implements BinDriver {
 
     return {
       run: async (rawSql) => {
-        if (this.logging) console.info('BinD1Driver.tx.run:', inlineParams(rawSql));
+        if (this.logging) console.info('BinD1Driver.tx.run:', _inlineParams(rawSql));
         if (isSelect(rawSql.query)) {
           throw new Error('you cannot run SELECT inside a transaction')
         }
