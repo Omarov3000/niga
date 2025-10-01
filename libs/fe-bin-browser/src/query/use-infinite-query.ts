@@ -69,6 +69,7 @@ export function useInfiniteQuery<TData = unknown, TPageParam = unknown, TError =
     queryRef.current = client['getOrCreateQuery']({
       ...queryOptions,
       queryFn: wrappedQueryFn,
+      enabled,
     })
   }
 

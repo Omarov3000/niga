@@ -11,7 +11,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  queryClient.clear()
+  queryClient.destroy()
   vi.restoreAllMocks()
 })
 

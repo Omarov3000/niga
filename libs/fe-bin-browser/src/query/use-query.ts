@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
 import { Query, QueryClient, type QueryOptions, type QueryState } from './query-client'
 import { useQueryClient } from './query-client-provider'
 
@@ -34,17 +34,14 @@ export function useQuery<TQueryFnData = unknown, TData = TQueryFnData>(
     throw new Error('useQuery requires either a queryClient parameter or QueryClientProvider')
   }
 
-  const { select, enabled = true, ...queryOptions } = options
+  const { select, ...queryOptions } = options
+  const enabled = options.enabled ?? true
 
+  // Get or create query (with enabled in queryOptions)
   const queryRef = useRef<Query | null>(null)
-  const unsubscribeRef = useRef<(() => void) | null>(null)
-  const promiseRef = useRef<Promise<QueryState> | null>(null)
-
-  // Get or create query
   if (!queryRef.current) {
-    queryRef.current = client['getOrCreateQuery'](queryOptions)
+    queryRef.current = client['getOrCreateQuery']({ ...queryOptions, enabled })
   }
-
   const query = queryRef.current
 
   // Update query options
@@ -52,67 +49,15 @@ export function useQuery<TQueryFnData = unknown, TData = TQueryFnData>(
     query.options = client['mergeOptions'](queryOptions)
   }, [JSON.stringify(queryOptions)])
 
-  // Subscribe to query state changes
-  const state = useSyncExternalStore(
-    (callback) => {
-      unsubscribeRef.current?.()
-      unsubscribeRef.current = query.subscribe(callback)
-      return () => {
-        unsubscribeRef.current?.()
-        unsubscribeRef.current = null
-      }
-    },
-    () => query.state,
-    () => query.state
-  )
-
-  // Fetch on mount and when enabled changes
+  // Update enabled state
   useEffect(() => {
-    if (enabled) {
-      const staleTime = query.options.staleTime ?? 0
-      if (query.state.status !== 'success' || query.isStale(staleTime)) {
-        promiseRef.current = query.fetch()
-      }
-    }
-  }, [enabled, query])
+    query.setEnabled(enabled)
+  }, [enabled])
 
-  // Update promise ref when query state changes
-  if (state.status === 'pending' && enabled) {
-    if (!promiseRef.current) {
-      const staleTime = query.options.staleTime ?? 0
-      if (query.state.status !== 'success' || query.isStale(staleTime)) {
-        promiseRef.current = query.fetch()
-      }
-    }
-  } else if (state.status !== 'pending') {
-    promiseRef.current = null
-  }
-
-  // Handle refetchOnWindowFocus
-  useEffect(() => {
-    if (enabled && query.options.refetchOnWindowFocus) {
-      const handleFocus = () => {
-        const staleTime = query.options.staleTime ?? 0
-        if (query.isStale(staleTime)) {
-          query.fetch()
-        }
-      }
-
-      window.addEventListener('focus', handleFocus)
-      return () => window.removeEventListener('focus', handleFocus)
-    }
-  }, [enabled, query.options.refetchOnWindowFocus, query])
-
-  // Handle refetchInterval
-  useEffect(() => {
-    if (enabled && query.options.refetchInterval) {
-      const interval = setInterval(() => {
-        query.fetch()
-      }, query.options.refetchInterval)
-
-      return () => clearInterval(interval)
-    }
-  }, [enabled, query.options.refetchInterval, query])
+  // Subscribe to query state changes (memoize subscribe to avoid re-subscribing on every render)
+  const subscribe = useCallback((callback: () => void) => query.subscribe(callback), [query])
+  const getSnapshot = useCallback(() => query.state, [query])
+  const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 
   const data = select && state.data !== undefined ? select(state.data as TQueryFnData) : (state.data as TData | undefined)
   const isPending = state.status === 'pending'
@@ -133,6 +78,6 @@ export function useQuery<TQueryFnData = unknown, TData = TQueryFnData>(
     isSuccess,
     refetch: () => query.fetch(),
     status: state.status,
-    promise: promiseRef.current,
+    promise: state.promise,
   }
 }

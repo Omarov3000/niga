@@ -12,6 +12,7 @@ export interface QueryState {
   fetchFailureReason: Error | undefined
   status: 'pending' | 'error' | 'success'
   isInvalidated: boolean
+  promise: Promise<QueryState> | null
 }
 
 type RetryDelayFunction<TError = Error> = (failureCount: number, error: TError) => number
@@ -64,6 +65,7 @@ export class Query {
   private abortController: AbortController | undefined
   private gcTimeout: ReturnType<typeof setTimeout> | undefined
   private refetchIntervalId: ReturnType<typeof setInterval> | undefined
+  private enabled: boolean = true
 
   constructor(options: QueryOptions) {
     this.queryKey = options.queryKey
@@ -80,12 +82,20 @@ export class Query {
       fetchFailureReason: undefined,
       status: options.initialData !== undefined ? 'success' : 'pending',
       isInvalidated: false,
+      promise: null,
     }
   }
 
   subscribe(observer: (state: QueryState) => void): () => void {
+    const isFirstObserver = this.observers.length === 0
     this.observers.push(observer)
     this.clearGCTimeout()
+
+    // Only auto-fetch on first subscription (mount), not on re-subscribes
+    if (isFirstObserver && this.enabled) {
+      this.maybeAutoFetch()
+      this.maybeStartRefetchInterval()
+    }
 
     return () => {
       const index = this.observers.indexOf(observer)
@@ -95,7 +105,63 @@ export class Query {
 
       if (this.observers.length === 0) {
         this.scheduleGC()
+        this.stopRefetchInterval()
       }
+    }
+  }
+
+  setEnabled(enabled: boolean): void {
+    if (this.enabled === enabled) {
+      return
+    }
+
+    this.enabled = enabled
+
+    if (enabled) {
+      this.maybeStartRefetchInterval()
+      this.maybeAutoFetch()
+    } else {
+      this.stopRefetchInterval()
+    }
+  }
+
+  private maybeAutoFetch(): void {
+    if (!this.enabled || this.observers.length === 0) return
+
+    // Don't auto-fetch if already fetching
+    if (this.state.fetchStatus === 'fetching') {
+      return
+    }
+
+    // Auto-fetch if pending or stale success
+    if (this.state.status === 'pending') {
+      this.fetch()
+      return
+    }
+
+    if (this.state.status === 'success') {
+      const staleTime = this.options.staleTime ?? 0
+      if (this.isStale(staleTime)) {
+        this.fetch()
+      }
+    }
+  }
+
+  private maybeStartRefetchInterval(): void {
+    if (!this.enabled || this.observers.length === 0 || !this.options.refetchInterval) return
+
+    this.stopRefetchInterval()
+    this.refetchIntervalId = setInterval(() => {
+      if (this.enabled) {
+        this.fetch()
+      }
+    }, this.options.refetchInterval)
+  }
+
+  private stopRefetchInterval(): void {
+    if (this.refetchIntervalId) {
+      clearInterval(this.refetchIntervalId)
+      this.refetchIntervalId = undefined
     }
   }
 
@@ -106,69 +172,78 @@ export class Query {
   }
 
   async fetch(): Promise<QueryState> {
-    if (this.state.fetchStatus === 'fetching') {
-      return this.state
+    if (this.state.fetchStatus === 'fetching' && this.state.promise) {
+      return this.state.promise
     }
 
     this.abortController = new AbortController()
+
+    const executeFetch = async (): Promise<QueryState> => {
+      try {
+        const data = await this.options.queryFn({
+          signal: this.abortController!.signal,
+          queryKey: this.queryKey,
+        })
+
+        this.state = {
+          ...this.state,
+          data,
+          dataUpdatedAt: new Date(),
+          error: undefined,
+          fetchStatus: 'idle',
+          fetchFailureCount: 0,
+          fetchFailureReason: undefined,
+          status: 'success',
+          promise: null,
+        }
+        this.notify()
+
+        return this.state
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error))
+
+        this.state = {
+          ...this.state,
+          error: err,
+          errorUpdatedAt: new Date(),
+          fetchStatus: 'idle',
+          fetchFailureCount: this.state.fetchFailureCount + 1,
+          fetchFailureReason: err,
+          status: 'error',
+          promise: null,
+        }
+        this.notify()
+
+        if (this.options.onError) {
+          this.options.onError(err, this)
+        }
+
+        const shouldRetry = this.shouldRetry(err)
+        if (shouldRetry) {
+          const delay = this.getRetryDelay(err)
+          await new Promise((resolve) => setTimeout(resolve, delay))
+          return this.fetch()
+        }
+
+        if (this.options.throwOnError) {
+          throw err
+        }
+
+        return this.state
+      }
+    }
+
+    const promise = executeFetch()
 
     this.state = {
       ...this.state,
       fetchStatus: 'fetching',
       isInvalidated: false,
+      promise,
     }
     this.notify()
 
-    try {
-      const data = await this.options.queryFn({
-        signal: this.abortController.signal,
-        queryKey: this.queryKey,
-      })
-
-      this.state = {
-        ...this.state,
-        data,
-        dataUpdatedAt: new Date(),
-        error: undefined,
-        fetchStatus: 'idle',
-        fetchFailureCount: 0,
-        fetchFailureReason: undefined,
-        status: 'success',
-      }
-      this.notify()
-
-      return this.state
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error))
-
-      this.state = {
-        ...this.state,
-        error: err,
-        errorUpdatedAt: new Date(),
-        fetchStatus: 'idle',
-        fetchFailureCount: this.state.fetchFailureCount + 1,
-        fetchFailureReason: err,
-        status: 'error',
-      }
-      this.notify()
-
-      if (this.options.onError) {
-        this.options.onError(err, this)
-      }
-
-      const shouldRetry = this.shouldRetry(err)
-      if (shouldRetry) {
-        const delay = this.getRetryDelay(err)
-        await new Promise((resolve) => setTimeout(resolve, delay))
-        return this.fetch()
-      }
-
-      if (this.options.throwOnError) {
-        throw err
-      }
-
-      return this.state
-    }
+    return promise
   }
 
   private shouldRetry(error: Error): boolean {
@@ -210,6 +285,11 @@ export class Query {
     }
     this.notify()
 
+    // If already fetching, just return current state (don't wait for fetch to complete)
+    if (this.state.fetchStatus === 'fetching') {
+      return this.state
+    }
+
     return this.fetch()
   }
 
@@ -222,6 +302,7 @@ export class Query {
     this.state = {
       ...this.state,
       fetchStatus: 'idle',
+      promise: null,
     }
     this.notify()
   }
@@ -254,16 +335,15 @@ export class Query {
   destroy(): void {
     this.cancel()
     this.clearGCTimeout()
-    if (this.refetchIntervalId) {
-      clearInterval(this.refetchIntervalId)
-      this.refetchIntervalId = undefined
-    }
+    this.stopRefetchInterval()
   }
 }
 
 export class QueryClient {
   private queries = new Map<string, Query>()
   private defaultOptions: GlobalQuerySettings
+  private windowFocusUnsubscribe?: () => void
+  private windowFocusListenerSetup = false
 
   constructor(defaultOptions?: Partial<GlobalQuerySettings>) {
     this.defaultOptions = {
@@ -272,7 +352,32 @@ export class QueryClient {
     }
   }
 
-  private getQueryHash(queryKey: unknown[]): string {
+  private ensureWindowFocusListener(): void {
+    if (this.windowFocusListenerSetup) return
+    this.windowFocusListenerSetup = true
+
+
+    const handleFocus = () => {
+      const queries = Array.from(this.queries.values())
+      for (const query of queries) {
+        // Only refetch if query has active observers (is mounted)
+        if (query.observers.length > 0 && query.options.refetchOnWindowFocus) {
+          const staleTime = query.options.staleTime ?? this.defaultOptions.staleTime ?? 0
+          const isStale = query.isStale(staleTime)
+          if (isStale) {
+            query.fetch()
+          }
+        }
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', handleFocus)
+      this.windowFocusUnsubscribe = () => window.removeEventListener('focus', handleFocus)
+    }
+  }
+
+  getQueryHash(queryKey: unknown[]): string {
     return hashQueryKey(queryKey)
   }
 
@@ -291,8 +396,19 @@ export class QueryClient {
     let query = this.queries.get(queryHash)
 
     if (!query) {
-      query = new Query(this.mergeOptions(options))
+      const mergedOptions = this.mergeOptions(options)
+      query = new Query(mergedOptions)
+      // Set initial enabled state from options
+      const enabled = typeof mergedOptions.enabled === 'function'
+        ? mergedOptions.enabled(query)
+        : mergedOptions.enabled ?? true
+      query['enabled'] = enabled
       this.queries.set(queryHash, query)
+
+      // Set up window focus listener if this query needs it (delayed to avoid race conditions)
+      if (mergedOptions.refetchOnWindowFocus) {
+        queueMicrotask(() => this.ensureWindowFocusListener())
+      }
     } else {
       // Update options if query exists
       query.options = this.mergeOptions(options)
@@ -394,6 +510,14 @@ export class QueryClient {
       query.destroy()
     }
     this.queries.clear()
+  }
+
+  destroy(): void {
+    this.clear()
+    if (this.windowFocusUnsubscribe) {
+      this.windowFocusUnsubscribe()
+      this.windowFocusUnsubscribe = undefined
+    }
   }
 
   getQuery(queryKey: unknown[]): Query | undefined {

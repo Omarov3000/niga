@@ -81,8 +81,8 @@ export default defineConfig({
       instances: [{ browser: 'chromium' }],
       fileParallelism: !process.env.CI,
     },
-    retry: process.env.CI ? 2 : 1,
-    testTimeout: process.env.CI ? 12_000 : 6_000,
+    // retry: process.env.CI ? 2 : 1,
+    testTimeout: process.env.CI ? 2_000 : 1_000,
     globals: true,
   },
 })

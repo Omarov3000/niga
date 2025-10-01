@@ -33,9 +33,11 @@ export function useSuspenseQuery<TQueryFnData = unknown, TData = TQueryFnData>(
 
   // Suspend if query is pending
   if (result.status === 'pending') {
-    if (result.promise) {
-      throw result.promise
+    if (!result.promise) {
+      // If no promise exists yet, create one by calling refetch
+      throw result.refetch()
     }
+    throw result.promise
   }
 
   // Throw error if query failed
