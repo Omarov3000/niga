@@ -6,7 +6,6 @@ export interface UseQueryOptions<TQueryFnData = unknown, TData = TQueryFnData>
   extends Omit<QueryOptions, 'queryFn'> {
   queryFn: (options: { signal: AbortSignal; queryKey: unknown[] }) => Promise<TQueryFnData>
   select?: (data: TQueryFnData) => TData
-  enabled?: boolean
 }
 
 export interface UseQueryResult<TData = unknown> {
@@ -35,12 +34,11 @@ export function useQuery<TQueryFnData = unknown, TData = TQueryFnData>(
   }
 
   const { select, ...queryOptions } = options
-  const enabled = options.enabled ?? true
 
-  // Get or create query (with enabled in queryOptions)
+  // Get or create query
   const queryRef = useRef<Query | null>(null)
   if (!queryRef.current) {
-    queryRef.current = client['getOrCreateQuery']({ ...queryOptions, enabled })
+    queryRef.current = client['getOrCreateQuery'](queryOptions)
   }
   const query = queryRef.current
 
@@ -51,8 +49,11 @@ export function useQuery<TQueryFnData = unknown, TData = TQueryFnData>(
 
   // Update enabled state
   useEffect(() => {
+    const enabled = typeof options.enabled === 'function'
+      ? options.enabled(query)
+      : options.enabled ?? true
     query.setEnabled(enabled)
-  }, [enabled])
+  }, [options.enabled, query])
 
   // Subscribe to query state changes (memoize subscribe to avoid re-subscribing on every render)
   const subscribe = useCallback((callback: () => void) => query.subscribe(callback), [query])

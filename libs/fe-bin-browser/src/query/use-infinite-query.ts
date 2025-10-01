@@ -11,12 +11,11 @@ export interface InfiniteData<TData = unknown> {
   pageParams: unknown[]
 }
 
-export interface UseInfiniteQueryOptions<TData = unknown, TPageParam = unknown> extends Omit<QueryOptions, 'queryFn' | 'enabled'> {
+export interface UseInfiniteQueryOptions<TData = unknown, TPageParam = unknown> extends Omit<QueryOptions, 'queryFn'> {
   queryFn: (options: { signal: AbortSignal; queryKey: unknown[]; pageParam: TPageParam }) => Promise<TData>
   initialPageParam: TPageParam
   getNextPageParam: (lastPage: TData, allPages: TData[]) => TPageParam | undefined | null
   getPreviousPageParam?: (firstPage: TData, allPages: TData[]) => TPageParam | undefined | null
-  enabled?: boolean
 }
 
 export interface UseInfiniteQueryResult<TData = unknown, TError = Error> {
@@ -50,7 +49,6 @@ export function useInfiniteQuery<TData = unknown, TPageParam = unknown, TError =
   }
 
   const { queryFn, initialPageParam, getNextPageParam, getPreviousPageParam, ...queryOptions } = options
-  const enabled = options.enabled ?? true
 
   const queryRef = useRef<Query | null>(null)
   const [isFetchingNextPage, setIsFetchingNextPage] = useState(false)
@@ -70,7 +68,6 @@ export function useInfiniteQuery<TData = unknown, TPageParam = unknown, TError =
     queryRef.current = client['getOrCreateQuery']({
       ...queryOptions,
       queryFn: wrappedQueryFn,
-      enabled,
     })
   }
 
@@ -86,8 +83,11 @@ export function useInfiniteQuery<TData = unknown, TPageParam = unknown, TError =
 
   // Update enabled state
   useEffect(() => {
+    const enabled = typeof options.enabled === 'function'
+      ? options.enabled(query)
+      : options.enabled ?? true
     query.setEnabled(enabled)
-  }, [enabled])
+  }, [options.enabled, query])
 
   // Subscribe to query state changes (memoize subscribe to avoid re-subscribing on every render)
   const subscribe = useCallback((callback: () => void) => query.subscribe(callback), [query])
