@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import { DatabaseSync } from 'node:sqlite';
 import { BinDriver } from './schema/types';
 import type { TxDriver } from './schema/types';
 import { RawSql, inlineParams } from './utils/sql';
@@ -8,11 +8,11 @@ function safeSplit(sql: string, delimiter: string): string[] {
 }
 
 export class BinNodeDriver implements BinDriver {
-  db: ReturnType<typeof Database>;
+  db: DatabaseSync;
   logging: boolean = false;
 
   constructor(public path = ':memory:') {
-    this.db = new Database(path);
+    this.db = new DatabaseSync(path);
   }
 
   exec = async (sql: string) => {
@@ -22,9 +22,12 @@ export class BinNodeDriver implements BinDriver {
 
   run = async ({ query, params }: RawSql) => {
     if (this.logging) console.info('BinNodeDriver.run:', inlineParams({ query, params }));
-    const q = this.db.prepare(query);
-    if (query.trim().toUpperCase().startsWith('SELECT')) return q.all(params);
-    q.run(params);
+    const stmt = this.db.prepare(query);
+    if (query.trim().toUpperCase().startsWith('SELECT')) {
+      const result = stmt.all(...params);
+      return result as any[];
+    }
+    stmt.run(...params);
     return [];
   };
 
@@ -33,20 +36,25 @@ export class BinNodeDriver implements BinDriver {
     if (statements.length === 0) return [];
 
     const results: any[] = [];
-    const tx = this.db.transaction((stmts: RawSql[]) => {
-      for (const { query, params } of stmts) {
+
+    this.db.exec('BEGIN');
+    try {
+      for (const { query, params } of statements) {
         const trimmed = query.trim().toUpperCase();
-        const prepared = this.db.prepare(query);
+        const stmt = this.db.prepare(query);
         if (trimmed.startsWith('SELECT')) {
-          results.push(prepared.all(params));
+          results.push(stmt.all(...params));
         } else {
-          prepared.run(params);
+          stmt.run(...params);
           results.push([]);
         }
       }
-    });
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
 
-    tx(statements);
     return results;
   };
 
@@ -57,11 +65,11 @@ export class BinNodeDriver implements BinDriver {
     return {
       run: async ({ query, params }) => {
         if (self.logging) console.info('BinNodeDriver.tx.run:', inlineParams({ query, params }));
-        const q = self.db.prepare(query);
+        const stmt = self.db.prepare(query);
         if (query.trim().toUpperCase().startsWith('SELECT')) {
           throw new Error('you cannot run SELECT inside a transaction');
         }
-        q.run(params);
+        stmt.run(...params);
       },
       commit: async () => {
         if (self.logging) console.info('BinNodeDriver.tx.commit');
