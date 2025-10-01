@@ -214,6 +214,9 @@ importers:
       '@w/bin':
         specifier: workspace:*
         version: link:../bin
+      nanoid:
+        specifier: ^5.1.5
+        version: 5.1.5
 
 packages:
 

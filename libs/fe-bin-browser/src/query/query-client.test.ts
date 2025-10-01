@@ -339,7 +339,7 @@ describe('QueryClient', () => {
   })
 
   it('should ensure query data returns cached data if not stale', () => {
-    const client = new QueryClient({ staleTime: 10000 })
+    const client = new QueryClient({ queries: { staleTime: 10000 } })
     const queryFn = vi.fn(() => Promise.resolve('data'))
 
     const query = new Query({
@@ -361,7 +361,7 @@ describe('QueryClient', () => {
   })
 
   it('should ensure query data triggers fetch if stale', async () => {
-    const client = new QueryClient({ staleTime: 1000 })
+    const client = new QueryClient({ queries: { staleTime: 1000 } })
     const queryFn = vi.fn(() => Promise.resolve('fresh'))
 
     const query = new Query({
@@ -485,7 +485,7 @@ describe('QueryClient', () => {
   })
 
   it('should invalidate queries by stale status', async () => {
-    const client = new QueryClient({ staleTime: 1000 })
+    const client = new QueryClient({ queries: { staleTime: 1000 } })
     const queryFn1 = vi.fn(() => Promise.resolve('data1'))
     const queryFn2 = vi.fn(() => Promise.resolve('data2'))
 
@@ -598,9 +598,11 @@ describe('QueryClient', () => {
   it('should merge default options with query options', async () => {
     const defaultOnError = vi.fn()
     const client = new QueryClient({
-      staleTime: 5000,
-      gcTime: 30000,
-      onError: defaultOnError,
+      queries: {
+        staleTime: 5000,
+        gcTime: 30000,
+        onError: defaultOnError,
+      },
     })
 
     const queryFn = vi.fn(() => Promise.reject(new Error('error')))

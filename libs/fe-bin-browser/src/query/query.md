@@ -125,5 +125,41 @@ const {
 })
 ```
 
+Mutations:
+
+mutations should be cleaned from the state after they finish and when the component is unmounted
+
+```ts
+const {
+  data,
+  error,
+  isError,
+  isIdle,
+  isPending,
+  isSuccess,
+  failureCount,
+  mutate,
+  mutateAsync,
+  reset,
+  status,
+} = useMutation(
+  {
+    mutationFn,
+    meta,
+    onError,
+    onMutate,
+    onSettled,
+    onSuccess,
+    retry,
+    retryDelay,
+    throwOnError,
+  },
+  queryClient,
+)
+
+mutate(variables) variables is input to mutationFn
+
+tip: use const [id] = useState(() => nanoid()) inside useMutation.
+```
 Advanced features:
 structuralSharing

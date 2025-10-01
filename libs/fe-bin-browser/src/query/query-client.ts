@@ -48,11 +48,16 @@ export interface QueryFilters {
 }
 
 export type GlobalQuerySettings = Pick<QueryOptions, 'staleTime' | 'gcTime' | 'onError' | 'refetchOnWindowFocus'>
+export type GlobalMutationSettings = Pick<MutationOptions, 'retry' | 'retryDelay' | 'onError'>
 
 const globalDefaultQuerySettings: GlobalQuerySettings = {
   staleTime: 1000, // 1 second
   gcTime: 5 * 60 * 1000, // 5 minutes
   refetchOnWindowFocus: true,
+}
+
+const globalDefaultMutationSettings: GlobalMutationSettings = {
+  retry: false,
 }
 
 export class Query {
@@ -339,16 +344,213 @@ export class Query {
   }
 }
 
+export interface MutationState<TData = unknown, TError = Error, TVariables = unknown> {
+  data: TData | undefined
+  error: TError | undefined
+  failureCount: number
+  failureReason: TError | undefined
+  status: 'idle' | 'pending' | 'error' | 'success'
+  isPaused: boolean
+  variables: TVariables | undefined
+  submittedAt: Date | undefined
+}
+
+type RetryMutationDelayFunction<TError = Error> = (failureCount: number, error: TError) => number
+type ShouldRetryMutationFunction<TError = Error> = (failureCount: number, error: TError) => boolean
+type RetryMutationValue<TError> = boolean | number | ShouldRetryMutationFunction<TError>
+type RetryMutationDelayValue<TError> = number | RetryMutationDelayFunction<TError>
+
+export interface MutationOptions<TData = unknown, TError = Error, TVariables = unknown> {
+  mutationFn: (variables: TVariables) => Promise<TData>
+  onMutate?: (variables: TVariables) => Promise<void> | void
+  onSuccess?: (data: TData, variables: TVariables, mutation: Mutation<TData, TError, TVariables>) => Promise<void> | void
+  onError?: (error: TError, variables: TVariables, mutation: Mutation<TData, TError, TVariables>) => Promise<void> | void
+  onSettled?: (data: TData | undefined, error: TError | undefined, variables: TVariables, mutation: Mutation<TData, TError, TVariables>) => Promise<void> | void
+  retry?: RetryMutationValue<TError>
+  retryDelay?: RetryMutationDelayValue<TError>
+  throwOnError?: boolean
+  meta?: Record<string, any>
+}
+
+export class Mutation<TData = unknown, TError = Error, TVariables = unknown> {
+  id: string
+  options: MutationOptions<TData, TError, TVariables>
+  state: MutationState<TData, TError, TVariables>
+  observers: Array<(state: MutationState<TData, TError, TVariables>) => void> = []
+
+  constructor(id: string, options: MutationOptions<TData, TError, TVariables>) {
+    this.id = id
+    this.options = options
+    this.state = {
+      data: undefined,
+      error: undefined,
+      failureCount: 0,
+      failureReason: undefined,
+      status: 'idle',
+      isPaused: false,
+      variables: undefined,
+      submittedAt: undefined,
+    }
+  }
+
+  subscribe(observer: (state: MutationState<TData, TError, TVariables>) => void): () => void {
+    this.observers.push(observer)
+    return () => {
+      const index = this.observers.indexOf(observer)
+      if (index > -1) {
+        this.observers.splice(index, 1)
+      }
+    }
+  }
+
+  private notify(): void {
+    for (const observer of this.observers) {
+      observer(this.state)
+    }
+  }
+
+  async mutate(variables: TVariables): Promise<TData> {
+    const execute = async (): Promise<TData> => {
+      this.state = {
+        ...this.state,
+        status: 'pending',
+        variables,
+        submittedAt: new Date(),
+        isPaused: false,
+      }
+      this.notify()
+
+      try {
+        if (this.options.onMutate) {
+          await this.options.onMutate(variables)
+        }
+
+        const data = await this.options.mutationFn(variables)
+
+        this.state = {
+          ...this.state,
+          data,
+          error: undefined,
+          failureCount: 0,
+          failureReason: undefined,
+          status: 'success',
+        }
+        this.notify()
+
+        if (this.options.onSuccess) {
+          await this.options.onSuccess(data, variables, this)
+        }
+
+        if (this.options.onSettled) {
+          await this.options.onSettled(data, undefined, variables, this)
+        }
+
+        return data
+      } catch (error) {
+        const err = error as TError
+
+        this.state = {
+          ...this.state,
+          error: err,
+          failureCount: this.state.failureCount + 1,
+          failureReason: err,
+          status: 'error',
+        }
+        this.notify()
+
+        if (this.options.onError) {
+          await this.options.onError(err, variables, this)
+        }
+
+        if (this.options.onSettled) {
+          await this.options.onSettled(undefined, err, variables, this)
+        }
+
+        const shouldRetry = this.shouldRetry(err)
+        if (shouldRetry) {
+          const delay = this.getRetryDelay(err)
+          await new Promise((resolve) => setTimeout(resolve, delay))
+          return this.mutate(variables)
+        }
+
+        if (this.options.throwOnError) {
+          throw err
+        }
+
+        throw err
+      }
+    }
+
+    return execute()
+  }
+
+  private shouldRetry(error: TError): boolean {
+    const { retry } = this.options
+
+    if (retry === undefined) {
+      return false
+    }
+
+    if (typeof retry === 'boolean') {
+      return retry && this.state.failureCount <= 3
+    }
+
+    if (typeof retry === 'number') {
+      return this.state.failureCount <= retry
+    }
+
+    return retry(this.state.failureCount, error)
+  }
+
+  private getRetryDelay(error: TError): number {
+    const { retryDelay } = this.options
+
+    if (retryDelay === undefined) {
+      return Math.min(1000 * 2 ** this.state.failureCount, 30000)
+    }
+
+    if (typeof retryDelay === 'number') {
+      return retryDelay
+    }
+
+    return retryDelay(this.state.failureCount, error)
+  }
+
+  reset(): void {
+    this.state = {
+      data: undefined,
+      error: undefined,
+      failureCount: 0,
+      failureReason: undefined,
+      status: 'idle',
+      isPaused: false,
+      variables: undefined,
+      submittedAt: undefined,
+    }
+    this.notify()
+  }
+
+  destroy(): void {
+    this.observers = []
+  }
+}
+
 export class QueryClient {
   private queries = new Map<string, Query>()
+  private mutations = new Map<string, Mutation>()
   private defaultOptions: GlobalQuerySettings
+  private defaultMutationOptions: GlobalMutationSettings
   private windowFocusUnsubscribe?: () => void
   private windowFocusListenerSetup = false
 
-  constructor(defaultOptions?: Partial<GlobalQuerySettings>) {
+  constructor(defaultOptions?: { queries?: Partial<GlobalQuerySettings>; mutations?: Partial<GlobalMutationSettings> }) {
     this.defaultOptions = {
       ...globalDefaultQuerySettings,
-      ...defaultOptions,
+      ...defaultOptions?.queries,
+    }
+    this.defaultMutationOptions = {
+      ...globalDefaultMutationSettings,
+      ...defaultOptions?.mutations,
     }
   }
 
@@ -510,6 +712,10 @@ export class QueryClient {
       query.destroy()
     }
     this.queries.clear()
+    for (const mutation of this.mutations.values()) {
+      mutation.destroy()
+    }
+    this.mutations.clear()
   }
 
   destroy(): void {
@@ -523,5 +729,38 @@ export class QueryClient {
   getQuery(queryKey: unknown[]): Query | undefined {
     const queryHash = this.getQueryHash(queryKey)
     return this.queries.get(queryHash)
+  }
+
+  getMutation(mutationId: string): Mutation | undefined {
+    return this.mutations.get(mutationId)
+  }
+
+  removeMutation(mutationId: string): void {
+    const mutation = this.mutations.get(mutationId)
+    if (mutation) {
+      mutation.destroy()
+      this.mutations.delete(mutationId)
+    }
+  }
+
+  private mergeMutationOptions<TData = unknown, TError = Error, TVariables = unknown>(
+    options: MutationOptions<TData, TError, TVariables>
+  ): MutationOptions<TData, TError, TVariables> {
+    return {
+      ...options,
+      retry: options.retry ?? (this.defaultMutationOptions.retry as RetryMutationValue<TError>),
+      retryDelay: options.retryDelay ?? (this.defaultMutationOptions.retryDelay as RetryMutationDelayValue<TError>),
+      onError: options.onError ?? (this.defaultMutationOptions.onError as MutationOptions<TData, TError, TVariables>['onError']),
+    }
+  }
+
+  addMutation<TData = unknown, TError = Error, TVariables = unknown>(
+    mutationId: string,
+    options: MutationOptions<TData, TError, TVariables>
+  ): Mutation<TData, TError, TVariables> {
+    const mergedOptions = this.mergeMutationOptions(options)
+    const mutation = new Mutation<TData, TError, TVariables>(mutationId, mergedOptions)
+    this.mutations.set(mutationId, mutation as unknown as Mutation)
+    return mutation
   }
 }
