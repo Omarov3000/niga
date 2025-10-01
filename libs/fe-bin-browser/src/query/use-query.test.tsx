@@ -337,7 +337,7 @@ it('should refetch at interval when refetchInterval is set', async () => {
   })
 })
 
-it.skip('should create new query instance when queryKey changes to prevent race conditions', async () => {
+it('should create new query instance when queryKey changes to prevent race conditions', async () => {
   let resolveUser1: ((value: { id: number; name: string }) => void) | undefined
   let resolveUser2: ((value: { id: number; name: string }) => void) | undefined
 
@@ -384,6 +384,7 @@ it.skip('should create new query instance when queryKey changes to prevent race 
   const secondFetchStarted = queryFn.mock.calls.length === 2
 
   if (secondFetchStarted) {
+    // Fixed: new Query instance created, so second fetch started
     // Resolve second fetch first (the newer one)
     resolveUser2!({ id: 2, name: 'User 2' })
 
@@ -400,7 +401,7 @@ it.skip('should create new query instance when queryKey changes to prevent race 
     // Data should still be User 2 (the newer request), not User 1
     expect(result.current.data).toEqual({ id: 2, name: 'User 2' })
   } else {
-    // This demonstrates the bug: queryKey changed but same Query instance is used
+    // Bug: queryKey changed but same Query instance is used
     expect(queryFn).toHaveBeenCalledTimes(1) // Only called once with old queryKey
 
     // Resolve the single fetch

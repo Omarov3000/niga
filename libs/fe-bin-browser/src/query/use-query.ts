@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
+import { useCallback, useSyncExternalStore } from 'react'
 import { Query, QueryClient, type QueryOptions, type QueryState } from './query-client'
 import { useQueryClient } from './query-client-provider'
 
@@ -35,29 +35,12 @@ export function useQuery<TQueryFnData = unknown, TData = TQueryFnData>(
 
   const { select, ...queryOptions } = options
 
-  // Get or create query
-  const queryRef = useRef<Query | null>(null)
-  if (!queryRef.current) {
-    queryRef.current = client['getOrCreateQuery'](queryOptions)
-  }
-  const query = queryRef.current
-
-  // Update query options
-  useEffect(() => {
-    query.options = client['mergeOptions'](queryOptions)
-  }, [JSON.stringify(queryOptions)])
-
-  // Update enabled state
-  useEffect(() => {
-    const enabled = typeof options.enabled === 'function'
-      ? options.enabled(query)
-      : options.enabled ?? true
-    query.setEnabled(enabled)
-  }, [options.enabled, query])
+  // Sync query options and get query (runs on every render)
+  const query = client.syncQueryOptions(queryOptions)
 
   // Subscribe to query state changes (memoize subscribe to avoid re-subscribing on every render)
-  const subscribe = useCallback((callback: () => void) => query.subscribe(callback), [query])
-  const getSnapshot = useCallback(() => query.state, [query])
+  const subscribe = useCallback((callback: () => void) => query.subscribe(callback), [query.queryHash])
+  const getSnapshot = useCallback(() => query.state, [query.queryHash])
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 
   const data = select && state.data !== undefined ? select(state.data as TQueryFnData) : (state.data as TData | undefined)

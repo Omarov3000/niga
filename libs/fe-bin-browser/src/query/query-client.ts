@@ -1,4 +1,5 @@
 import { hashQueryKey } from './hash-query-key'
+import { deepEqual } from 'fast-equals'
 
 export type QueryData = unknown
 
@@ -593,7 +594,7 @@ export class QueryClient {
     }
   }
 
-  private getOrCreateQuery(options: QueryOptions): Query {
+  syncQueryOptions(options: QueryOptions): Query {
     const queryHash = this.getQueryHash(options.queryKey)
     let query = this.queries.get(queryHash)
 
@@ -612,11 +613,33 @@ export class QueryClient {
         queueMicrotask(() => this.ensureWindowFocusListener())
       }
     } else {
-      // Update options if query exists
-      query.options = this.mergeOptions(options)
+      // Evaluate new enabled value
+      const newEnabledValue = typeof options.enabled === 'function'
+        ? options.enabled(query)
+        : options.enabled ?? true
+
+      // Compare options excluding enabled function (compare rest of options)
+      const { enabled: _oldEnabled, ...oldOptionsWithoutEnabled } = query.options
+      const { enabled: _newEnabled, ...newOptionsWithoutEnabled } = options
+
+      const mergedNewOptions = this.mergeOptions(newOptionsWithoutEnabled)
+      const optionsChanged = !deepEqual(oldOptionsWithoutEnabled, mergedNewOptions)
+      const enabledChanged = query['enabled'] !== newEnabledValue
+
+      if (optionsChanged || enabledChanged) {
+        // Update query options
+        query.options = this.mergeOptions(options)
+        if (enabledChanged) {
+          query.setEnabled(newEnabledValue)
+        }
+      }
     }
 
     return query
+  }
+
+  private getOrCreateQuery(options: QueryOptions): Query {
+    return this.syncQueryOptions(options)
   }
 
   async fetchQuery(options: QueryOptions): Promise<QueryData> {
