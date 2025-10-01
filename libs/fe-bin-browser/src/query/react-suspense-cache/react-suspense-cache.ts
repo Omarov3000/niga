@@ -1,4 +1,4 @@
-import type { SuspensePromiseWrapper } from './use-promise'
+import type { SuspensePromiseWrapper } from './use-promise-wrapper'
 
 /**
  * A simple cache for storing promise wrappers that work with React Suspense.

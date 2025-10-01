@@ -1,8 +1,8 @@
 import { Suspense, useState } from 'react'
 import { expect, it } from 'vitest'
 import { ReactSuspenseCache } from './react-suspense-cache'
-import { usePromiseWrapper } from './use-promise'
-import { render } from './_test-helpers'
+import { usePromiseWrapper } from './use-promise-wrapper'
+import { render } from '../../_test-helpers'
 
 it('works without react', () => {
   const cache = new ReactSuspenseCache()

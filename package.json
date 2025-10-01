@@ -14,7 +14,8 @@
   "dependencies": {
     "dedent": "^1.7.0",
     "ulidx": "^2.4.1",
-    "react": "^19.1.0"
+    "react": "^19.1.0",
+    "@tanstack/react-store": "^0.7.7"
   },
   "devDependencies": {
     "turbo": "^2.5.5",
