@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import z from 'zod';
-import { b } from '../schema/builder';
+import { o } from '../schema/builder';
 import { Expect, Equal } from '../utils/utils';
 import { makeInsertSchema, makeSelectSchema } from './make-zod-schema';
 
@@ -8,16 +8,16 @@ describe('makeInsertSchema()', () => {
   it('supports every column type our builder exposes', () => {
     const profileSchema = z.object({ theme: z.string(), tags: z.array(z.string()) });
 
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text().notNull(),
-      age: b.integer().default(18),
-      salary: b.real().$defaultFn(() => 1000),
-      height: b.real(),
-      isActive: b.boolean(),
-      createdAt: b.date(),
-      settings: b.json(profileSchema),
-      role: b.enum(['admin', 'user', 'guest']).default('guest').notNull(),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text().notNull(),
+      age: o.integer().default(18),
+      salary: o.real().$defaultFn(() => 1000),
+      height: o.real(),
+      isActive: o.boolean(),
+      createdAt: o.date(),
+      settings: o.json(profileSchema),
+      role: o.enum(['admin', 'user', 'guest']).default('guest').notNull(),
     });
 
     const schema = makeInsertSchema(users);
@@ -71,16 +71,16 @@ describe('makeSelectSchema()', () => {
   it('decodes database rows across column kinds', () => {
     const profileSchema = z.object({ theme: z.string(), tags: z.array(z.string()) });
 
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text().notNull(),
-      age: b.integer(),
-      salary: b.real().$defaultFn(() => 1000),
-      height: b.real(),
-      isActive: b.boolean(),
-      createdAt: b.date().notNull(),
-      settings: b.json(profileSchema),
-      role: b.enum(['admin', 'user', 'guest']).default('guest').notNull(),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text().notNull(),
+      age: o.integer(),
+      salary: o.real().$defaultFn(() => 1000),
+      height: o.real(),
+      isActive: o.boolean(),
+      createdAt: o.date().notNull(),
+      settings: o.json(profileSchema),
+      role: o.enum(['admin', 'user', 'guest']).default('guest').notNull(),
     });
 
     const schema = makeSelectSchema(users);

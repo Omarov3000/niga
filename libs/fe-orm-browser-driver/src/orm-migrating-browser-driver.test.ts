@@ -1,14 +1,14 @@
 import { test, expect } from 'vitest'
-import { b } from '@w/orm'
+import { o } from '@w/orm'
 import {OrmMigratingBrowserDriver } from './orm-migrating-browser-driver'
 
 test('creates tables on first use', async () => {
-  const users = b.table('users', {
-    id: b.integer().primaryKey(),
-    name: b.text(),
+  const users = o.table('users', {
+    id: o.integer().primaryKey(),
+    name: o.text(),
   })
 
-  const bin = b.db({ schema: { users } })
+  const bin = o.db({ schema: { users } })
   const driver = new OrmMigratingBrowserDriver(bin)
 
   const result = await driver.run({ query: 'SELECT COUNT(*) as count FROM users', params: [] })
@@ -27,25 +27,25 @@ test('creates tables on first use', async () => {
 })
 
 test('handles schema changes', async () => {
-  const users = b.table('users', {
-    id: b.integer().primaryKey(),
-    name: b.text(),
+  const users = o.table('users', {
+    id: o.integer().primaryKey(),
+    name: o.text(),
   })
 
   // First migration with users table
-  const initialBin = b.db({ schema: { users } })
+  const initialBin = o.db({ schema: { users } })
   const driver1 = new OrmMigratingBrowserDriver(initialBin, ':memory:')
 
   await driver1.run({ query: 'SELECT COUNT(*) FROM users', params: [] })
 
   // Second migration adding posts table
-  const posts = b.table('posts', {
-    id: b.integer().primaryKey(),
-    title: b.text(),
-    userId: b.integer(),
+  const posts = o.table('posts', {
+    id: o.integer().primaryKey(),
+    title: o.text(),
+    userId: o.integer(),
   })
 
-  const updatedBin = b.db({ schema: { users, posts } })
+  const updatedBin = o.db({ schema: { users, posts } })
   const driver2 = new OrmMigratingBrowserDriver(updatedBin, ':memory:')
 
   await driver2.run({ query: 'SELECT COUNT(*) FROM posts', params: [] })
@@ -62,24 +62,24 @@ test('handles schema changes', async () => {
 })
 
 test('handles initialization errors', async () => {
-  const users = b.table('users', {
-    id: b.integer().primaryKey(),
-    name: b.text(),
+  const users = o.table('users', {
+    id: o.integer().primaryKey(),
+    name: o.text(),
   })
 
-  const bin = b.db({ schema: { users } })
+  const bin = o.db({ schema: { users } })
   const driver = new OrmMigratingBrowserDriver(bin, '/invalid/path')
 
   await expect(driver.run({ query: 'SELECT 1', params: [] })).rejects.toThrow()
 })
 
 test('calls onInit callback', async () => {
-  const users = b.table('users', {
-    id: b.integer().primaryKey(),
-    name: b.text(),
+  const users = o.table('users', {
+    id: o.integer().primaryKey(),
+    name: o.text(),
   })
 
-  const bin = b.db({ schema: { users } })
+  const bin = o.db({ schema: { users } })
 
   let initCallbackCalled = false
   let callbackDriver = null
@@ -100,12 +100,12 @@ test('calls onInit callback', async () => {
 })
 
 test('basic operations work', async () => {
-  const users = b.table('users', {
-    id: b.integer().primaryKey(),
-    name: b.text(),
+  const users = o.table('users', {
+    id: o.integer().primaryKey(),
+    name: o.text(),
   })
 
-  const bin = b.db({ schema: { users } })
+  const bin = o.db({ schema: { users } })
   const driver = new OrmMigratingBrowserDriver(bin)
 
   // Insert data using exec

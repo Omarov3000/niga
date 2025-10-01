@@ -235,7 +235,7 @@ function zEnum<const T extends string>(values: readonly T[], _default: NoInfer<T
 
 const zId = () => z.string().default(() => nanoid());
 
-export const b = {
+export const o = {
   text,
   integer,
   real,

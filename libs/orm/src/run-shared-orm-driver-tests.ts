@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, expectTypeOf } from 'vitest';
-import { b } from './schema/builder';
+import { o } from './schema/builder';
 import { z } from 'zod';
 import type { Table } from './schema/table';
 import type { Db } from './schema/db';
@@ -24,14 +24,14 @@ const clearRef: { current?: Array<() => Promise<void>> } = { current: [] };
 
 describe('insert', () => {
   it('should insert data and verify via query', async () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
-      age: b.integer().default(0),
-      email: b.text(),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+      age: o.integer().default(0),
+      email: o.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     await users.insert({
       id: 'test-123',
@@ -48,14 +48,14 @@ describe('insert', () => {
   });
 
   it('should handle different data types', async () => {
-    const posts = b.table('posts', {
-      id: b.id(),
-      title: b.text(),
-      published: b.boolean().default(false),
-      views: b.integer().default(0),
+    const posts = o.table('posts', {
+      id: o.id(),
+      title: o.text(),
+      published: o.boolean().default(false),
+      views: o.integer().default(0),
     });
 
-    const db = await b.testDb({ schema: { posts } }, driver, clearRef);
+    const db = await o.testDb({ schema: { posts } }, driver, clearRef);
 
     // Check if table exists
     const tables = await driver.run({ query: "SELECT name FROM sqlite_master WHERE type='table' AND name='posts'", params: [] });
@@ -78,12 +78,12 @@ describe('insert', () => {
   });
 
   it('returns app-level model from insert()', async () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     const returned = await users.insert({ id: 'user-123', name: 'Alice' });
 
@@ -95,13 +95,13 @@ describe('insert', () => {
   });
 
   it('should maintain type safety', async () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
-      age: b.integer(),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+      age: o.integer(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     const model = await users.insert({
       id: 'type-safe-test',
@@ -117,13 +117,13 @@ describe('insert', () => {
   });
 
   it('supports insertMany for multiple entries', async () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
-      age: b.integer(),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+      age: o.integer(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     const models = await users.insertMany([
       { id: 'u1', name: 'Alice', age: 30 },
@@ -137,7 +137,7 @@ describe('insert', () => {
 
     const rows = await db
       .query`SELECT ${db.users.id}, ${db.users.name}, ${db.users.age} FROM users WHERE ${db.users.id.inArray(['u1','u2'])}`
-      .execute(b.z.object({ id: b.z.id(), name: b.z.text(), age: b.z.integer() }));
+      .execute(o.z.object({ id: o.z.id(), name: o.z.text(), age: o.z.integer() }));
 
     expect(rows.length).toBe(2);
   });
@@ -145,13 +145,13 @@ describe('insert', () => {
 
 describe('query', () => {
   it('executes simple select via db.query and parses with zod', async () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
-      age: b.integer(),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+      age: o.integer(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver , clearRef);
+    const db = await o.testDb({ schema: { users } }, driver , clearRef);
 
     // Seed some rows directly
     await driver.run({ query: 'INSERT INTO users (id, name, age) VALUES (?, ?, ?)', params: ['u1', 'Alice', 30] });
@@ -159,47 +159,47 @@ describe('query', () => {
 
     const rows = await db
       .query`SELECT ${db.users.id}, ${db.users.name}, ${db.users.age} FROM users WHERE ${db.users.age.gte(25)}`
-      .execute(b.z.object({ id: b.z.id(), name: b.z.text(), age: b.z.integer() }));
+      .execute(o.z.object({ id: o.z.id(), name: o.z.text(), age: o.z.integer() }));
 
     expect(rows.length).toBe(2);
     expect(rows[0]).toMatchObject({ id: 'u1', name: 'Alice', age: 30 });
   });
 
   it('executeAndTakeFirst returns a single parsed row', async () => {
-    const users = b.table('users', { id: b.id(), name: b.text() });
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const users = o.table('users', { id: o.id(), name: o.text() });
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: ['u1', 'Alice'] });
 
     const row = await db
       .query`SELECT ${db.users.id}, ${db.users.name} FROM users WHERE ${db.users.id.eq('u1')}`
-      .executeAndTakeFirst(b.z.object({ id: b.z.id(), name: b.z.text() }));
+      .executeAndTakeFirst(o.z.object({ id: o.z.id(), name: o.z.text() }));
 
     expect(row).toMatchObject({ id: 'u1', name: 'Alice' });
   });
 
   it('supports date/boolean/enum/json via codecs and filters', async () => {
     const profileZ = z.object({ bio: z.string() });
-    const users = b.table('users', {
-      id: b.id(),
-      createdAt: b.date(),
-      isActive: b.boolean(),
-      role: b.enum(['admin', 'user']).default('user'),
-      profile: b.json(profileZ),
+    const users = o.table('users', {
+      id: o.id(),
+      createdAt: o.date(),
+      isActive: o.boolean(),
+      role: o.enum(['admin', 'user']).default('user'),
+      profile: o.json(profileZ),
     });
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     const now = new Date(1700000000000);
     await driver.run({ query: 'INSERT INTO users (id, created_at, is_active, role, profile) VALUES (?, ?, ?, ?, ?)', params: ['u1', now.getTime(), 1, 0, JSON.stringify({ bio: 'Dev' })] });
 
     const row = await db
       .query`SELECT ${db.users.id}, ${db.users.createdAt}, ${db.users.isActive}, ${db.users.role}, ${db.users.profile} FROM users WHERE ${db.users.createdAt.gte(now)} AND ${db.users.isActive.eq(true)} AND ${db.users.role.eq('admin')}`
-      .executeAndTakeFirst(b.z.object({
-        id: b.z.id(),
-        createdAt: b.z.date(),
-        isActive: b.z.boolean(),
-        role: b.z.enum(users.role.__meta__.enumValues as any, users.role.__meta__.appDefault as any),
-        profile: b.z.json(users.profile.__meta__.jsonSchema as any),
+      .executeAndTakeFirst(o.z.object({
+        id: o.z.id(),
+        createdAt: o.z.date(),
+        isActive: o.z.boolean(),
+        role: o.z.enum(users.role.__meta__.enumValues as any, users.role.__meta__.appDefault as any),
+        profile: o.z.json(users.profile.__meta__.jsonSchema as any),
       }));
 
     expect(row.id).toBe('u1');
@@ -210,12 +210,12 @@ describe('query', () => {
   });
 
   it('supports IN and BETWEEN and IS NULL/NOT NULL filters', async () => {
-    const items = b.table('items', {
-      id: b.id(),
-      price: b.integer(),
-      name: b.text(),
+    const items = o.table('items', {
+      id: o.id(),
+      price: o.integer(),
+      name: o.text(),
     });
-    const db = await b.testDb({ schema: { items } }, driver, clearRef);
+    const db = await o.testDb({ schema: { items } }, driver, clearRef);
 
     await driver.run({ query: 'INSERT INTO items (id, price, name) VALUES (?, ?, ?)', params: ['i1', 10, 'A'] });
     await driver.run({ query: 'INSERT INTO items (id, price, name) VALUES (?, ?, ?)', params: ['i2', 20, 'B'] });
@@ -223,13 +223,13 @@ describe('query', () => {
 
     const rows = await db
       .query`SELECT ${db.items.id}, ${db.items.price} FROM items WHERE ${db.items.price.between(10, 25)} AND ${db.items.id.inArray(['i1','i2'])} AND ${db.items.name.isNull()}`
-      .execute(b.z.object({ id: b.z.id(), price: b.z.integer() }));
+      .execute(o.z.object({ id: o.z.id(), price: o.z.integer() }));
 
     expect(rows.length).toBe(0);
 
     const rows2 = await db
       .query`SELECT ${db.items.id}, ${db.items.price} FROM items WHERE ${db.items.price.between(10, 30)} AND ${db.items.id.inArray(['i1','i3'])} AND ${db.items.name.isNull()}`
-      .execute(b.z.object({ id: b.z.id(), price: b.z.integer() }));
+      .execute(o.z.object({ id: o.z.id(), price: o.z.integer() }));
 
     expect(rows2.length).toBe(1);
     expect(rows2[0].id).toBe('i3');
@@ -237,13 +237,13 @@ describe('query', () => {
 
   describe('ordering', () => {
   it('should support column.asc() and column.desc() in ORDER BY clauses', async () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
-      age: b.integer(),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+      age: o.integer(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     // Insert test data in random order
     await users.insertMany([
@@ -256,7 +256,7 @@ describe('query', () => {
     // Test ascending order by age
     const ascByAge = await db
       .query`SELECT ${db.users.id}, ${db.users.name}, ${db.users.age} FROM users ORDER BY ${db.users.age.asc()}`
-      .execute(b.z.object({ id: b.z.id(), name: b.z.text(), age: b.z.integer() }));
+      .execute(o.z.object({ id: o.z.id(), name: o.z.text(), age: o.z.integer() }));
 
     expect(ascByAge).toMatchObject([
       { id: 'u4', name: 'David', age: 20 },
@@ -268,7 +268,7 @@ describe('query', () => {
     // Test descending order by age
     const descByAge = await db
       .query`SELECT ${db.users.id}, ${db.users.name}, ${db.users.age} FROM users ORDER BY ${db.users.age.desc()}`
-      .execute(b.z.object({ id: b.z.id(), name: b.z.text(), age: b.z.integer() }));
+      .execute(o.z.object({ id: o.z.id(), name: o.z.text(), age: o.z.integer() }));
 
     expect(descByAge).toMatchObject([
       { id: 'u3', name: 'Charlie', age: 35 },
@@ -280,7 +280,7 @@ describe('query', () => {
     // Test ascending order by name
     const ascByName = await db
       .query`SELECT ${db.users.id}, ${db.users.name}, ${db.users.age} FROM users ORDER BY ${db.users.name.asc()}`
-      .execute(b.z.object({ id: b.z.id(), name: b.z.text(), age: b.z.integer() }));
+      .execute(o.z.object({ id: o.z.id(), name: o.z.text(), age: o.z.integer() }));
 
     expect(ascByName).toMatchObject([
       { id: 'u1', name: 'Alice', age: 25 },
@@ -291,14 +291,14 @@ describe('query', () => {
   });
 
   it('should support multiple column ordering', async () => {
-    const products = b.table('products', {
-      id: b.id(),
-      category: b.text(),
-      name: b.text(),
-      price: b.integer(),
+    const products = o.table('products', {
+      id: o.id(),
+      category: o.text(),
+      name: o.text(),
+      price: o.integer(),
     });
 
-    const db = await b.testDb({ schema: { products } }, driver, clearRef);
+    const db = await o.testDb({ schema: { products } }, driver, clearRef);
 
     // Insert test data
     await products.insertMany([
@@ -312,11 +312,11 @@ describe('query', () => {
     // Test ordering by category ASC, then price DESC
     const ordered = await db
       .query`SELECT ${db.products.id}, ${db.products.category}, ${db.products.name}, ${db.products.price} FROM products ORDER BY ${db.products.category.asc()}, ${db.products.price.desc()}`
-      .execute(b.z.object({
-        id: b.z.id(),
-        category: b.z.text(),
-        name: b.z.text(),
-        price: b.z.integer()
+      .execute(o.z.object({
+        id: o.z.id(),
+        category: o.z.text(),
+        name: o.z.text(),
+        price: o.z.integer()
       }));
 
     expect(ordered).toMatchObject([
@@ -329,14 +329,14 @@ describe('query', () => {
   });
 
   it('should handle ordering with WHERE clauses', async () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
-      age: b.integer(),
-      status: b.text(),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+      age: o.integer(),
+      status: o.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     await users.insertMany([
       { id: 'u1', name: 'Alice', age: 25, status: 'active' },
@@ -348,7 +348,7 @@ describe('query', () => {
     // Test ordering with WHERE filter
     const activeUsersByAge = await db
       .query`SELECT ${db.users.id}, ${db.users.name}, ${db.users.age} FROM users WHERE ${db.users.status.eq('active')} ORDER BY ${db.users.age.desc()}`
-      .execute(b.z.object({ id: b.z.id(), name: b.z.text(), age: b.z.integer() }));
+      .execute(o.z.object({ id: o.z.id(), name: o.z.text(), age: o.z.integer() }));
 
     expect(activeUsersByAge).toMatchObject([
       { id: 'u2', name: 'Bob', age: 35 },
@@ -360,14 +360,14 @@ describe('query', () => {
 
 describe('aggregate functions', () => {
   it('should support COUNT() aggregate function', async () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
-      age: b.integer(),
-      status: b.text(),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+      age: o.integer(),
+      status: o.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     await users.insertMany([
       { id: 'u1', name: 'Alice', age: 25, status: 'active' },
@@ -379,27 +379,27 @@ describe('aggregate functions', () => {
     // Test COUNT(*) equivalent
     const totalUsers = await db
       .query`SELECT ${db.users.id.count()} FROM users`
-      .executeAndTakeFirst(b.z.object({ userCount: b.z.integer() }));
+      .executeAndTakeFirst(o.z.object({ userCount: o.z.integer() }));
 
     expect(totalUsers?.userCount).toBe(4);
 
     // Test COUNT with WHERE clause
     const activeUsers = await db
       .query`SELECT ${db.users.id.count()} FROM users WHERE ${db.users.status.eq('active')}`
-      .executeAndTakeFirst(b.z.object({ userCount: b.z.integer() }));
+      .executeAndTakeFirst(o.z.object({ userCount: o.z.integer() }));
 
     expect(activeUsers?.userCount).toBe(3);
   });
 
   it('should support MAX() aggregate function', async () => {
-    const products = b.table('products', {
-      id: b.id(),
-      name: b.text(),
-      price: b.integer(),
-      category: b.text(),
+    const products = o.table('products', {
+      id: o.id(),
+      name: o.text(),
+      price: o.integer(),
+      category: o.text(),
     });
 
-    const db = await b.testDb({ schema: { products } }, driver, clearRef);
+    const db = await o.testDb({ schema: { products } }, driver, clearRef);
 
     await products.insertMany([
       { id: 'p1', name: 'Phone', price: 800, category: 'electronics' },
@@ -411,33 +411,33 @@ describe('aggregate functions', () => {
     // Test MAX(price)
     const maxPrice = await db
       .query`SELECT ${db.products.price.max()} FROM products`
-      .executeAndTakeFirst(b.z.object({ maxValue: b.z.integer() }));
+      .executeAndTakeFirst(o.z.object({ maxValue: o.z.integer() }));
 
     expect(maxPrice?.maxValue).toBe(1200);
 
     // Test MAX with WHERE clause
     const maxElectronicsPrice = await db
       .query`SELECT ${db.products.price.max()} FROM products WHERE ${db.products.category.eq('electronics')}`
-      .executeAndTakeFirst(b.z.object({ maxValue: b.z.integer() }));
+      .executeAndTakeFirst(o.z.object({ maxValue: o.z.integer() }));
 
     expect(maxElectronicsPrice?.maxValue).toBe(1200);
 
     // Test MAX on text column
     const maxName = await db
       .query`SELECT ${db.products.name.max()} FROM products`
-      .executeAndTakeFirst(b.z.object({ maxValue: b.z.text() }));
+      .executeAndTakeFirst(o.z.object({ maxValue: o.z.text() }));
 
     expect(maxName?.maxValue).toBe('Tablet'); // Alphabetically last
   });
 
   it('should support increment() virtual column', async () => {
-    const accounts = b.table('accounts', {
-      id: b.id(),
-      balance: b.integer(),
-      bonus: b.integer().default(0),
+    const accounts = o.table('accounts', {
+      id: o.id(),
+      balance: o.integer(),
+      bonus: o.integer().default(0),
     });
 
-    const db = await b.testDb({ schema: { accounts } }, driver, clearRef);
+    const db = await o.testDb({ schema: { accounts } }, driver, clearRef);
 
     await accounts.insertMany([
       { id: 'acc1', balance: 100, bonus: 10 },
@@ -448,7 +448,7 @@ describe('aggregate functions', () => {
     // Test increment() with default amount (1)
     const incrementedBalances = await db
       .query`SELECT ${db.accounts.id}, ${db.accounts.balance.increment()} FROM accounts ORDER BY ${db.accounts.id.asc()}`
-      .execute(b.z.object({ id: b.z.id(), nextValue: b.z.integer() }));
+      .execute(o.z.object({ id: o.z.id(), nextValue: o.z.integer() }));
 
     expect(incrementedBalances).toMatchObject([
       { id: 'acc1', nextValue: 101 },
@@ -459,7 +459,7 @@ describe('aggregate functions', () => {
     // Test increment() with custom amount
     const bonusBalances = await db
       .query`SELECT ${db.accounts.id}, ${db.accounts.balance.increment(100)} FROM accounts WHERE ${db.accounts.balance.gte(200)} ORDER BY ${db.accounts.id.asc()}`
-      .execute(b.z.object({ id: b.z.id(), nextValue: b.z.integer() }));
+      .execute(o.z.object({ id: o.z.id(), nextValue: o.z.integer() }));
 
     expect(bonusBalances).toMatchObject([
       { id: 'acc2', nextValue: 350 },
@@ -468,14 +468,14 @@ describe('aggregate functions', () => {
   });
 
   it('should combine multiple aggregate functions', async () => {
-    const sales = b.table('sales', {
-      id: b.id(),
-      product: b.text(),
-      amount: b.integer(),
-      region: b.text(),
+    const sales = o.table('sales', {
+      id: o.id(),
+      product: o.text(),
+      amount: o.integer(),
+      region: o.text(),
     });
 
-    const db = await b.testDb({ schema: { sales } }, driver, clearRef);
+    const db = await o.testDb({ schema: { sales } }, driver, clearRef);
 
     await sales.insertMany([
       { id: 's1', product: 'Widget A', amount: 100, region: 'North' },
@@ -491,9 +491,9 @@ describe('aggregate functions', () => {
         ${db.sales.amount.max()}
         FROM sales
         WHERE ${db.sales.region.eq('North')}`
-      .executeAndTakeFirst(b.z.object({
-        userCount: b.z.integer(),
-        maxValue: b.z.integer()
+      .executeAndTakeFirst(o.z.object({
+        userCount: o.z.integer(),
+        maxValue: o.z.integer()
       }));
 
     expect(stats).toMatchObject({
@@ -506,13 +506,13 @@ describe('aggregate functions', () => {
 
 describe('select', () => {
   it('selects many', async () => {
-    const users = b.table('users', {
-      id: b.integer().notNull(),
-      name: b.text().notNull(),
-      hasPet: b.boolean(), // optional
+    const users = o.table('users', {
+      id: o.integer().notNull(),
+      name: o.text().notNull(),
+      hasPet: o.boolean(), // optional
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     await driver.run({ query: 'INSERT INTO users (id, name, has_pet) VALUES (?, ?, ?)', params: [1, 'Alice', 1] });
     await driver.run({ query: 'INSERT INTO users (id, name, has_pet) VALUES (?, ?, ?)', params: [2, 'Bob', 0] });
@@ -531,12 +531,12 @@ describe('select', () => {
   });
 
   it('selects partial with alias', async () => {
-    const users = b.table('users', {
-      id: b.integer().notNull(),
-      name: b.text().notNull(),
+    const users = o.table('users', {
+      id: o.integer().notNull(),
+      name: o.text().notNull(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: [1, 'Alice'] });
 
@@ -550,12 +550,12 @@ describe('select', () => {
   });
 
   it('selects with where', async () => {
-    const users = b.table('users', {
-      id: b.integer().notNull(),
-      name: b.text().notNull(),
+    const users = o.table('users', {
+      id: o.integer().notNull(),
+      name: o.text().notNull(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: [1, 'Alice'] });
     await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: [2, 'Bob'] });
@@ -567,12 +567,12 @@ describe('select', () => {
   });
 
   it('selects with order by', async () => {
-    const users = b.table('users', {
-      id: b.integer().notNull(),
-      name: b.text().notNull(),
+    const users = o.table('users', {
+      id: o.integer().notNull(),
+      name: o.text().notNull(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: [1, 'Bob'] });
     await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: [2, 'Alice'] });
@@ -585,12 +585,12 @@ describe('select', () => {
   });
 
   it('selects with limit and offset', async () => {
-    const users = b.table('users', {
-      id: b.integer().notNull(),
-      name: b.text().notNull(),
+    const users = o.table('users', {
+      id: o.integer().notNull(),
+      name: o.text().notNull(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     for (let i = 0; i < 15; i++) {
       await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: [i + 1, `User${i}`] });
@@ -602,12 +602,12 @@ describe('select', () => {
   });
 
   it('selects with group by', async () => {
-    const users = b.table('users', {
-      id: b.integer().notNull(),
-      age: b.integer().notNull(),
+    const users = o.table('users', {
+      id: o.integer().notNull(),
+      age: o.integer().notNull(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     await driver.run({ query: 'INSERT INTO users (id, age) VALUES (?, ?)', params: [1, 25] });
     await driver.run({ query: 'INSERT INTO users (id, age) VALUES (?, ?)', params: [2, 25] });
@@ -628,18 +628,18 @@ describe('select', () => {
 
   describe('joins', () => {
     it('joins', async () => {
-      const users = b.table('users', {
-        id: b.integer().notNull(),
-        name: b.text().notNull(),
+      const users = o.table('users', {
+        id: o.integer().notNull(),
+        name: o.text().notNull(),
       });
 
-      const pets = b.table('pets', {
-        id: b.integer().notNull(),
-        name: b.text().notNull(),
-        ownerId: b.integer().notNull(),
+      const pets = o.table('pets', {
+        id: o.integer().notNull(),
+        name: o.text().notNull(),
+        ownerId: o.integer().notNull(),
       });
 
-      const db = await b.testDb({ schema: { users, pets } }, driver, clearRef);
+      const db = await o.testDb({ schema: { users, pets } }, driver, clearRef);
 
       await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: [1, 'Alice'] });
       await driver.run({ query: 'INSERT INTO pets (id, name, owner_id) VALUES (?, ?, ?)', params: [1, 'Fluffy', 1] });
@@ -659,18 +659,18 @@ describe('select', () => {
     });
 
     it('joins with flat return type', async () => {
-      const users = b.table('users', {
-        id: b.integer().notNull(),
-        name: b.text().notNull(),
+      const users = o.table('users', {
+        id: o.integer().notNull(),
+        name: o.text().notNull(),
       });
 
-      const pets = b.table('pets', {
-        id: b.integer().notNull(),
-        name: b.text().notNull(),
-        ownerId: b.integer().notNull(),
+      const pets = o.table('pets', {
+        id: o.integer().notNull(),
+        name: o.text().notNull(),
+        ownerId: o.integer().notNull(),
       });
 
-      const db = await b.testDb({ schema: { users, pets } }, driver, clearRef);
+      const db = await o.testDb({ schema: { users, pets } }, driver, clearRef);
 
       await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: [1, 'Alice'] });
       await driver.run({ query: 'INSERT INTO pets (id, name, owner_id) VALUES (?, ?, ?)', params: [1, 'Fluffy', 1] });
@@ -686,13 +686,13 @@ describe('select', () => {
     });
 
     it('self join', async () => {
-      const users = b.table('users', {
-        id: b.integer().notNull(),
-        name: b.text().notNull(),
-        parentId: b.integer(),
+      const users = o.table('users', {
+        id: o.integer().notNull(),
+        name: o.text().notNull(),
+        parentId: o.integer(),
       });
 
-      const db = await b.testDb({ schema: { users } }, driver, clearRef);
+      const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
       await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: [1, 'Parent'] });
       await driver.run({ query: 'INSERT INTO users (id, name, parent_id) VALUES (?, ?, ?)', params: [2, 'Child', 1] });
@@ -714,24 +714,24 @@ describe('select', () => {
     });
 
     it('triple join', async () => {
-      const users = b.table('users', {
-        id: b.integer().notNull(),
-        name: b.text().notNull(),
+      const users = o.table('users', {
+        id: o.integer().notNull(),
+        name: o.text().notNull(),
       });
 
-      const pets = b.table('pets', {
-        id: b.integer().notNull(),
-        name: b.text().notNull(),
-        ownerId: b.integer().notNull(),
+      const pets = o.table('pets', {
+        id: o.integer().notNull(),
+        name: o.text().notNull(),
+        ownerId: o.integer().notNull(),
       });
 
-      const toys = b.table('toys', {
-        id: b.integer().notNull(),
-        name: b.text().notNull(),
-        petId: b.integer().notNull(),
+      const toys = o.table('toys', {
+        id: o.integer().notNull(),
+        name: o.text().notNull(),
+        petId: o.integer().notNull(),
       });
 
-      const db = await b.testDb({ schema: { users, pets, toys } }, driver, clearRef);
+      const db = await o.testDb({ schema: { users, pets, toys } }, driver, clearRef);
 
       await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: [1, 'Alice'] });
       await driver.run({ query: 'INSERT INTO pets (id, name, owner_id) VALUES (?, ?, ?)', params: [1, 'Fluffy', 1] });
@@ -755,14 +755,14 @@ describe('select', () => {
 
   describe('encode/decode and snake casing', () => {
     it('properly decodes boolean values and handles snake case column names', async () => {
-      const users = b.table('users', {
-        id: b.integer().notNull(),
-        firstName: b.text().notNull(), // camelCase -> snake_case
-        isActive: b.boolean(),         // camelCase -> snake_case
-        hasPermissions: b.boolean().notNull(), // camelCase -> snake_case
+      const users = o.table('users', {
+        id: o.integer().notNull(),
+        firstName: o.text().notNull(), // camelCase -> snake_case
+        isActive: o.boolean(),         // camelCase -> snake_case
+        hasPermissions: o.boolean().notNull(), // camelCase -> snake_case
       });
 
-      const db = await b.testDb({ schema: { users } }, driver, clearRef);
+      const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
       await driver.run({
         query: 'INSERT INTO users (id, first_name, is_active, has_permissions) VALUES (?, ?, ?, ?)',
@@ -808,14 +808,14 @@ describe('select', () => {
 
 describe('update', () => {
   it('should update data with WHERE clause', async () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
-      age: b.integer().default(0),
-      email: b.text(),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+      age: o.integer().default(0),
+      email: o.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     // Insert test data
     await users.insert({
@@ -850,14 +850,14 @@ describe('update', () => {
   });
 
   it('should handle different data types in updates', async () => {
-    const posts = b.table('posts', {
-      id: b.id(),
-      title: b.text(),
-      published: b.boolean().default(false),
-      views: b.integer().default(0),
+    const posts = o.table('posts', {
+      id: o.id(),
+      title: o.text(),
+      published: o.boolean().default(false),
+      views: o.integer().default(0),
     });
 
-    const db = await b.testDb({ schema: { posts } }, driver , clearRef);
+    const db = await o.testDb({ schema: { posts } }, driver , clearRef);
 
     // Insert test data
     await posts.insert({
@@ -886,16 +886,16 @@ describe('update', () => {
 
   it('should apply $onUpdateFn when updating', async () => {
     let updateCallCount = 0;
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
-      updatedAt: b.date().$onUpdateFn(() => {
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+      updatedAt: o.date().$onUpdateFn(() => {
         updateCallCount++;
         return new Date(1700000000000); // Fixed timestamp for testing
       }),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     // Insert test data
     await users.insert({
@@ -924,13 +924,13 @@ describe('update', () => {
   });
 
   it('supports update expressions via column.set', async () => {
-    const accounts = b.table('accounts', {
-      id: b.id(),
-      userId: b.text(),
-      balance: b.integer().default(0),
+    const accounts = o.table('accounts', {
+      id: o.id(),
+      userId: o.text(),
+      balance: o.integer().default(0),
     });
 
-    const db = await b.testDb({ schema: { accounts } }, driver, clearRef);
+    const db = await o.testDb({ schema: { accounts } }, driver, clearRef);
 
     await accounts.insert({
       id: 'acc-1',
@@ -949,14 +949,14 @@ describe('update', () => {
   });
 
   it('should update multiple rows with WHERE clause', async () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
-      age: b.integer(),
-      status: b.text().default('active'),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+      age: o.integer(),
+      status: o.text().default('active'),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     // Insert test data
     await users.insertMany([
@@ -981,12 +981,12 @@ describe('update', () => {
   });
 
   it('should throw error when no columns to update', async () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     await users.insert({
       id: 'user-1',
@@ -1001,13 +1001,13 @@ describe('update', () => {
   });
 
   it('should parse UPDATE query for security analysis', async () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
-      age: b.integer(),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+      age: o.integer(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     await users.insert({
       id: 'user-1',
@@ -1028,12 +1028,12 @@ describe('update', () => {
   });
 
   it('should handle malformed UPDATE queries in security parsing', async () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     // Create a malformed RawSql object that should trigger parsing errors
     const malformedSql: any = {
@@ -1051,13 +1051,13 @@ describe('update', () => {
 
 describe('delete', () => {
   it('should delete data with WHERE clause', async () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
-      age: b.integer(),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+      age: o.integer(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver   , clearRef);
+    const db = await o.testDb({ schema: { users } }, driver   , clearRef);
 
     // Insert test data
     await users.insertMany([
@@ -1080,14 +1080,14 @@ describe('delete', () => {
   });
 
   it('should delete multiple rows with WHERE clause', async () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
-      age: b.integer(),
-      status: b.text().default('active'),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+      age: o.integer(),
+      status: o.text().default('active'),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     // Insert test data
     await users.insertMany([
@@ -1111,14 +1111,14 @@ describe('delete', () => {
   });
 
   it('should delete with complex WHERE conditions', async () => {
-    const posts = b.table('posts', {
-      id: b.id(),
-      title: b.text(),
-      views: b.integer().default(0),
-      published: b.boolean().default(false),
+    const posts = o.table('posts', {
+      id: o.id(),
+      title: o.text(),
+      views: o.integer().default(0),
+      published: o.boolean().default(false),
     });
 
-    const db = await b.testDb({ schema: { posts } }, driver, clearRef);
+    const db = await o.testDb({ schema: { posts } }, driver, clearRef);
 
     // Insert test data
     await posts.insertMany([
@@ -1142,12 +1142,12 @@ describe('delete', () => {
   });
 
   it('should handle delete with IN clause', async () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     // Insert test data
     await users.insertMany([
@@ -1171,12 +1171,12 @@ describe('delete', () => {
   });
 
   it('should parse DELETE query for security analysis', async () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     await users.insert({
       id: 'user-1',
@@ -1194,12 +1194,12 @@ describe('delete', () => {
   });
 
   it('should handle malformed DELETE queries in security parsing', async () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     // Create a malformed RawSql object that should trigger parsing errors
     const malformedSql: any = {
@@ -1214,12 +1214,12 @@ describe('delete', () => {
   });
 
   it('should delete no rows when WHERE clause matches nothing', async () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     await users.insertMany([
       { id: 'user-1', name: 'John' },
@@ -1239,12 +1239,12 @@ describe('delete', () => {
 
 describe('transaction', () => {
   it('rolls back earlier statements when a later statement fails', async () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
     });
 
-    const db = await b.testDb({ schema: { users } }, driver, clearRef);
+    const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     await expect(
       db.transaction(async (tx) => {
@@ -1261,12 +1261,12 @@ describe('transaction', () => {
 
 describe('batch', () => {
   it('rolls back earlier statements when a later statement fails', async () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
     })
 
-    await b.testDb({ schema: { users } }, driver, clearRef)
+    await o.testDb({ schema: { users } }, driver, clearRef)
 
     await expect(
       driver.batch([

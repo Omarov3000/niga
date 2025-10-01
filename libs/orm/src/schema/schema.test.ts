@@ -1,22 +1,22 @@
 import { describe, it, expect } from 'vitest';
 import dedent from 'dedent';
 import { z } from 'zod';
-import { b } from './builder';
+import { o } from './builder';
 
 describe('schema generation', () => {
   it('built-ins (id, text, integer, real) and an index', () => {
-    const users = b.table(
+    const users = o.table(
       'users',
       {
-        id: b.id(),
-        name: b.text(),
-        age: b.integer(),
-        score: b.real(),
+        id: o.id(),
+        name: o.text(),
+        age: o.integer(),
+        score: o.real(),
       },
-      (t) => [b.index().on(t.name)]
+      (t) => [o.index().on(t.name)]
     );
 
-    const db = b.db({ schema: { users } });
+    const db = o.db({ schema: { users } });
 
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE users (
@@ -31,12 +31,12 @@ describe('schema generation', () => {
   });
 
   it('extra types (date, boolean)', () => {
-    const extras = b.table('extras', {
-      createdAt: b.date(),
-      active: b.boolean(),
+    const extras = o.table('extras', {
+      createdAt: o.date(),
+      active: o.boolean(),
     });
 
-    const db = b.db({ schema: { extras } });
+    const db = o.db({ schema: { extras } });
 
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE extras (
@@ -48,8 +48,8 @@ describe('schema generation', () => {
 
   it('json(schema) stores schema and emits TEXT', () => {
     const schema = z.object({ a: z.number(), b: z.string().optional() });
-    const t = b.table('t', { jsonColumn: b.json(schema) });
-    const db = b.db({ schema: { t } });
+    const t = o.table('t', { jsonColumn: o.json(schema) });
+    const db = o.db({ schema: { t } });
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE t (
         json_column TEXT
@@ -59,12 +59,12 @@ describe('schema generation', () => {
   });
 
   it('constraints/defaults', () => {
-    const posts = b.table('posts', {
-      id: b.id(),
-      title: b.text().notNull().unique().default('Untitled'),
+    const posts = o.table('posts', {
+      id: o.id(),
+      title: o.text().notNull().unique().default('Untitled'),
     });
 
-    const db = b.db({ schema: { posts } });
+    const db = o.db({ schema: { posts } });
 
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE posts (
@@ -75,13 +75,13 @@ describe('schema generation', () => {
   });
 
   it('references', () => {
-    const users = b.table('users', { id: b.id() });
-    const posts = b.table('posts', {
-      id: b.id(),
-      authorId: b.text().references(() => users.id),
+    const users = o.table('users', { id: o.id() });
+    const posts = o.table('posts', {
+      id: o.id(),
+      authorId: o.text().references(() => users.id),
     });
 
-    const db = b.db({ schema: { posts } });
+    const db = o.db({ schema: { posts } });
 
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE posts (
@@ -92,8 +92,8 @@ describe('schema generation', () => {
   });
 
   it('enum stored as INTEGER', () => {
-    const roles = b.table('roles', { role: b.enum(['a', 'b', 'c']) });
-    const db = b.db({ schema: { roles } });
+    const roles = o.table('roles', { role: o.enum(['a', 'b', 'c']) });
+    const db = o.db({ schema: { roles } });
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE roles (
         role INTEGER
@@ -102,10 +102,10 @@ describe('schema generation', () => {
   });
 
   it('tracks renamed metadata for tables and columns', () => {
-    const users = b
+    const users = o
       .table('users', {
-        id: b.id().renamedFrom('old_id'),
-        status: b.enum(['active', 'inactive']).default('active').renamedFrom('old_status'),
+        id: o.id().renamedFrom('old_id'),
+        status: o.enum(['active', 'inactive']).default('active').renamedFrom('old_status'),
       })
       .renamedFrom('old_users');
 
@@ -115,12 +115,12 @@ describe('schema generation', () => {
   });
 
   it('indexes: unique and composite', () => {
-    const users = b.table(
+    const users = o.table(
       'users',
-      { id: b.id(), email: b.text(), name: b.text(), age: b.integer() },
-      (t) => [b.index().unique().on(t.email), b.index().on(t.name, t.age)]
+      { id: o.id(), email: o.text(), name: o.text(), age: o.integer() },
+      (t) => [o.index().unique().on(t.email), o.index().on(t.name, t.age)]
     );
-    const db = b.db({ schema: { users } });
+    const db = o.db({ schema: { users } });
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE users (
         id TEXT PRIMARY KEY,
@@ -135,12 +135,12 @@ describe('schema generation', () => {
   });
 
   it('generatedAlwaysAs emits GENERATED ALWAYS AS (expr)', () => {
-    const t = b.table('t', {
-      id: b.id(),
-      a: b.integer(),
-      b: b.integer().generatedAlwaysAs('a + 1'),
+    const t = o.table('t', {
+      id: o.id(),
+      a: o.integer(),
+      b: o.integer().generatedAlwaysAs('a + 1'),
     });
-    const db = b.db({ schema: { t } });
+    const db = o.db({ schema: { t } });
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE t (
         id TEXT PRIMARY KEY,
@@ -150,26 +150,26 @@ describe('schema generation', () => {
     `);
   });
   it('tables are accessible on db instance', () => {
-    const users = b.table('users', { id: b.id(), name: b.text() });
-    const posts = b.table('posts', { id: b.id(), title: b.text() });
-    const db = b.db({ schema: { users, posts } });
+    const users = o.table('users', { id: o.id(), name: o.text() });
+    const posts = o.table('posts', { id: o.id(), title: o.text() });
+    const db = o.db({ schema: { users, posts } });
 
     expect(db.users).toBeDefined();
     expect(db.posts).toBeDefined();
   });
 
   it('single column primary key constraint', () => {
-    const users = b.table(
+    const users = o.table(
       'users',
       {
-        id: b.text(),
-        name: b.text(),
+        id: o.text(),
+        name: o.text(),
       },
       undefined,
-      (t) => [b.primaryKey(t.id)]
+      (t) => [o.primaryKey(t.id)]
     );
 
-    const db = b.db({ schema: { users } });
+    const db = o.db({ schema: { users } });
 
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE users (
@@ -181,18 +181,18 @@ describe('schema generation', () => {
   });
 
   it('multi-column primary key constraint', () => {
-    const userRoles = b.table(
+    const userRoles = o.table(
       'user_roles',
       {
-        userId: b.text(),
-        roleId: b.text(),
-        assignedAt: b.date(),
+        userId: o.text(),
+        roleId: o.text(),
+        assignedAt: o.date(),
       },
       undefined,
-      (t) => [b.primaryKey(t.userId, t.roleId)]
+      (t) => [o.primaryKey(t.userId, t.roleId)]
     );
 
-    const db = b.db({ schema: { userRoles } });
+    const db = o.db({ schema: { userRoles } });
 
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE user_roles (
@@ -205,18 +205,18 @@ describe('schema generation', () => {
   });
 
   it('single column unique constraint', () => {
-    const users = b.table(
+    const users = o.table(
       'users',
       {
-        id: b.id(),
-        email: b.text(),
-        name: b.text(),
+        id: o.id(),
+        email: o.text(),
+        name: o.text(),
       },
       undefined,
-      (t) => [b.unique(t.email)]
+      (t) => [o.unique(t.email)]
     );
 
-    const db = b.db({ schema: { users } });
+    const db = o.db({ schema: { users } });
 
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE users (
@@ -229,19 +229,19 @@ describe('schema generation', () => {
   });
 
   it('multi-column unique constraint', () => {
-    const users = b.table(
+    const users = o.table(
       'users',
       {
-        id: b.id(),
-        firstName: b.text(),
-        lastName: b.text(),
-        email: b.text(),
+        id: o.id(),
+        firstName: o.text(),
+        lastName: o.text(),
+        email: o.text(),
       },
       undefined,
-      (t) => [b.unique(t.firstName, t.lastName)]
+      (t) => [o.unique(t.firstName, t.lastName)]
     );
 
-    const db = b.db({ schema: { users } });
+    const db = o.db({ schema: { users } });
 
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE users (
@@ -255,20 +255,20 @@ describe('schema generation', () => {
   });
 
   it('multiple constraints of different types', () => {
-    const products = b.table(
+    const products = o.table(
       'products',
       {
-        id: b.id(),
-        sku: b.text(),
-        barcode: b.text(),
-        name: b.text(),
-        category: b.text(),
+        id: o.id(),
+        sku: o.text(),
+        barcode: o.text(),
+        name: o.text(),
+        category: o.text(),
       },
       undefined,
-      (t) => [b.unique(t.sku), b.unique(t.barcode), b.unique(t.name, t.category)]
+      (t) => [o.unique(t.sku), o.unique(t.barcode), o.unique(t.name, t.category)]
     );
 
-    const db = b.db({ schema: { products } });
+    const db = o.db({ schema: { products } });
 
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE products (
@@ -285,19 +285,19 @@ describe('schema generation', () => {
   });
 
   it('constraints with indexes', () => {
-    const users = b.table(
+    const users = o.table(
       'users',
       {
-        id: b.text(),
-        email: b.text(),
-        name: b.text(),
-        age: b.integer(),
+        id: o.text(),
+        email: o.text(),
+        name: o.text(),
+        age: o.integer(),
       },
-      (t) => [b.index().on(t.name), b.index().on(t.age)],
-      (t) => [b.primaryKey(t.id), b.unique(t.email)]
+      (t) => [o.index().on(t.name), o.index().on(t.age)],
+      (t) => [o.primaryKey(t.id), o.unique(t.email)]
     );
 
-    const db = b.db({ schema: { users } });
+    const db = o.db({ schema: { users } });
 
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE users (
@@ -315,22 +315,22 @@ describe('schema generation', () => {
   });
 
   it('constraint builder validates empty columns', () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
     });
 
-    expect(() => b.primaryKey()).toThrow('primaryKey constraint requires at least one column');
-    expect(() => b.unique()).toThrow('unique constraint requires at least one column');
+    expect(() => o.primaryKey()).toThrow('primaryKey constraint requires at least one column');
+    expect(() => o.unique()).toThrow('unique constraint requires at least one column');
   });
 
   it('constraint builder validates duplicate columns', () => {
-    const users = b.table('users', {
-      id: b.id(),
-      name: b.text(),
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
     });
 
-    expect(() => b.primaryKey(users.id, users.id)).toThrow('primaryKey constraint columns must be unique');
-    expect(() => b.unique(users.name, users.name)).toThrow('unique constraint columns must be unique');
+    expect(() => o.primaryKey(users.id, users.id)).toThrow('primaryKey constraint columns must be unique');
+    expect(() => o.unique(users.name, users.name)).toThrow('unique constraint columns must be unique');
   });
 });

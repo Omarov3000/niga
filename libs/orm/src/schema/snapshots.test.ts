@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { OrmNodeDriver } from '../orm-node-driver';
-import { b } from './builder';
+import { o } from './builder';
 import { Table } from './table';
 import { PreparedSnapshot, TableSnapshot, ColumnMutationNotSupportedError } from './types';
 
@@ -14,7 +14,7 @@ const runScenario = async (
   let previous: TableSnapshot[] | undefined;
 
   for (const step of steps) {
-    const dbInstance = b.db({ name: 'bin_test', schema: step.schema });
+    const dbInstance = o.db({ name: 'orm_test', schema: step.schema });
     const prepared = dbInstance._prepareSnapshot(previous);
     step.assert(prepared);
     if (prepared.migration.sql) {
@@ -26,20 +26,20 @@ const runScenario = async (
   return driverForSql;
 };
 
-const buildUsersBase = () => b.table('users', { id: b.id(), name: b.text() });
-const buildUsersWithAge = () => b.table('users', { id: b.id(), name: b.text(), age: b.integer() });
-const buildUsersRenamedColumns = () => b.table('users', {
-  id: b.id(),
-  fullName: b.text().renamedFrom('name'),
-  age: b.integer(),
+const buildUsersBase = () => o.table('users', { id: o.id(), name: o.text() });
+const buildUsersWithAge = () => o.table('users', { id: o.id(), name: o.text(), age: o.integer() });
+const buildUsersRenamedColumns = () => o.table('users', {
+  id: o.id(),
+  fullName: o.text().renamedFrom('name'),
+  age: o.integer(),
 });
-const buildUsersNoAge = () => b.table('users', { id: b.id(), fullName: b.text() });
-const buildUsersWithIndex = () => b.table('users', { id: b.id(), fullName: b.text() }, (t) => [b.index().on(t.fullName)]);
-const buildPeopleFromUsers = () => b.table('people', { id: b.id(), fullName: b.text() }).renamedFrom('users');
-const buildLogsWithGenerated = () => b.table('logs', {
-  id: b.id(),
-  title: b.text(),
-  titleUpper: b.text().generatedAlwaysAs('upper(title)'),
+const buildUsersNoAge = () => o.table('users', { id: o.id(), fullName: o.text() });
+const buildUsersWithIndex = () => o.table('users', { id: o.id(), fullName: o.text() }, (t) => [o.index().on(t.fullName)]);
+const buildPeopleFromUsers = () => o.table('people', { id: o.id(), fullName: o.text() }).renamedFrom('users');
+const buildLogsWithGenerated = () => o.table('logs', {
+  id: o.id(),
+  title: o.text(),
+  titleUpper: o.text().generatedAlwaysAs('upper(title)'),
 });
 
 describe('snapshot and migration', () => {
@@ -136,31 +136,31 @@ describe('snapshot and migration', () => {
   });
 
   it('throws ColumnMutationNotSupportedError on incompatible column changes', () => {
-    const baseDb = b.db({
+    const baseDb = o.db({
       name: 'bin_test',
-      schema: { users: b.table('users', { id: b.id(), name: b.text() }) },
+      schema: { users: o.table('users', { id: o.id(), name: o.text() }) },
     });
     const baseSnapshot = baseDb._prepareSnapshot();
 
-    const mutatedDb = b.db({
+    const mutatedDb = o.db({
       name: 'bin_test',
-      schema: { users: b.table('users', { id: b.id(), name: b.integer() }) },
+      schema: { users: o.table('users', { id: o.id(), name: o.integer() }) },
     });
 
     expect(() => mutatedDb._prepareSnapshot(baseSnapshot.snapshot)).toThrow(ColumnMutationNotSupportedError);
   });
 
   it('captures table constraints in snapshots', async () => {
-    const users = b.table(
+    const users = o.table(
       'users',
       {
-        id: b.text(),
-        email: b.text(),
-        firstName: b.text(),
-        lastName: b.text(),
+        id: o.text(),
+        email: o.text(),
+        firstName: o.text(),
+        lastName: o.text(),
       },
       undefined,
-      (t) => [b.primaryKey(t.id), b.unique(t.email), b.unique(t.firstName, t.lastName)]
+      (t) => [o.primaryKey(t.id), o.unique(t.email), o.unique(t.firstName, t.lastName)]
     );
 
     await runScenario([
@@ -192,13 +192,13 @@ describe('snapshot and migration', () => {
   });
 
   it('throws error on constraint changes', () => {
-    const usersNoConstraints = b.table('users', { id: b.text(), email: b.text() });
-    const usersPrimaryKey = b.table('users', { id: b.text(), email: b.text() }, undefined, (t) => [b.primaryKey(t.id)]);
+    const usersNoConstraints = o.table('users', { id: o.text(), email: o.text() });
+    const usersPrimaryKey = o.table('users', { id: o.text(), email: o.text() }, undefined, (t) => [o.primaryKey(t.id)]);
 
-    const db1 = b.db({ schema: { users: usersNoConstraints } });
+    const db1 = o.db({ schema: { users: usersNoConstraints } });
     const snapshot1 = db1._prepareSnapshot();
 
-    const db2 = b.db({ schema: { users: usersPrimaryKey } });
+    const db2 = o.db({ schema: { users: usersPrimaryKey } });
 
     expect(() => db2._prepareSnapshot(snapshot1.snapshot))
       .toThrow("Constraint changes are not supported. Table 'users' constraint changes detected.");

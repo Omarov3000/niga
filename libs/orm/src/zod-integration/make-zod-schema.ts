@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import { Table } from '../schema/table';
 import { Column } from '../schema/column';
-import { b } from '../schema/builder';
+import { o } from '../schema/builder';
 import { Equal, Expect } from '../utils/utils';
 
 type ColumnBaseZodType<TCol extends Column<any, any, any>> =

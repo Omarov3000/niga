@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import { sql } from '../utils/sql';
 import type { RawSql } from '../utils/sql';
-import { b } from '../schema/builder';
+import { o } from '../schema/builder';
 import { hasWhereClauseCheck } from './has-where-clause-check';
 import { OrmDriver } from '../schema/types';
 
@@ -35,18 +35,18 @@ const mockOrmDriver: OrmDriver = {
 describe('security rules end-to-end', () => {
   describe('basic security rules', () => {
     it('should enforce RBAC (Role-Based Access Control)', async () => {
-      const posts = b.table('posts', {
-        id: b.id(),
-        title: b.text().notNull(),
-        content: b.text(),
-        userId: b.text().notNull()
+      const posts = o.table('posts', {
+        id: o.id(),
+        title: o.text().notNull(),
+        content: o.text(),
+        userId: o.text().notNull()
       }).secure((query, user: { id: string; role: string }) => {
         if (query.type === 'delete' && user.role !== 'admin') {
           throw new Error('RBAC: delete requires admin role');
         }
       });
 
-      const db = b.db({ schema: { posts } });
+      const db = o.db({ schema: { posts } });
       await db._connectDriver(mockOrmDriver);
 
       // Admin user should be able to delete
@@ -79,12 +79,12 @@ describe('security rules end-to-end', () => {
     });
 
     it('should enforce ABAC (Attribute-Based Access Control)', async () => {
-      const documents = b.table('documents', {
-        id: b.id(),
-        title: b.text().notNull(),
-        content: b.text(),
-        ownerId: b.text().notNull(),
-        isPublic: b.boolean()
+      const documents = o.table('documents', {
+        id: o.id(),
+        title: o.text().notNull(),
+        content: o.text(),
+        ownerId: o.text().notNull(),
+        isPublic: o.boolean()
       }).secure((query, user: { id: string }) => {
         if (query.type === 'insert') {
           if (query.data?.ownerId !== user.id) throw new Error('ABAC: ownerId must match current user');
@@ -105,7 +105,7 @@ describe('security rules end-to-end', () => {
         }
       });
 
-      const db = b.db({ schema: { documents } });
+      const db = o.db({ schema: { documents } });
       await db._connectDriver(mockOrmDriver);
 
       const user = { id: 'user123' };
@@ -159,15 +159,15 @@ describe('security rules end-to-end', () => {
 
   describe('db.query integration', () => {
     it('enforces security rules for queries without a privileged user', async () => {
-      const posts = b.table('posts', {
-        id: b.id(),
-        title: b.text().notNull()
+      const posts = o.table('posts', {
+        id: o.id(),
+        title: o.text().notNull()
       }).secure((query, user: { role: string }) => {
         if (user.role === 'admin') return;
         throw new Error(`RBAC: ${query.type} requires admin role`);
       });
 
-      const db = b.db({ schema: { posts } });
+      const db = o.db({ schema: { posts } });
       await db._connectDriver(mockOrmDriver);
 
       db._connectUser({ role: 'user' });
@@ -187,21 +187,21 @@ describe('security rules end-to-end', () => {
       let postsRuleInvoked = 0;
       let usersRuleInvoked = 0;
 
-      const posts = b.table('posts', {
-        id: b.id(),
-        authorId: b.text().notNull()
+      const posts = o.table('posts', {
+        id: o.id(),
+        authorId: o.text().notNull()
       }).secure(() => {
         postsRuleInvoked += 1;
       });
 
-      const users = b.table('users', {
-        id: b.id(),
-        role: b.text().notNull()
+      const users = o.table('users', {
+        id: o.id(),
+        role: o.text().notNull()
       }).secure(() => {
         usersRuleInvoked += 1;
       });
 
-      const db = b.db({ schema: { posts, users } });
+      const db = o.db({ schema: { posts, users } });
       await db._connectDriver(mockOrmDriver);
 
       db._connectUser({ role: 'admin' });

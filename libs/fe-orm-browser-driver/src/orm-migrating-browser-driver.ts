@@ -2,6 +2,7 @@ import type { Database } from '@sqlite.org/sqlite-wasm'
 import type { OrmDriver, TxDriver, TableSnapshot } from '@w/orm'
 import type { RawSql } from '@w/orm'
 import type { Db } from '@w/orm'
+import { o } from '@w/orm'
 import { OrmBrowserDriver, makeBrowserSQLite } from './orm-browser-driver'
 import { hashString128 } from './hash-string'
 
