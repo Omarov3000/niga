@@ -1,5 +1,5 @@
 import type {
-  BinDriver,
+  OrmDriver,
   QueryContext,
   TableMetadata,
   ColumnMetadata,
@@ -27,13 +27,13 @@ export interface DbConstructorOptions {
 }
 
 export class Db {
-  private driver?: BinDriver;
+  private driver?: OrmDriver;
   private currentUser?: any;
   readonly name: string;
   readonly origin?: 'client' | 'server';
 
   constructor(private options: DbConstructorOptions) {
-    this.name = options.name ?? 'bin';
+    this.name = options.name ?? 'orm';
     this.origin = options.origin;
     // expose tables on the db instance and wire driver access for table methods
     Object.entries(this.options.schema).forEach(([name, table]) => {
@@ -50,7 +50,7 @@ export class Db {
     });
   }
 
-  async _connectDriver(driver: BinDriver): Promise<void> {
+  async _connectDriver(driver: OrmDriver): Promise<void> {
     this.driver = driver;
   }
 
@@ -199,7 +199,7 @@ export class Db {
     if (!this.driver) throw new Error('No driver connected. Call _connectDriver first.');
 
     const statements: Array<{ query: string; params: any[] }> = [];
-    const batchDriver: BinDriver = {
+    const batchDriver: OrmDriver = {
       ...this.driver,
       run: async (sql) => {
         statements.push(sql);

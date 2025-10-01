@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { BinDriver } from './schema/types';
+import { OrmDriver } from './schema/types';
 import type { TxDriver } from './schema/types';
 import { RawSql, inlineParams } from './utils/sql';
 
@@ -7,7 +7,7 @@ function safeSplit(sql: string, delimiter: string): string[] {
   return sql.split(delimiter).filter(s => s.trim().length > 0);
 }
 
-export class BinNodeDriver implements BinDriver {
+export class OrmNodeDriver implements OrmDriver {
   db: DatabaseSync;
   logging: boolean = false;
 
@@ -16,12 +16,12 @@ export class BinNodeDriver implements BinDriver {
   }
 
   exec = async (sql: string) => {
-    if (this.logging) console.info('BinNodeDriver.exec:', { sql });
+    if (this.logging) console.info('OrmNodeDriver.exec:', { sql });
     safeSplit(sql, ';').forEach((s) => this.db.exec(s));
   };
 
   run = async ({ query, params }: RawSql) => {
-    if (this.logging) console.info('BinNodeDriver.run:', inlineParams({ query, params }));
+    if (this.logging) console.info('OrmNodeDriver.run:', inlineParams({ query, params }));
     const stmt = this.db.prepare(query);
     if (query.trim().toUpperCase().startsWith('SELECT')) {
       const result = stmt.all(...params);
@@ -32,7 +32,7 @@ export class BinNodeDriver implements BinDriver {
   };
 
   batch = async (statements: RawSql[]) => {
-    if (this.logging) console.info('BinNodeDriver.batch:', statements.map(s => inlineParams(s)).join('; '));
+    if (this.logging) console.info('OrmNodeDriver.batch:', statements.map(s => inlineParams(s)).join('; '));
     if (statements.length === 0) return [];
 
     const results: any[] = [];
@@ -59,12 +59,12 @@ export class BinNodeDriver implements BinDriver {
   };
 
   beginTransaction = async (): Promise<TxDriver> => {
-    if (this.logging) console.info('BinNodeDriver.beginTransaction');
+    if (this.logging) console.info('OrmNodeDriver.beginTransaction');
     this.db.exec('BEGIN');
     const self = this;
     return {
       run: async ({ query, params }) => {
-        if (self.logging) console.info('BinNodeDriver.tx.run:', inlineParams({ query, params }));
+        if (self.logging) console.info('OrmNodeDriver.tx.run:', inlineParams({ query, params }));
         const stmt = self.db.prepare(query);
         if (query.trim().toUpperCase().startsWith('SELECT')) {
           throw new Error('you cannot run SELECT inside a transaction');
@@ -72,11 +72,11 @@ export class BinNodeDriver implements BinDriver {
         stmt.run(...params);
       },
       commit: async () => {
-        if (self.logging) console.info('BinNodeDriver.tx.commit');
+        if (self.logging) console.info('OrmNodeDriver.tx.commit');
         self.db.exec('COMMIT');
       },
       rollback: async () => {
-        if (self.logging) console.info('BinNodeDriver.tx.rollback');
+        if (self.logging) console.info('OrmNodeDriver.tx.rollback');
         self.db.exec('ROLLBACK');
       },
     };

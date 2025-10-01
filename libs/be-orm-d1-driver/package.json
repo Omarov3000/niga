@@ -1,5 +1,5 @@
 {
-  "name": "@w/be-bin-d1",
+  "name": "@w/be-orm-d1-driver",
   "version": "0.0.0",
   "type": "module",
   "private": true,
@@ -13,7 +13,7 @@
     "lint1": "biome lint --write --unsafe --error-on-warnings src"
   },
   "dependencies": {
-    "@w/bin": "workspace:*"
+    "@w/orm": "workspace:*"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.9.7",

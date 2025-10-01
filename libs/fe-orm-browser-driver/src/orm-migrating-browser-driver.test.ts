@@ -1,6 +1,6 @@
 import { test, expect } from 'vitest'
-import { b } from '@w/bin'
-import {BinMigratingBrowserDriver } from './bin-migrating-browser-driver'
+import { b } from '@w/orm'
+import {OrmMigratingBrowserDriver } from './orm-migrating-browser-driver'
 
 test('creates tables on first use', async () => {
   const users = b.table('users', {
@@ -9,7 +9,7 @@ test('creates tables on first use', async () => {
   })
 
   const bin = b.db({ schema: { users } })
-  const driver = new BinMigratingBrowserDriver(bin)
+  const driver = new OrmMigratingBrowserDriver(bin)
 
   const result = await driver.run({ query: 'SELECT COUNT(*) as count FROM users', params: [] })
 
@@ -34,7 +34,7 @@ test('handles schema changes', async () => {
 
   // First migration with users table
   const initialBin = b.db({ schema: { users } })
-  const driver1 = new BinMigratingBrowserDriver(initialBin, ':memory:')
+  const driver1 = new OrmMigratingBrowserDriver(initialBin, ':memory:')
 
   await driver1.run({ query: 'SELECT COUNT(*) FROM users', params: [] })
 
@@ -46,7 +46,7 @@ test('handles schema changes', async () => {
   })
 
   const updatedBin = b.db({ schema: { users, posts } })
-  const driver2 = new BinMigratingBrowserDriver(updatedBin, ':memory:')
+  const driver2 = new OrmMigratingBrowserDriver(updatedBin, ':memory:')
 
   await driver2.run({ query: 'SELECT COUNT(*) FROM posts', params: [] })
 
@@ -68,7 +68,7 @@ test('handles initialization errors', async () => {
   })
 
   const bin = b.db({ schema: { users } })
-  const driver = new BinMigratingBrowserDriver(bin, '/invalid/path')
+  const driver = new OrmMigratingBrowserDriver(bin, '/invalid/path')
 
   await expect(driver.run({ query: 'SELECT 1', params: [] })).rejects.toThrow()
 })
@@ -84,7 +84,7 @@ test('calls onInit callback', async () => {
   let initCallbackCalled = false
   let callbackDriver = null
 
-  const driver = new BinMigratingBrowserDriver(
+  const driver = new OrmMigratingBrowserDriver(
     bin,
     ':memory:',
     (browserDriver) => {
@@ -106,7 +106,7 @@ test('basic operations work', async () => {
   })
 
   const bin = b.db({ schema: { users } })
-  const driver = new BinMigratingBrowserDriver(bin)
+  const driver = new OrmMigratingBrowserDriver(bin)
 
   // Insert data using exec
   await driver.exec('INSERT INTO users (id, name) VALUES (1, \'Alice\')')

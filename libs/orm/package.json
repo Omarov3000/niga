@@ -1,5 +1,5 @@
 {
-  "name": "@w/bin",
+  "name": "@w/orm",
   "version": "0.0.0",
   "type": "module",
   "private": true,
@@ -8,7 +8,7 @@
     ".": "./src/index.ts",
     "./migrate": "./src/index.migrate.ts",
     "./node-driver": "./src/index.node-driver.ts",
-    "./run-shared-bin-driver-tests": "./src/run-shared-bin-driver-tests.ts"
+    "./run-shared-orm-driver-tests": "./src/run-shared-orm-driver-tests.ts"
   },
   "scripts": {
     "tsc": "tsc",

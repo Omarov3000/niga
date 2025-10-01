@@ -4,10 +4,10 @@ import { z } from 'zod';
 import type { Table } from './schema/table';
 import type { Db } from './schema/db';
 import { sql } from './utils/sql';
-import { BinDriver, fakeBinDriver } from './schema/types';
+import { OrmDriver, fakeOrmDriver } from './schema/types';
 import { ShallowPrettify } from './utils/utils';
 
-export function runSharedBinDriverTests(makeDriver: () => BinDriver, opts: { skipTableCleanup?: boolean } = {}) {
+export function runSharedOrmDriverTests(makeDriver: () => OrmDriver, opts: { skipTableCleanup?: boolean } = {}) {
 
 const driver = makeDriver()
 const clearRef: { current?: Array<() => Promise<void>> } = { current: [] };

@@ -1,8 +1,8 @@
 import type { Database } from '@sqlite.org/sqlite-wasm'
-import type { BinDriver, TxDriver, TableSnapshot } from '@w/bin'
-import type { RawSql } from '@w/bin'
-import type { Db } from '@w/bin'
-import { BinBrowserDriver, makeBrowserSQLite } from './bin-browser-driver'
+import type { OrmDriver, TxDriver, TableSnapshot } from '@w/orm'
+import type { RawSql } from '@w/orm'
+import type { Db } from '@w/orm'
+import { OrmBrowserDriver, makeBrowserSQLite } from './orm-browser-driver'
 import { hashString128 } from './hash-string'
 
 function sortedJSONStringify(obj: any): string {
@@ -80,23 +80,23 @@ function migrateDB(
   if (logging) console.info('migrateDb succeeded')
 }
 
-export class BinMigratingBrowserDriver implements BinDriver {
+export class OrmMigratingBrowserDriver implements OrmDriver {
   logging: boolean = false
   private connectingPromise?: Promise<void>
   private connectionError?: Error
-  private _driver?: BinBrowserDriver
+  private _driver?: OrmBrowserDriver
 
   constructor(
     private bin: Db,
     private dbPath = ':memory:',
-    private onInit?: (driver: BinBrowserDriver) => void,
+    private onInit?: (driver: OrmBrowserDriver) => void,
     logging = false,
   ) {
     this.logging = logging
     this.connectingPromise = this.init()
   }
 
-  private async driver(): Promise<BinBrowserDriver> {
+  private async driver(): Promise<OrmBrowserDriver> {
     if (this.connectingPromise) await this.connectingPromise
     if (this.connectionError) throw this.connectionError
     if (!this._driver) throw new Error('Driver not initialized')
@@ -107,7 +107,7 @@ export class BinMigratingBrowserDriver implements BinDriver {
     try {
       const db = makeBrowserSQLite(this.dbPath)
       migrateDB(db, this.bin, this.logging)
-      this._driver = new BinBrowserDriver(db)
+      this._driver = new OrmBrowserDriver(db)
       this._driver.logging = this.logging
       this.onInit?.(this._driver)
     } catch (e) {

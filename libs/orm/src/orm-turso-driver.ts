@@ -1,6 +1,6 @@
 // @ts-ignore - Package has type issues with exports
 import { connect } from '@tursodatabase/database';
-import { BinDriver } from './schema/types';
+import { OrmDriver } from './schema/types';
 import type { TxDriver } from './schema/types';
 import { RawSql, inlineParams } from './utils/sql';
 
@@ -8,7 +8,7 @@ function safeSplit(sql: string, delimiter: string): string[] {
   return sql.split(delimiter).filter(s => s.trim().length > 0);
 }
 
-export class BinTursoDriver implements BinDriver {
+export class OrmTursoDriver implements OrmDriver {
   dbPromise: Promise<any>;
   private _db: any | undefined;
   logging: boolean = false;
@@ -25,7 +25,7 @@ export class BinTursoDriver implements BinDriver {
   }
 
   exec = async (sql: string) => {
-    if (this.logging) console.info('BinTursoDriver.exec:', { sql });
+    if (this.logging) console.info('OrmTursoDriver.exec:', { sql });
     const db = await this.getDb();
     safeSplit(sql, ';').forEach((s) => {
       if (s.trim()) {
@@ -35,7 +35,7 @@ export class BinTursoDriver implements BinDriver {
   };
 
   run = async ({ query, params }: RawSql) => {
-    if (this.logging) console.info('BinTursoDriver.run:', inlineParams({ query, params }));
+    if (this.logging) console.info('OrmTursoDriver.run:', inlineParams({ query, params }));
     const db = await this.getDb();
     const stmt = (db as any).prepare(query);
     const upper = query.trim().toUpperCase();
@@ -68,7 +68,7 @@ export class BinTursoDriver implements BinDriver {
   };
 
   batch = async (statements: RawSql[]) => {
-    if (this.logging) console.info('BinTursoDriver.batch:', statements.map(s => inlineParams(s)).join('; '));
+    if (this.logging) console.info('OrmTursoDriver.batch:', statements.map(s => inlineParams(s)).join('; '));
     const results: any[] = [];
     for (const statement of statements) {
       results.push(await this.run(statement));
@@ -77,7 +77,7 @@ export class BinTursoDriver implements BinDriver {
   };
 
   beginTransaction = async (): Promise<TxDriver> => {
-    if (this.logging) console.info('BinTursoDriver.beginTransaction');
+    if (this.logging) console.info('OrmTursoDriver.beginTransaction');
     throw new Error('Transactions are not implemented for this driver');
   };
 }

@@ -86,7 +86,7 @@ export interface TableMetadata {
   renamedFrom?: string;
 }
 
-export interface BinDriver {
+export interface OrmDriver {
   logging: boolean;
   exec: (sql: string) => Promise<any>;
   run: (sql: RawSql) => Promise<any>;
@@ -94,7 +94,7 @@ export interface BinDriver {
   batch: (statements: RawSql[]) => Promise<any[]>;
 }
 
-export const fakeBinDriver: BinDriver = {
+export const fakeOrmDriver: OrmDriver = {
   logging: false,
   exec: async () => { throw new Error('not implemented') },
   run: async () => { throw new Error('not implemented') },

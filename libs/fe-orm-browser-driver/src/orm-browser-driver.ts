@@ -1,8 +1,8 @@
 import { default as sqlite3Module } from '@sqlite.org/sqlite-wasm'
 import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
-import type { BinDriver, TxDriver } from '@w/bin'
-import type { RawSql } from '@w/bin'
-import { _inlineParams } from '@w/bin'
+import type { OrmDriver, TxDriver } from '@w/orm'
+import type { RawSql } from '@w/orm'
+import { _inlineParams } from '@w/orm'
 
 // Static initialization
 const warn = console.warn // sqlite3Module complains about opfs on the main thread
@@ -19,7 +19,7 @@ function safeSplit(sql: string, delimiter: string): string[] {
   return sql.split(delimiter).filter(s => s.trim().length > 0)
 }
 
-export class BinBrowserDriver implements BinDriver {
+export class OrmBrowserDriver implements OrmDriver {
   logging: boolean = false;
 
   constructor(
@@ -28,7 +28,7 @@ export class BinBrowserDriver implements BinDriver {
   }
 
   exec = async (sql: string) => {
-    if (this.logging) console.info('BinBrowserDriver.exec:', { sql });
+    if (this.logging) console.info('OrmBrowserDriver.exec:', { sql });
     safeSplit(sql, ';').forEach((s) => {
       if (s.trim().length > 0) {
         this.db.exec(s)
@@ -37,7 +37,7 @@ export class BinBrowserDriver implements BinDriver {
   }
 
   run = async ({ query, params }: RawSql) => {
-    if (this.logging) console.info('BinBrowserDriver.run:', _inlineParams({ query, params }));
+    if (this.logging) console.info('OrmBrowserDriver.run:', _inlineParams({ query, params }));
     let stmt: any
     try {
       stmt = this.db.prepare(query)
@@ -66,7 +66,7 @@ export class BinBrowserDriver implements BinDriver {
   }
 
   batch = async (statements: RawSql[]) => {
-    if (this.logging) console.info('BinBrowserDriver.batch:', statements.map(s => _inlineParams(s)).join('; '));
+    if (this.logging) console.info('OrmBrowserDriver.batch:', statements.map(s => _inlineParams(s)).join('; '));
     if (statements.length === 0) return []
 
     const results: any[] = []
@@ -96,12 +96,12 @@ export class BinBrowserDriver implements BinDriver {
   }
 
   beginTransaction = async (): Promise<TxDriver> => {
-    if (this.logging) console.info('BinBrowserDriver.beginTransaction');
+    if (this.logging) console.info('OrmBrowserDriver.beginTransaction');
     this.db.exec('BEGIN')
     const self = this
     return {
       run: async ({ query, params }) => {
-        if (self.logging) console.info('BinBrowserDriver.tx.run:', _inlineParams({ query, params }));
+        if (self.logging) console.info('OrmBrowserDriver.tx.run:', _inlineParams({ query, params }));
         const q = self.db.prepare(query)
         if (query.trim().toUpperCase().startsWith('SELECT')) {
           throw new Error('you cannot run SELECT inside a transaction')
@@ -111,11 +111,11 @@ export class BinBrowserDriver implements BinDriver {
         q.finalize()
       },
       commit: async () => {
-        if (self.logging) console.info('BinBrowserDriver.tx.commit');
+        if (self.logging) console.info('OrmBrowserDriver.tx.commit');
         self.db.exec('COMMIT')
       },
       rollback: async () => {
-        if (self.logging) console.info('BinBrowserDriver.tx.rollback');
+        if (self.logging) console.info('OrmBrowserDriver.tx.rollback');
         self.db.exec('ROLLBACK')
       },
     }

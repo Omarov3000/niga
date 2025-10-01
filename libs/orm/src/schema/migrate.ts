@@ -4,7 +4,7 @@ import type { Db } from './db';
 import type { PreparedSnapshot, TableSnapshot } from './types';
 
 export async function migrate(db: Db): Promise<PreparedSnapshot> {
-  const snapshotPath = join(process.cwd(), 'src', `${db.name}.bin.json`);
+  const snapshotPath = join(process.cwd(), 'src', `${db.name}.orm.json`);
 
   let previous: TableSnapshot[] | undefined;
   try {

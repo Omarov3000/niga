@@ -1,18 +1,18 @@
-import type { BinDriver, TxDriver } from '@w/bin'
-import type { RawSql } from '@w/bin'
-import { _inlineParams } from '@w/bin'
+import type { OrmDriver, TxDriver } from '@w/orm'
+import type { RawSql } from '@w/orm'
+import { _inlineParams } from '@w/orm'
 import type { D1Database, D1Result } from '@cloudflare/workers-types'
 
 const MAX_PARAMETERS_PER_STATEMENT = 100
 const MAX_STATEMENTS_PER_BATCH = 50
 
-export class BinD1Driver implements BinDriver {
+export class OrmD1Driver implements OrmDriver {
   logging: boolean = false;
 
   constructor(private readonly db: D1Database) {}
 
   exec = async (sql: string) => {
-    if (this.logging) console.info('BinD1Driver.exec:', { sql });
+    if (this.logging) console.info('OrmD1Driver.exec:', { sql });
     const statements = safeSplit(sql, ';')
     for (const statement of statements) {
       if (statement.trim().length === 0) continue
@@ -22,13 +22,13 @@ export class BinD1Driver implements BinDriver {
   }
 
   run = async (rawSql: RawSql) => {
-    if (this.logging) console.info('BinD1Driver.run:', _inlineParams(rawSql));
+    if (this.logging) console.info('OrmD1Driver.run:', _inlineParams(rawSql));
     const [result] = await this.batch([rawSql])
     return result ?? []
   }
 
   batch = async (statements: RawSql[]) => {
-    if (this.logging) console.info('BinD1Driver.batch:', statements.map(s => _inlineParams(s)).join('; '));
+    if (this.logging) console.info('OrmD1Driver.batch:', statements.map(s => _inlineParams(s)).join('; '));
     if (statements.length === 0) return []
 
     const preparedStatements: ReturnType<D1Database['prepare']>[] = []
@@ -73,26 +73,26 @@ export class BinD1Driver implements BinDriver {
   }
 
   beginTransaction = async (): Promise<TxDriver> => {
-    if (this.logging) console.info('BinD1Driver.beginTransaction');
+    if (this.logging) console.info('OrmD1Driver.beginTransaction');
     const queued: RawSql[] = []
 
     return {
       run: async (rawSql) => {
-        if (this.logging) console.info('BinD1Driver.tx.run:', _inlineParams(rawSql));
+        if (this.logging) console.info('OrmD1Driver.tx.run:', _inlineParams(rawSql));
         if (isSelect(rawSql.query)) {
           throw new Error('you cannot run SELECT inside a transaction')
         }
         queued.push(rawSql)
       },
       commit: async () => {
-        if (this.logging) console.info('BinD1Driver.tx.commit');
+        if (this.logging) console.info('OrmD1Driver.tx.commit');
         if (queued.length === 0) return
 
         await this.batch([...queued])
         queued.length = 0
       },
       rollback: async () => {
-        if (this.logging) console.info('BinD1Driver.tx.rollback');
+        if (this.logging) console.info('OrmD1Driver.tx.rollback');
         queued.length = 0
       },
     }

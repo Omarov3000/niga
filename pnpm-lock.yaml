@@ -162,11 +162,11 @@ importers:
         specifier: ^7.0.4
         version: 7.0.6(@types/node@24.2.0)(yaml@2.8.1)
 
-  libs/be-bin-d1:
+  libs/be-orm-d1-driver:
     dependencies:
-      '@w/bin':
+      '@w/orm':
         specifier: workspace:*
-        version: link:../bin
+        version: link:../orm
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.9.7
@@ -178,7 +178,19 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@24.2.0)(@vitest/browser@3.2.4)(@vitest/ui@3.2.4)(yaml@2.8.1)
 
-  libs/bin:
+  libs/fe-orm-browser-driver:
+    dependencies:
+      '@sqlite.org/sqlite-wasm':
+        specifier: ^3.50.4-build1
+        version: 3.50.4-build1
+      '@w/orm':
+        specifier: workspace:*
+        version: link:../orm
+      nanoid:
+        specifier: ^5.1.5
+        version: 5.1.5
+
+  libs/orm:
     dependencies:
       '@tursodatabase/database':
         specifier: ^0.1.4
@@ -195,22 +207,10 @@ importers:
     devDependencies:
       dedent:
         specifier: ^1.5.3
-        version: 1.6.0
+        version: 1.7.0
       oxlint:
         specifier: ^1.13.0
         version: 1.13.0
-
-  libs/fe-bin-browser:
-    dependencies:
-      '@sqlite.org/sqlite-wasm':
-        specifier: ^3.50.4-build1
-        version: 3.50.4-build1
-      '@w/bin':
-        specifier: workspace:*
-        version: link:../bin
-      nanoid:
-        specifier: ^5.1.5
-        version: 5.1.5
 
 packages:
 
@@ -1610,14 +1610,6 @@ packages:
 
   decode-named-character-reference@1.2.0:
     resolution: {integrity: sha512-c6fcElNV6ShtZXmsgNgFFV5tVX2PaV4g+MOAkb8eXHvn6sryJBrZa9r0zV6+dtTyoCKxtDy5tyQ5ZwQuidtd+Q==}
-
-  dedent@1.6.0:
-    resolution: {integrity: sha512-F1Z+5UCFpmQUzJa11agbyPVMbpgT/qA3/SKyJ1jyBgm7dUcUEa8v9JwDkerSQXfakBwFljIxhOJqGkjUwZ9FSA==}
-    peerDependencies:
-      babel-plugin-macros: ^3.1.0
-    peerDependenciesMeta:
-      babel-plugin-macros:
-        optional: true
 
   dedent@1.7.0:
     resolution: {integrity: sha512-HGFtf8yhuhGhqO07SV79tRp+br4MnbdjeVxotpn1QBl30pcLLCQjX5b2295ll0fv8RKDKsmWYrl05usHM9CewQ==}
@@ -4174,8 +4166,6 @@ snapshots:
   decode-named-character-reference@1.2.0:
     dependencies:
       character-entities: 2.0.2
-
-  dedent@1.6.0: {}
 
   dedent@1.7.0: {}
 

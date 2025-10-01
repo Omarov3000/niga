@@ -1,9 +1,9 @@
 import { expect, it } from 'vitest';
-import { makeBrowserSQLite } from './bin-browser-driver';
-import { runSharedBinDriverTests } from '@w/bin/run-shared-bin-driver-tests';
-import { BinBrowserDriver } from './bin-browser-driver';
+import { makeBrowserSQLite } from './orm-browser-driver';
+import { runSharedOrmDriverTests } from '@w/orm/run-shared-orm-driver-tests';
+import { OrmBrowserDriver } from './orm-browser-driver';
 
-const {driver, clearRef} = runSharedBinDriverTests(() => new BinBrowserDriver(makeBrowserSQLite()), { skipTableCleanup: true })
+const {driver, clearRef} = runSharedOrmDriverTests(() => new OrmBrowserDriver(makeBrowserSQLite()), { skipTableCleanup: true })
 
 // it('works', () => {
 //   const db = makeBrowserSQLite();

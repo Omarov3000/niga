@@ -3,7 +3,7 @@ import { z, type ZodTypeAny, infer as zInfer } from 'zod';
 import { IndexBuilder, Table } from './table';
 import { getDefaultValueFromZodSchema } from '../zod-integration/get-default-value-from-zod-schema';
 import { toSnakeCase } from '../utils/casing';
-import { BinDriver, type ConstraintDefinition, type ConstraintType } from './types';
+import { OrmDriver, type ConstraintDefinition, type ConstraintType } from './types';
 import { Column } from './column';
 import { Db } from './db';
 
@@ -156,7 +156,7 @@ type ClearRef = { current?: Array<() => Promise<void>> } | undefined;
 
 async function testDb<TSchema extends Record<string, Table<any, any>>>(
   opts: { schema: TSchema; name?: string; origin?: 'client' | 'server' },
-  driver: BinDriver,
+  driver: OrmDriver,
   clearRef?: ClearRef
 ): Promise<Db & TSchema> {
   const tableNames = Object.values(opts.schema).map((table) => table.__meta__.dbName);

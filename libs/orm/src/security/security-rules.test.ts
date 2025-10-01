@@ -4,7 +4,7 @@ import { sql } from '../utils/sql';
 import type { RawSql } from '../utils/sql';
 import { b } from '../schema/builder';
 import { hasWhereClauseCheck } from './has-where-clause-check';
-import { BinDriver } from '../schema/types';
+import { OrmDriver } from '../schema/types';
 
 const runStatement = async ({ query }: RawSql) => {
   const normalized = query.trim().toUpperCase();
@@ -14,7 +14,7 @@ const runStatement = async ({ query }: RawSql) => {
   return [];
 };
 
-const mockBinDriver: BinDriver = {
+const mockOrmDriver: OrmDriver = {
   exec: async () => {},
   run: runStatement,
   batch: async (statements: RawSql[]) => {
@@ -47,7 +47,7 @@ describe('security rules end-to-end', () => {
       });
 
       const db = b.db({ schema: { posts } });
-      await db._connectDriver(mockBinDriver);
+      await db._connectDriver(mockOrmDriver);
 
       // Admin user should be able to delete
       const admin = { id: 'admin123', role: 'admin' };
@@ -106,7 +106,7 @@ describe('security rules end-to-end', () => {
       });
 
       const db = b.db({ schema: { documents } });
-      await db._connectDriver(mockBinDriver);
+      await db._connectDriver(mockOrmDriver);
 
       const user = { id: 'user123' };
       db._connectUser(user);
@@ -168,7 +168,7 @@ describe('security rules end-to-end', () => {
       });
 
       const db = b.db({ schema: { posts } });
-      await db._connectDriver(mockBinDriver);
+      await db._connectDriver(mockOrmDriver);
 
       db._connectUser({ role: 'user' });
 
@@ -202,7 +202,7 @@ describe('security rules end-to-end', () => {
       });
 
       const db = b.db({ schema: { posts, users } });
-      await db._connectDriver(mockBinDriver);
+      await db._connectDriver(mockOrmDriver);
 
       db._connectUser({ role: 'admin' });
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { BinNodeDriver } from '../bin-node-driver';
+import { OrmNodeDriver } from '../orm-node-driver';
 import { b } from './builder';
 import { Table } from './table';
 import { PreparedSnapshot, TableSnapshot, ColumnMutationNotSupportedError } from './types';
@@ -10,7 +10,7 @@ const runScenario = async (
     assert: (prepared: PreparedSnapshot) => void;
   }>
 ) => {
-  const driverForSql = new BinNodeDriver(':memory:');
+  const driverForSql = new OrmNodeDriver(':memory:');
   let previous: TableSnapshot[] | undefined;
 
   for (const step of steps) {

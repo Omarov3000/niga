@@ -6,7 +6,7 @@ import { normalizeQueryAnalysisToRuntime } from '../true-sql/normalize-analysis'
 import { getDefaultValueFromZodSchema } from '../zod-integration/get-default-value-from-zod-schema';
 import { analyze } from '../true-sql/analyze';
 import { rawQueryToAst } from '../true-sql/raw-query-to-ast';
-import { IndexDefinition, ConstraintDefinition, SecurityRule, QueryContext, TableMetadata, BinDriver, ColumnMetadata } from './types';
+import { IndexDefinition, ConstraintDefinition, SecurityRule, QueryContext, TableMetadata, OrmDriver, ColumnMetadata } from './types';
 
 type ColumnLike = Column<any, any, any>;
 
@@ -335,7 +335,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
 
   readonly __meta__: TableMetadata;
   readonly __columns__: TCols;
-  readonly __db__!: { getDriver: () => BinDriver; getCurrentUser: () => any; getSchema: () => Record<string, Table<any, any>> };
+  readonly __db__!: { getDriver: () => OrmDriver; getCurrentUser: () => any; getSchema: () => Record<string, Table<any, any>> };
   // type helpers exposed on instance for precise typing
   readonly __selectionType__!: SelectableForCols<TCols>;
   readonly __insertionType__!: InsertableForCols<TCols>;
