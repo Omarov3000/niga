@@ -777,13 +777,33 @@ export class QueryClient {
     }
   }
 
+  syncMutationOptions<TData = unknown, TError = Error, TVariables = unknown>(
+    mutationId: string,
+    options: MutationOptions<TData, TError, TVariables>
+  ): Mutation<TData, TError, TVariables> {
+    let mutation = this.mutations.get(mutationId) as Mutation<TData, TError, TVariables> | undefined
+
+    if (!mutation) {
+      const mergedOptions = this.mergeMutationOptions(options)
+      mutation = new Mutation<TData, TError, TVariables>(mutationId, mergedOptions)
+      this.mutations.set(mutationId, mutation as unknown as Mutation)
+    } else {
+      // Compare options and update if changed
+      const mergedNewOptions = this.mergeMutationOptions(options)
+      const optionsChanged = !deepEqual(mutation.options, mergedNewOptions)
+
+      if (optionsChanged) {
+        mutation.options = mergedNewOptions
+      }
+    }
+
+    return mutation
+  }
+
   addMutation<TData = unknown, TError = Error, TVariables = unknown>(
     mutationId: string,
     options: MutationOptions<TData, TError, TVariables>
   ): Mutation<TData, TError, TVariables> {
-    const mergedOptions = this.mergeMutationOptions(options)
-    const mutation = new Mutation<TData, TError, TVariables>(mutationId, mergedOptions)
-    this.mutations.set(mutationId, mutation as unknown as Mutation)
-    return mutation
+    return this.syncMutationOptions(mutationId, options)
   }
 }

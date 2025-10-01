@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { nanoid } from 'nanoid'
-import { Mutation, QueryClient, type MutationOptions, type MutationState } from './query-client'
+import { QueryClient, type MutationOptions } from './query-client'
 import { useQueryClient } from './query-client-provider'
 
 export interface UseMutationOptions<TData = unknown, TError = Error, TVariables = unknown>
@@ -32,22 +32,13 @@ export function useMutation<TData = unknown, TError = Error, TVariables = unknow
   }
 
   const [id] = useState(() => nanoid())
-  const mutationRef = useRef<Mutation<TData, TError, TVariables> | null>(null)
 
-  // Create mutation on first render
-  if (!mutationRef.current) {
-    mutationRef.current = client.addMutation<TData, TError, TVariables>(id, options)
-  }
-  const mutation = mutationRef.current
-
-  // Update mutation options
-  useEffect(() => {
-    mutation.options = client['mergeMutationOptions'](options)
-  }, [JSON.stringify(options)])
+  // Sync mutation options and get mutation (runs on every render)
+  const mutation = client.syncMutationOptions<TData, TError, TVariables>(id, options)
 
   // Subscribe to mutation state changes
-  const subscribe = useCallback((callback: () => void) => mutation.subscribe(callback), [mutation])
-  const getSnapshot = useCallback(() => mutation.state, [mutation])
+  const subscribe = useCallback((callback: () => void) => mutation.subscribe(callback), [id])
+  const getSnapshot = useCallback(() => mutation.state, [id])
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 
   // Cleanup on unmount
