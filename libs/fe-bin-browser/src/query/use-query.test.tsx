@@ -1,5 +1,5 @@
 import { renderHook } from 'vitest-browser-react'
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+import { describe, expect, expectTypeOf, it, vi, beforeEach, afterEach } from 'vitest'
 import { useQuery } from './use-query'
 import { QueryClient } from './query-client'
 
@@ -33,6 +33,8 @@ it('should handle complete query lifecycle: fetch, refetch, and show loading sta
       queryClient
     )
   )
+
+  expectTypeOf(result.current.data).toEqualTypeOf<string | undefined>()
 
   // Initial state: pending and loading
   expect(result.current).toMatchObject({
@@ -135,18 +137,19 @@ it('should handle errors', async () => {
 
 it('should use select to transform data', async () => {
   const queryFn = vi.fn(() => Promise.resolve({ value: 42 }))
-  const select = (data: unknown) => (data as { value: number }).value * 2
 
   const { result } = await renderHook(() =>
     useQuery(
       {
         queryKey: ['test'],
         queryFn,
-        select,
+        select: (data) => data.value * 2,
       },
       queryClient
     )
   )
+
+  expectTypeOf(result.current.data).toEqualTypeOf<number | undefined>()
 
   await vi.waitFor(() => {
     expect(result.current.isSuccess).toBe(true)

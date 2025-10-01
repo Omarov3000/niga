@@ -1,5 +1,5 @@
 import React, { Suspense } from 'react'
-import { expect, it, vi, beforeEach, afterEach, describe } from 'vitest'
+import { expect, expectTypeOf, it, vi, beforeEach, afterEach, describe } from 'vitest'
 import { useSuspenseQuery } from './use-suspense-query'
 import { QueryClient } from './query-client'
 import { render } from '../_test-helpers'
@@ -20,14 +20,18 @@ it('should suspend and then render data', async () => {
   const queryFn = vi.fn(() => Promise.resolve('data'))
 
   function TestComponent() {
-    const { data } = useSuspenseQuery(
+    const result = useSuspenseQuery(
       {
         queryKey: ['test'],
         queryFn,
       },
       queryClient
     )
-    return <div data-testid="result">{data as string}</div>
+
+    // Type tests
+    expectTypeOf(result.data).toEqualTypeOf<string>()
+
+    return <div data-testid="result">{result.data}</div>
   }
 
   const { see } = render(

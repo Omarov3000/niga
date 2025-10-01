@@ -1,13 +1,15 @@
 import type { QueryClient, QueryOptions, QueryState } from './query-client'
 import { useQuery, type UseQueryOptions } from './use-query'
 
-export interface UseSuspenseQueryOptions<TData = unknown> extends Omit<QueryOptions, 'throwOnError' | 'enabled'> {
-  select?: (data: unknown) => TData
+export interface UseSuspenseQueryOptions<TQueryFnData = unknown, TData = TQueryFnData>
+  extends Omit<QueryOptions, 'throwOnError' | 'enabled' | 'queryFn'> {
+  queryFn: (options: { signal: AbortSignal; queryKey: unknown[] }) => Promise<TQueryFnData>
+  select?: (data: TQueryFnData) => TData
 }
 
-export interface UseSuspenseQueryResult<TData = unknown, TError = Error> {
+export interface UseSuspenseQueryResult<TData> {
   data: TData
-  error: TError | undefined
+  error: Error | undefined
   isError: boolean
   isFetching: boolean
   isRefetching: boolean
@@ -16,16 +18,16 @@ export interface UseSuspenseQueryResult<TData = unknown, TError = Error> {
   status: 'success' | 'error'
 }
 
-export function useSuspenseQuery<TData = unknown, TError = Error>(
-  options: UseSuspenseQueryOptions<TData>,
+export function useSuspenseQuery<TQueryFnData = unknown, TData = TQueryFnData>(
+  options: UseSuspenseQueryOptions<TQueryFnData, TData>,
   queryClient?: QueryClient
-): UseSuspenseQueryResult<TData, TError> {
-  const result = useQuery<TData, TError>(
+): UseSuspenseQueryResult<TData> {
+  const result = useQuery<TQueryFnData, TData>(
     {
       ...options,
       throwOnError: true,
       enabled: true,
-    } as UseQueryOptions<TData, TError>,
+    },
     queryClient
   )
 

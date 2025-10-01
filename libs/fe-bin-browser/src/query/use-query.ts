@@ -2,14 +2,16 @@ import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { Query, QueryClient, type QueryOptions, type QueryState } from './query-client'
 import { useQueryClient } from './query-client-provider'
 
-export interface UseQueryOptions<TData = unknown, TError = Error> extends QueryOptions {
-  select?: (data: unknown) => TData
+export interface UseQueryOptions<TQueryFnData = unknown, TData = TQueryFnData>
+  extends Omit<QueryOptions, 'queryFn'> {
+  queryFn: (options: { signal: AbortSignal; queryKey: unknown[] }) => Promise<TQueryFnData>
+  select?: (data: TQueryFnData) => TData
   enabled?: boolean
 }
 
-export interface UseQueryResult<TData = unknown, TError = Error> {
+export interface UseQueryResult<TData = unknown> {
   data: TData | undefined
-  error: TError | undefined
+  error: Error | undefined
   isError: boolean
   isFetching: boolean
   isLoading: boolean
@@ -21,10 +23,10 @@ export interface UseQueryResult<TData = unknown, TError = Error> {
   promise: Promise<QueryState> | null
 }
 
-export function useQuery<TData = unknown, TError = Error>(
-  options: UseQueryOptions<TData, TError>,
+export function useQuery<TQueryFnData = unknown, TData = TQueryFnData>(
+  options: UseQueryOptions<TQueryFnData, TData>,
   queryClient?: QueryClient
-): UseQueryResult<TData, TError> {
+): UseQueryResult<TData> {
   const contextClient = useQueryClient(true)
   const client = queryClient ?? contextClient
 
@@ -112,7 +114,7 @@ export function useQuery<TData = unknown, TError = Error>(
     }
   }, [enabled, query.options.refetchInterval, query])
 
-  const data = select && state.data !== undefined ? select(state.data) : (state.data as TData | undefined)
+  const data = select && state.data !== undefined ? select(state.data as TQueryFnData) : (state.data as TData | undefined)
   const isPending = state.status === 'pending'
   const isSuccess = state.status === 'success'
   const isError = state.status === 'error'
@@ -122,7 +124,7 @@ export function useQuery<TData = unknown, TError = Error>(
 
   return {
     data,
-    error: state.error as TError | undefined,
+    error: state.error,
     isError,
     isFetching,
     isLoading,
