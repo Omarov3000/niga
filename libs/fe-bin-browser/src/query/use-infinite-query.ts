@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 import { Query, QueryClient, type QueryOptions, type QueryState } from './query-client'
 import { useQueryClient } from './query-client-provider'
 
@@ -50,48 +50,30 @@ export function useInfiniteQuery<TData = unknown, TPageParam = unknown, TError =
 
   const { queryFn, initialPageParam, getNextPageParam, getPreviousPageParam, ...queryOptions } = options
 
-  const queryRef = useRef<Query | null>(null)
   const [isFetchingNextPage, setIsFetchingNextPage] = useState(false)
   const [isFetchingPreviousPage, setIsFetchingPreviousPage] = useState(false)
 
-  // Create wrapped queryFn that handles infinite query logic
-  const wrappedQueryFn = async ({ signal, queryKey }: { signal: AbortSignal; queryKey: unknown[] }) => {
-    const firstPage = await queryFn({ signal, queryKey, pageParam: initialPageParam })
-    return {
-      pages: [firstPage],
-      pageParams: [initialPageParam],
-    } as InfiniteData<TData>
-  }
+  // Create wrapped queryFn that handles infinite query logic (memoize to avoid recreating)
+  const wrappedQueryFn = useMemo(
+    () => async ({ signal, queryKey }: { signal: AbortSignal; queryKey: unknown[] }) => {
+      const firstPage = await queryFn({ signal, queryKey, pageParam: initialPageParam })
+      return {
+        pages: [firstPage],
+        pageParams: [initialPageParam],
+      } as InfiniteData<TData>
+    },
+    [queryFn, initialPageParam]
+  )
 
-  // Get or create query
-  if (!queryRef.current) {
-    queryRef.current = client['getOrCreateQuery']({
-      ...queryOptions,
-      queryFn: wrappedQueryFn,
-    })
-  }
-
-  const query = queryRef.current
-
-  // Update query options
-  useEffect(() => {
-    query.options = client['mergeOptions']({
-      ...queryOptions,
-      queryFn: wrappedQueryFn,
-    })
-  }, [JSON.stringify(queryOptions)])
-
-  // Update enabled state
-  useEffect(() => {
-    const enabled = typeof options.enabled === 'function'
-      ? options.enabled(query)
-      : options.enabled ?? true
-    query.setEnabled(enabled)
-  }, [options.enabled, query])
+  // Sync query options and get query (runs on every render)
+  const query = client.syncQueryOptions({
+    ...queryOptions,
+    queryFn: wrappedQueryFn,
+  })
 
   // Subscribe to query state changes (memoize subscribe to avoid re-subscribing on every render)
-  const subscribe = useCallback((callback: () => void) => query.subscribe(callback), [query])
-  const getSnapshot = useCallback(() => query.state, [query])
+  const subscribe = useCallback((callback: () => void) => query.subscribe(callback), [query.queryHash])
+  const getSnapshot = useCallback(() => query.state, [query.queryHash])
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 
   const data = state.data as InfiniteData<TData> | undefined
