@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Query, QueryClient, type QueryOptions, type QueryState } from './query-client'
 import { useQueryClient } from './query-client-provider'
 
@@ -11,11 +11,12 @@ export interface InfiniteData<TData = unknown> {
   pageParams: unknown[]
 }
 
-export interface UseInfiniteQueryOptions<TData = unknown, TPageParam = unknown> extends Omit<QueryOptions, 'queryFn'> {
+export interface UseInfiniteQueryOptions<TData = unknown, TPageParam = unknown> extends Omit<QueryOptions, 'queryFn' | 'enabled'> {
   queryFn: (options: { signal: AbortSignal; queryKey: unknown[]; pageParam: TPageParam }) => Promise<TData>
   initialPageParam: TPageParam
   getNextPageParam: (lastPage: TData, allPages: TData[]) => TPageParam | undefined | null
   getPreviousPageParam?: (firstPage: TData, allPages: TData[]) => TPageParam | undefined | null
+  enabled?: boolean
 }
 
 export interface UseInfiniteQueryResult<TData = unknown, TError = Error> {
@@ -48,10 +49,10 @@ export function useInfiniteQuery<TData = unknown, TPageParam = unknown, TError =
     throw new Error('useInfiniteQuery requires either a queryClient parameter or QueryClientProvider')
   }
 
-  const { queryFn, initialPageParam, getNextPageParam, getPreviousPageParam, enabled = true, ...queryOptions } = options
+  const { queryFn, initialPageParam, getNextPageParam, getPreviousPageParam, ...queryOptions } = options
+  const enabled = options.enabled ?? true
 
   const queryRef = useRef<Query | null>(null)
-  const unsubscribeRef = useRef<(() => void) | null>(null)
   const [isFetchingNextPage, setIsFetchingNextPage] = useState(false)
   const [isFetchingPreviousPage, setIsFetchingPreviousPage] = useState(false)
 
@@ -83,55 +84,15 @@ export function useInfiniteQuery<TData = unknown, TPageParam = unknown, TError =
     })
   }, [JSON.stringify(queryOptions)])
 
-  // Subscribe to query state changes
-  const state = useSyncExternalStore(
-    (callback) => {
-      unsubscribeRef.current?.()
-      unsubscribeRef.current = query.subscribe(callback)
-      return () => {
-        unsubscribeRef.current?.()
-        unsubscribeRef.current = null
-      }
-    },
-    () => query.state,
-    () => query.state
-  )
-
-  // Fetch on mount and when enabled changes
+  // Update enabled state
   useEffect(() => {
-    if (enabled) {
-      const staleTime = query.options.staleTime ?? 0
-      if (query.state.status !== 'success' || query.isStale(staleTime)) {
-        query.fetch()
-      }
-    }
-  }, [enabled, query])
+    query.setEnabled(enabled)
+  }, [enabled])
 
-  // Handle refetchOnWindowFocus
-  useEffect(() => {
-    if (enabled && query.options.refetchOnWindowFocus) {
-      const handleFocus = () => {
-        const staleTime = query.options.staleTime ?? 0
-        if (query.isStale(staleTime)) {
-          query.fetch()
-        }
-      }
-
-      window.addEventListener('focus', handleFocus)
-      return () => window.removeEventListener('focus', handleFocus)
-    }
-  }, [enabled, query.options.refetchOnWindowFocus, query])
-
-  // Handle refetchInterval
-  useEffect(() => {
-    if (enabled && query.options.refetchInterval) {
-      const interval = setInterval(() => {
-        query.fetch()
-      }, query.options.refetchInterval)
-
-      return () => clearInterval(interval)
-    }
-  }, [enabled, query.options.refetchInterval, query])
+  // Subscribe to query state changes (memoize subscribe to avoid re-subscribing on every render)
+  const subscribe = useCallback((callback: () => void) => query.subscribe(callback), [query])
+  const getSnapshot = useCallback(() => query.state, [query])
+  const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 
   const data = state.data as InfiniteData<TData> | undefined
   const isPending = state.status === 'pending'
