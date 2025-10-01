@@ -336,3 +336,83 @@ it('should refetch at interval when refetchInterval is set', async () => {
     expect(queryFn).toHaveBeenCalledTimes(3)
   })
 })
+
+it.skip('should create new query instance when queryKey changes to prevent race conditions', async () => {
+  let resolveUser1: ((value: { id: number; name: string }) => void) | undefined
+  let resolveUser2: ((value: { id: number; name: string }) => void) | undefined
+
+  const queryFn = vi.fn((options: { queryKey: unknown[] }) => {
+    const userId = options.queryKey[1] as number
+    return new Promise<{ id: number; name: string }>((resolve) => {
+      if (userId === 1) {
+        resolveUser1 = resolve
+      } else {
+        resolveUser2 = resolve
+      }
+    })
+  })
+
+  const { result, rerender } = await renderHook(
+    (props?: { userId: number }) =>
+      useQuery(
+        {
+          queryKey: ['user', props?.userId ?? 1],
+          queryFn,
+          staleTime: 0, // Ensure refetch happens
+        },
+        queryClient
+      ),
+    {
+      initialProps: { userId: 1 },
+    }
+  )
+
+  // Wait for initial fetch to start
+  await vi.waitFor(() => {
+    expect(result.current.isFetching).toBe(true)
+  })
+  expect(queryFn).toHaveBeenCalledTimes(1)
+
+  // Change queryKey while first fetch is in progress
+  rerender({ userId: 2 })
+
+  // Manually trigger a microtask to ensure rerender is processed
+  await vi.advanceTimersByTimeAsync(0)
+
+  // Second fetch may or may not start immediately due to the race condition bug
+  // Let's check if it was called at all
+  const secondFetchStarted = queryFn.mock.calls.length === 2
+
+  if (secondFetchStarted) {
+    // Resolve second fetch first (the newer one)
+    resolveUser2!({ id: 2, name: 'User 2' })
+
+    await vi.waitFor(() => {
+      expect(result.current.data).toEqual({ id: 2, name: 'User 2' })
+    })
+
+    // Resolve first fetch later (the older one)
+    resolveUser1!({ id: 1, name: 'User 1' })
+
+    // Wait a bit to ensure the old response doesn't override
+    await vi.advanceTimersByTimeAsync(100)
+
+    // Data should still be User 2 (the newer request), not User 1
+    expect(result.current.data).toEqual({ id: 2, name: 'User 2' })
+  } else {
+    // This demonstrates the bug: queryKey changed but same Query instance is used
+    expect(queryFn).toHaveBeenCalledTimes(1) // Only called once with old queryKey
+
+    // Resolve the single fetch
+    resolveUser1!({ id: 1, name: 'User 1' })
+
+    await vi.waitFor(() => {
+      expect(result.current.isSuccess).toBe(true)
+    })
+
+    // Bug: showing data for wrong queryKey
+    expect(result.current.data).toEqual({ id: 1, name: 'User 1' })
+    // But we're asking for user 2!
+    throw new Error('Bug detected: queryKey changed but same Query instance is being reused')
+  }
+})
