@@ -8,6 +8,10 @@
     "allowJs": true,
     "checkJs": false,
     "noEmit": true,
+    // Added jsx support because this universal package imports types from query-fe
+    // which contains .tsx files. TypeScript needs to be able to parse JSX syntax
+    // when following these imports during type checking.
+    "jsx": "react-jsx",
     "isolatedModules": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
