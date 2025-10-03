@@ -7,6 +7,12 @@ const Category = z.object({
   },
 });
 
+const Optional = z.object({
+  name: z.string().optional(),
+});
+
+type Optional = z.infer<typeof Optional>;
+
 // import { s } from "./index";
 
 // // Example from schema.md

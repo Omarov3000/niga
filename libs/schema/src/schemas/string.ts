@@ -2,6 +2,8 @@ import { BaseSchema } from "../core/base-schema";
 import * as errors from "../core/errors";
 import * as types from "../core/types";
 import * as util from "../core/util";
+import type { OptionalSchema } from "./wrappers";
+import { optional as makeOptional } from "./wrappers";
 
 // String schema definition
 export interface StringSchemaDef extends types.SchemaTypeDef {
@@ -30,6 +32,7 @@ export interface StringSchema extends types.Schema<string, string, StringSchemaI
   uppercase(message?: string | { message: string | (() => string) }): this;
   lowercase(message?: string | { message: string | (() => string) }): this;
   trim(): this;
+  optional(): OptionalSchema<this>;
   parse(data: unknown, params?: types.ParseContext): string;
   safeParse(
     data: unknown,
@@ -272,6 +275,10 @@ export const StringSchema = types.$constructor<StringSchema>("StringSchema", (in
         payload.value = payload.value.trim();
       })
     );
+  };
+
+  inst.optional = () => {
+    return makeOptional(inst);
   };
 });
 

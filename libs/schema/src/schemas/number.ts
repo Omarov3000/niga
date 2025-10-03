@@ -2,6 +2,8 @@ import { BaseSchema } from "../core/base-schema";
 import * as errors from "../core/errors";
 import * as types from "../core/types";
 import * as util from "../core/util";
+import type { OptionalSchema } from "./wrappers";
+import { optional as makeOptional } from "./wrappers";
 
 // Number schema definition
 export interface NumberSchemaDef extends types.SchemaTypeDef {
@@ -27,6 +29,7 @@ export interface NumberSchema extends types.Schema<number, number, NumberSchemaI
   lt(value: number, message?: string | { message: string | (() => string) }): this;
   lte(value: number, message?: string | { message: string | (() => string) }): this;
   max(value: number, message?: string | { message: string | (() => string) }): this;
+  optional(): OptionalSchema<this>;
   parse(data: unknown, params?: types.ParseContext): number;
   safeParse(
     data: unknown,
@@ -217,6 +220,10 @@ export const NumberSchema = types.$constructor<NumberSchema>("NumberSchema", (in
         }
       )
     );
+  };
+
+  inst.optional = () => {
+    return makeOptional(inst);
   };
 });
 

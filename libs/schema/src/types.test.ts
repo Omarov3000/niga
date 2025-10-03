@@ -1,364 +1,295 @@
 import { describe, it, expectTypeOf } from "vitest";
 import { s } from "./index";
 
-describe("Type Inference", () => {
-  describe("Primitives", () => {
-    it("string", () => {
-      const schema = s.string();
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<string>();
-    });
-
-    it("number", () => {
-      const schema = s.number();
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<number>();
-    });
-
-    it("boolean", () => {
-      const schema = s.boolean();
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<boolean>();
-    });
-
-    it("date", () => {
-      const schema = s.date();
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<Date>();
-    });
-
-    it("null", () => {
-      const schema = s.null();
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<null>();
-    });
-
-    it("undefined", () => {
-      const schema = s.undefined();
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<undefined>();
-    });
-
-    it("unknown", () => {
-      const schema = s.unknown();
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<unknown>();
-    });
-
-     it("string literal", () => {
-      const schema = s.literal("hello");
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<"hello">();
-    });
-
-    it("number literal", () => {
-      const schema = s.literal(42);
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<42>();
-    });
-
-    it("string enum", () => {
-      const schema = s.enum(["a", "b", "c"]);
-      type Result = s.infer<typeof schema>;
-      type Expected = "a" | "b" | "c";
-      expectTypeOf<Result>().toEqualTypeOf<Expected>();
-    });
+describe("Primitives", () => {
+  it("string", () => {
+    const schema = s.string();
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<string>();
   });
 
-  describe("Array", () => {
-    it("string array", () => {
-      const schema = s.array(s.string());
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<string[]>();
-    });
-
-    it("nested array", () => {
-      const schema = s.array(s.array(s.string()));
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<string[][]>();
-    });
+  it("number", () => {
+    const schema = s.number();
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<number>();
   });
 
-  describe("Object", () => {
-    it("simple object", () => {
-      const schema = s.object({
+  it("boolean", () => {
+    const schema = s.boolean();
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<boolean>();
+  });
+
+  it("date", () => {
+    const schema = s.date();
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<Date>();
+  });
+
+  it("null", () => {
+    const schema = s.null();
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<null>();
+  });
+
+  it("undefined", () => {
+    const schema = s.undefined();
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<undefined>();
+  });
+
+  it("unknown", () => {
+    const schema = s.unknown();
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<unknown>();
+  });
+
+    it("string literal", () => {
+    const schema = s.literal("hello");
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<"hello">();
+  });
+
+  it("number literal", () => {
+    const schema = s.literal(42);
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<42>();
+  });
+
+  it("string enum", () => {
+    const schema = s.enum(["a", "b", "c"]);
+    type Result = s.infer<typeof schema>;
+    type Expected = "a" | "b" | "c";
+    expectTypeOf<Result>().toEqualTypeOf<Expected>();
+  });
+});
+
+describe("Array", () => {
+  it("string array", () => {
+    const schema = s.array(s.string());
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<string[]>();
+  });
+
+  it("nested array", () => {
+    const schema = s.array(s.array(s.string()));
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<string[][]>();
+  });
+});
+
+describe("Object", () => {
+  it("simple object", () => {
+    const schema = s.object({
+      name: s.string(),
+      age: s.number().optional(),
+    });
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<{ name: string; age?: number | undefined }>();
+  });
+
+  it("nested object", () => {
+    const schema = s.object({
+      user: s.object({
         name: s.string(),
-        age: s.number(),
-      });
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<{ name: string; age: number }>();
-    });
-
-    it("nested object", () => {
-      const schema = s.object({
-        user: s.object({
-          name: s.string(),
-          email: s.string(),
-        }),
-        meta: s.object({
-          created: s.date(),
-        }),
-      });
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<{
-        user: { name: string; email: string };
-        meta: { created: Date };
-      }>();
-    });
-
-    it("object.extend", () => {
-      const base = s.object({ name: s.string() });
-      const extended = base.extend({ age: s.number() });
-      type Result = s.infer<typeof extended>;
-      expectTypeOf<Result>().toEqualTypeOf<{ name: string; age: number }>();
-    });
-
-    it("object.pick", () => {
-      const schema = s.object({
-        name: s.string(),
-        age: s.number(),
         email: s.string(),
-      });
-      const picked = schema.pick("name", "age");
-      type Result = s.infer<typeof picked>;
-      expectTypeOf<Result>().toEqualTypeOf<{ name: string; age: number }>();
+      }),
+      meta: s.object({
+        created: s.date(),
+      }),
     });
-
-    it("object.omit", () => {
-      const schema = s.object({
-        name: s.string(),
-        age: s.number(),
-        email: s.string(),
-      });
-      const omitted = schema.omit("email");
-      type Result = s.infer<typeof omitted>;
-      expectTypeOf<Result>().toEqualTypeOf<{ name: string; age: number }>();
-    });
-
-    it("object.partial", () => {
-      const schema = s.object({
-        name: s.string(),
-        age: s.number(),
-      });
-      const partial = schema.partial();
-      type Result = s.infer<typeof partial>;
-      expectTypeOf<Result>().toEqualTypeOf<{ name?: string; age?: number }>();
-    });
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<{
+      user: { name: string; email: string };
+      meta: { created: Date };
+    }>();
   });
 
-  describe("Record", () => {
-    it("string record", () => {
-      const schema = s.record(s.string(), s.number());
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<Record<string, number>>();
-    });
+  it("object.extend", () => {
+    const base = s.object({ name: s.string() });
+    const extended = base.extend({ age: s.number() });
+    type Result = s.infer<typeof extended>;
+    expectTypeOf<Result>().toEqualTypeOf<{ name: string; age: number }>();
   });
 
-  describe("Union", () => {
-    it("string | number", () => {
-      const schema = s.union([s.string(), s.number()]);
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<string | number>();
+  it("object.pick", () => {
+    const schema = s.object({
+      name: s.string(),
+      age: s.number(),
+      email: s.string(),
     });
-
-    it("complex union", () => {
-      const schema = s.union([
-        s.object({ type: s.literal("a"), value: s.string() }),
-        s.object({ type: s.literal("b"), value: s.number() }),
-      ]);
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<
-        { type: "a"; value: string } | { type: "b"; value: number }
-      >();
-    });
+    const picked = schema.pick("name", "age");
+    type Result = s.infer<typeof picked>;
+    expectTypeOf<Result>().toEqualTypeOf<{ name: string; age: number }>();
   });
 
-  describe("Discriminated Union", () => {
-    it("discriminated union", () => {
-      const schema = s.discriminatedUnion("kind", [
-        s.object({ kind: s.literal("circle"), radius: s.number() }),
-        s.object({ kind: s.literal("square"), size: s.number() }),
-      ]);
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<
-        { kind: "circle"; radius: number } | { kind: "square"; size: number }
-      >();
+  it("object.omit", () => {
+    const schema = s.object({
+      name: s.string(),
+      age: s.number(),
+      email: s.string(),
     });
+    const omitted = schema.omit("email");
+    type Result = s.infer<typeof omitted>;
+    expectTypeOf<Result>().toEqualTypeOf<{ name: string; age: number }>();
   });
 
-  describe("Transform", () => {
-    it("string to number", () => {
-      const schema = s.transform(s.string(), (val) => val.length);
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<number>();
+  it("object.partial", () => {
+    const schema = s.object({
+      name: s.string(),
+      age: s.number(),
     });
+    const partial = schema.partial();
+    type Result = s.infer<typeof partial>;
+    expectTypeOf<Result>().toEqualTypeOf<{ name?: string; age?: number }>();
+  });
+});
 
-    it("object transform", () => {
-      const schema = s.transform(
-        s.object({ name: s.string() }),
-        (obj) => obj.name.toUpperCase()
-      );
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<string>();
-    });
+describe("Record", () => {
+  it("string record", () => {
+    const schema = s.record(s.string(), s.number());
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<Record<string, number>>();
+  });
+});
+
+describe("Union", () => {
+  it("string | number", () => {
+    const schema = s.union([s.string(), s.number()]);
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<string | number>();
   });
 
-  describe("Default", () => {
-    it("string with default", () => {
-      const schema = s.default(s.string(), "hello");
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<string>();
-    });
+  it("complex union", () => {
+    const schema = s.union([
+      s.object({ type: s.literal("a"), value: s.string() }),
+      s.object({ type: s.literal("b"), value: s.number() }),
+    ]);
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<
+      { type: "a"; value: string } | { type: "b"; value: number }
+    >();
+  });
+});
 
-    it("number with default", () => {
-      const schema = s.default(s.number(), 42);
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<number>();
-    });
+describe("Discriminated Union", () => {
+  it("discriminated union", () => {
+    const schema = s.discriminatedUnion("kind", [
+      s.object({ kind: s.literal("circle"), radius: s.number() }),
+      s.object({ kind: s.literal("square"), size: s.number() }),
+    ]);
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<
+      { kind: "circle"; radius: number } | { kind: "square"; size: number }
+    >();
+  });
+});
+
+describe("Transform", () => {
+  it("string to number", () => {
+    const schema = s.transform(s.string(), (val) => val.length);
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<number>();
+
+    type Input = s.input<typeof schema>;
+    type Output = s.output<typeof schema>;
+
+    expectTypeOf<Input>().toEqualTypeOf<string>();
+    expectTypeOf<Output>().toEqualTypeOf<number>();
   });
 
-  describe("Refine", () => {
-    it("refine preserves type", () => {
-      const schema = s.refine(s.string(), (val) => val.length > 0);
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<string>();
-    });
+  it("object transform", () => {
+    const schema = s.transform(
+      s.object({ name: s.string() }),
+      (obj) => obj.name.toUpperCase()
+    );
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<string>();
+  });
+});
 
-    it("refine on object preserves type", () => {
-      const schema = s.refine(
-        s.object({ age: s.number() }),
-        (obj) => obj.age >= 18
-      );
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<{ age: number }>();
-    });
+describe("Default", () => {
+  it("string with default", () => {
+    const schema = s.default(s.string(), "hello");
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<string>();
   });
 
-  describe("Catch", () => {
-    it("catch preserves type", () => {
-      const schema = s.catch(s.number(), 0);
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<number>();
-    });
+  it("number with default", () => {
+    const schema = s.default(s.number(), 42);
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<number>();
+  });
+});
+
+describe("Refine", () => {
+  it("refine preserves type", () => {
+    const schema = s.refine(s.string(), (val) => val.length > 0);
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<string>();
   });
 
-  describe("String validators preserve type", () => {
-    it("min/max/length", () => {
-      const schema = s.string().min(5).max(10).length(7);
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<string>();
+  it("refine on object preserves type", () => {
+    const schema = s.refine(
+      s.object({ age: s.number() }),
+      (obj) => obj.age >= 18
+    );
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<{ age: number }>();
+  });
+});
+
+describe("Catch", () => {
+  it("catch preserves type", () => {
+    const schema = s.catch(s.number(), 0);
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<number>();
+  });
+});
+
+describe("Complex real-world schemas", () => {
+  it("user profile", () => {
+    const UserProfile = s.object({
+      id: s.string(),
+      email: s.string().email(),
+      name: s.string().min(1),
+      age: s.number().int().positive().max(150),
+      role: s.enum(["admin", "user", "guest"]),
+      metadata: s.record(s.string(), s.unknown()),
+      createdAt: s.date(),
     });
 
-    it("regex/startsWith/endsWith/includes", () => {
-      const schema = s
-        .string()
-        .regex(/test/)
-        .startsWith("hello")
-        .endsWith("world")
-        .includes("test");
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<string>();
-    });
+    type Result = s.infer<typeof UserProfile>;
 
-    it("email/httpUrl", () => {
-      const schema = s.string().email().httpUrl();
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<string>();
-    });
-
-    it("uppercase/lowercase/trim", () => {
-      const schema = s.string().uppercase().lowercase().trim();
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<string>();
-    });
+    expectTypeOf<Result>().toEqualTypeOf<{
+      id: string;
+      email: string;
+      name: string;
+      age: number;
+      role: "admin" | "user" | "guest";
+      metadata: Record<string, unknown>;
+      createdAt: Date;
+    }>();
   });
 
-  describe("Number validators preserve type", () => {
-    it("int/positive/negative", () => {
-      const schema = s.number().int().positive().negative();
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<number>();
+  it("API response", () => {
+    const SuccessResponse = s.object({
+      success: s.literal(true),
+      data: s.unknown(),
     });
 
-    it("gt/gte/lt/lte/min/max", () => {
-      const schema = s.number().gt(0).gte(1).lt(100).lte(99).min(5).max(50);
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<number>();
-    });
-  });
-
-  describe("Date validators preserve type", () => {
-    it("min/max", () => {
-      const schema = s.date().min(new Date()).max(new Date());
-      type Result = s.infer<typeof schema>;
-      expectTypeOf<Result>().toEqualTypeOf<Date>();
-    });
-  });
-
-  describe("Input/Output types", () => {
-    it("transform has different input/output", () => {
-      const schema = s.transform(s.string(), (val) => val.length);
-      type Input = s.input<typeof schema>;
-      type Output = s.output<typeof schema>;
-
-      expectTypeOf<Input>().toEqualTypeOf<string>();
-      expectTypeOf<Output>().toEqualTypeOf<number>();
+    const ErrorResponse = s.object({
+      success: s.literal(false),
+      error: s.string(),
     });
 
-    it("default has optional input", () => {
-      const schema = s.default(s.string(), "hello");
-      type Input = s.input<typeof schema>;
-      type Output = s.output<typeof schema>;
+    const ApiResponse = s.union([SuccessResponse, ErrorResponse]);
 
-      expectTypeOf<Input>().toEqualTypeOf<string | undefined>();
-      expectTypeOf<Output>().toEqualTypeOf<string>();
-    });
-  });
+    type Result = s.infer<typeof ApiResponse>;
+    type Expected =
+      | { success: true; data: unknown }
+      | { success: false; error: string };
 
-  describe("Complex real-world schemas", () => {
-    it("user profile", () => {
-      const UserProfile = s.object({
-        id: s.string(),
-        email: s.string().email(),
-        name: s.string().min(1),
-        age: s.number().int().positive().max(150),
-        role: s.enum(["admin", "user", "guest"]),
-        metadata: s.record(s.string(), s.unknown()),
-        createdAt: s.date(),
-      });
-
-      type Result = s.infer<typeof UserProfile>;
-
-      expectTypeOf<Result>().toEqualTypeOf<{
-        id: string;
-        email: string;
-        name: string;
-        age: number;
-        role: "admin" | "user" | "guest";
-        metadata: Record<string, unknown>;
-        createdAt: Date;
-      }>();
-    });
-
-    it("API response", () => {
-      const SuccessResponse = s.object({
-        success: s.literal(true),
-        data: s.unknown(),
-      });
-
-      const ErrorResponse = s.object({
-        success: s.literal(false),
-        error: s.string(),
-      });
-
-      const ApiResponse = s.union([SuccessResponse, ErrorResponse]);
-
-      type Result = s.infer<typeof ApiResponse>;
-      type Expected =
-        | { success: true; data: unknown }
-        | { success: false; error: string };
-
-      expectTypeOf<Result>().toEqualTypeOf<Expected>();
-    });
+    expectTypeOf<Result>().toEqualTypeOf<Expected>();
   });
 });

@@ -7,31 +7,26 @@ import * as util from "../core/util";
 export type Shape = Record<string, any>;
 
 // Check if schema is optional (for type inference)
-type OptionalSchema = { _zod: { optin?: "optional"; optout?: "optional" } };
+type OptionalOutSchema = { _zod: { optout: "optional" } };
 
 // Infer object output type
 export type InferObjectOutput<T extends Shape> = util.Prettify<
   {
-    -readonly [K in keyof T as T[K] extends OptionalSchema
-      ? T[K]["_zod"]["optout"] extends "optional"
-        ? never
-        : K
-      : K]: T[K]["_zod"]["output"];
+    -readonly [K in keyof T as T[K] extends OptionalOutSchema ? never : K]: T[K]["_zod"]["output"];
   } & {
-    -readonly [K in keyof T as T[K] extends OptionalSchema ? (T[K]["_zod"]["optout"] extends "optional" ? K : never) : never]?: T[K]["_zod"]["output"];
+    -readonly [K in keyof T as T[K] extends OptionalOutSchema ? K : never]?: T[K]["_zod"]["output"];
   }
 >;
+
+// Check if schema is optional input (for type inference)
+type OptionalInSchema = { _zod: { optin: "optional" } };
 
 // Infer object input type
 export type InferObjectInput<T extends Shape> = util.Prettify<
   {
-    -readonly [K in keyof T as T[K] extends OptionalSchema
-      ? T[K]["_zod"]["optin"] extends "optional"
-        ? never
-        : K
-      : K]: T[K]["_zod"]["input"];
+    -readonly [K in keyof T as T[K] extends OptionalInSchema ? never : K]: T[K]["_zod"]["input"];
   } & {
-    -readonly [K in keyof T as T[K] extends OptionalSchema ? (T[K]["_zod"]["optin"] extends "optional" ? K : never) : never]?: T[K]["_zod"]["input"];
+    -readonly [K in keyof T as T[K] extends OptionalInSchema ? K : never]?: T[K]["_zod"]["input"];
   }
 >;
 

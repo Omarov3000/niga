@@ -16,7 +16,7 @@ import { array } from "./schemas/array";
 import { record } from "./schemas/record";
 import { object } from "./schemas/object";
 import { union, discriminatedUnion } from "./schemas/union";
-import { refine, transform, _default, _catch } from "./schemas/wrappers";
+import { refine, transform, _default, _catch, optional } from "./schemas/wrappers";
 
 // Export schema types
 export type { StringSchema } from "./schemas/string";
@@ -30,7 +30,7 @@ export type { ArraySchema } from "./schemas/array";
 export type { RecordSchema } from "./schemas/record";
 export type { ObjectSchema, Shape } from "./schemas/object";
 export type { UnionSchema, DiscriminatedUnionSchema } from "./schemas/union";
-export type { RefineSchema, TransformSchema, DefaultSchema, CatchSchema } from "./schemas/wrappers";
+export type { RefineSchema, TransformSchema, DefaultSchema, CatchSchema, OptionalSchema } from "./schemas/wrappers";
 
 // Main API object
 export const s = {
@@ -60,6 +60,7 @@ export const s = {
   transform,
   default: _default,
   catch: _catch,
+  optional,
 
   // Error class
   SchemaError: errors.SchemaError,
@@ -78,7 +79,7 @@ import type { ArraySchema as _ArraySchema } from "./schemas/array";
 import type { RecordSchema as _RecordSchema } from "./schemas/record";
 import type { ObjectSchema as _ObjectSchema, Shape as _Shape } from "./schemas/object";
 import type { UnionSchema as _UnionSchema, DiscriminatedUnionSchema as _DiscriminatedUnionSchema } from "./schemas/union";
-import type { RefineSchema as _RefineSchema, TransformSchema as _TransformSchema, DefaultSchema as _DefaultSchema, CatchSchema as _CatchSchema } from "./schemas/wrappers";
+import type { RefineSchema as _RefineSchema, TransformSchema as _TransformSchema, DefaultSchema as _DefaultSchema, CatchSchema as _CatchSchema, OptionalSchema as _OptionalSchema } from "./schemas/wrappers";
 
 // Type inference helpers as namespace
 export namespace s {
@@ -107,6 +108,7 @@ export namespace s {
   export type TransformSchema<T extends Schema, Out> = _TransformSchema<T, Out>;
   export type DefaultSchema<T extends Schema> = _DefaultSchema<T>;
   export type CatchSchema<T extends Schema> = _CatchSchema<T>;
+  export type OptionalSchema<T extends Schema> = _OptionalSchema<T>;
 }
 
 // Default export

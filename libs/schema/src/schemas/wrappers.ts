@@ -250,3 +250,72 @@ export function _catch<T extends types.Schema>(
     catchValue,
   });
 }
+
+// Optional wrapper - makes schema optional
+export interface OptionalSchemaDef<T extends types.Schema> extends types.SchemaTypeDef {
+  type: "optional";
+  schema: T;
+}
+
+export interface OptionalSchemaInternals<T extends types.Schema>
+  extends types.SchemaInternals<types.output<T> | undefined, types.input<T> | undefined> {
+  def: OptionalSchemaDef<T>;
+  optin: "optional";
+  optout: "optional";
+}
+
+export interface OptionalSchema<T extends types.Schema>
+  extends types.Schema<types.output<T> | undefined, types.input<T> | undefined, OptionalSchemaInternals<T>> {
+  parse(data: unknown, params?: types.ParseContext): types.output<T> | undefined;
+  safeParse(
+    data: unknown,
+    params?: types.ParseContext
+  ): { success: true; data: types.output<T> | undefined } | { success: false; error: errors.SchemaError };
+  unwrap(): T;
+}
+
+export const OptionalSchema: types.$constructor<OptionalSchema<any>, OptionalSchemaDef<any>> = types.$constructor(
+  "OptionalSchema",
+  (inst: OptionalSchema<any>, def: OptionalSchemaDef<any>) => {
+    BaseSchema.init(inst, def);
+
+    inst._zod.optin = "optional";
+    inst._zod.optout = "optional";
+
+    inst._zod.parse = (payload, ctx) => {
+      // If the inner type is already optional, handle it specially
+      if (def.schema._zod.optin === "optional") {
+        const result = def.schema._zod.run(payload, ctx);
+        if (result instanceof Promise) {
+          return result.then((r) => {
+            if (r.issues.length > 0 && payload.value === undefined) {
+              return { issues: [], value: undefined };
+            }
+            return r;
+          });
+        }
+        if (result.issues.length > 0 && payload.value === undefined) {
+          return { issues: [], value: undefined };
+        }
+        return result;
+      }
+
+      // If value is undefined, return success
+      if (payload.value === undefined) {
+        return payload;
+      }
+
+      // Otherwise parse normally
+      return def.schema._zod.run(payload, ctx);
+    };
+
+    inst.unwrap = () => def.schema;
+  }
+);
+
+export function optional<T extends types.Schema>(schema: T): OptionalSchema<T> {
+  return new OptionalSchema({
+    type: "optional",
+    schema,
+  });
+}
