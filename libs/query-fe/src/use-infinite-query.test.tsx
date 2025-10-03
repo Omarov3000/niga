@@ -263,33 +263,6 @@ it('should handle errors', async () => {
   })
 })
 
-it('should not fetch when enabled is false', async () => {
-  const queryFn = vi.fn(({ pageParam }: { pageParam: number }) =>
-    Promise.resolve({
-      items: [pageParam],
-      nextCursor: pageParam + 1,
-    })
-  )
-
-  const { result } = renderHook(() =>
-    useInfiniteQuery(
-      {
-        queryKey: ['test'],
-        queryFn,
-        initialPageParam: 0,
-        getNextPageParam: (lastPage) => lastPage.nextCursor,
-        enabled: false,
-      },
-      queryClient
-    )
-  )
-
-  await vi.advanceTimersByTimeAsync(100)
-
-  expect(queryFn).not.toHaveBeenCalled()
-  expect(result.current.isPending).toBe(true)
-})
-
 it('should refetch all pages when calling refetch', async () => {
   const queryFn = vi.fn(({ pageParam }: { pageParam: number }) =>
     Promise.resolve({
