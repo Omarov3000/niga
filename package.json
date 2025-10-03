@@ -12,6 +12,7 @@
   "packageManager": "pnpm@10.4.1",
   "workspaces": ["apps/**", "libs/**"],
   "dependencies": {
+    "nanoid": "^5.1.6",
     "dedent": "^1.7.0",
     "ulidx": "^2.4.1",
     "react": "^19.1.0",

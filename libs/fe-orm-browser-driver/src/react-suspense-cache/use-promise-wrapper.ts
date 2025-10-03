@@ -1,4 +1,4 @@
-import { safe } from '../../utils'
+import { safe } from '../utils'
 
 // based on https://react.dev/reference/react/Suspense#showing-stale-content-while-fresh-content-is-loading and https://blixtdev.com/all-about-reacts-new-use-hook/
 // export function usePromise<T>(key: Key, factory: () => Promise<T>): T {

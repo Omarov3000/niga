@@ -1,5 +1,5 @@
 {
-  "name": "@w/query",
+  "name": "@w/fe-orm-browser-driver",
   "version": "0.0.0",
   "type": "module",
   "private": true,
@@ -14,7 +14,6 @@
     "prepare": "playwright install chromium"
   },
   "dependencies": {
-    "@sqlite.org/sqlite-wasm": "^3.50.4-build1",
-    "@w/orm": "workspace:*"
+    "nanoid": "^5.1.5"
   }
 }

@@ -1,1 +1,1 @@
-export { ReactSuspenseCache } from './query/react-suspense-cache/react-suspense-cache'
+export { ReactSuspenseCache } from './react-suspense-cache/react-suspense-cache'

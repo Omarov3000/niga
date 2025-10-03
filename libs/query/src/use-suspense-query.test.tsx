@@ -2,7 +2,7 @@ import React, { Suspense } from 'react'
 import { expect, expectTypeOf, it, vi, beforeEach, afterEach, describe } from 'vitest'
 import { useSuspenseQuery } from './use-suspense-query'
 import { QueryClient } from './query-client'
-import { render } from '../_test-helpers'
+import { render } from './_test-helpers'
 
 let queryClient: QueryClient
 
