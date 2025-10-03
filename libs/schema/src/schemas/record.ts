@@ -12,24 +12,24 @@ export interface RecordSchemaDef<K extends types.Schema, V extends types.Schema>
 
 export interface RecordSchemaInternals<K extends types.Schema, V extends types.Schema>
   extends types.SchemaInternals<
-    Record<types.output<K> & PropertyKey, types.output<V>>,
-    Record<types.input<K> & PropertyKey, types.input<V>>
+    Record<Extract<types.output<K>, PropertyKey>, types.output<V>>,
+    Record<Extract<types.input<K>, PropertyKey>, types.input<V>>
   > {
   def: RecordSchemaDef<K, V>;
 }
 
 export interface RecordSchema<K extends types.Schema, V extends types.Schema>
   extends types.Schema<
-    Record<types.output<K> & PropertyKey, types.output<V>>,
-    Record<types.input<K> & PropertyKey, types.input<V>>,
+    Record<Extract<types.output<K>, PropertyKey>, types.output<V>>,
+    Record<Extract<types.input<K>, PropertyKey>, types.input<V>>,
     RecordSchemaInternals<K, V>
   > {
-  parse(data: unknown, params?: types.ParseContext): Record<types.output<K> & PropertyKey, types.output<V>>;
+  parse(data: unknown, params?: types.ParseContext): Record<Extract<types.output<K>, PropertyKey>, types.output<V>>;
   safeParse(
     data: unknown,
     params?: types.ParseContext
   ):
-    | { success: true; data: Record<types.output<K> & PropertyKey, types.output<V>> }
+    | { success: true; data: Record<Extract<types.output<K>, PropertyKey>, types.output<V>> }
     | { success: false; error: errors.SchemaError };
 }
 
