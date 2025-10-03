@@ -1,5 +1,5 @@
 {
-  "name": "@w/query",
+  "name": "@w/orm-browser-driver-fe",
   "version": "0.0.0",
   "type": "module",
   "private": true,

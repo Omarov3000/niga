@@ -165,7 +165,7 @@ importers:
         specifier: ^7.0.4
         version: 7.0.6(@types/node@24.2.0)(yaml@2.8.1)
 
-  libs/be-orm-d1-driver:
+  libs/orm-d1-driver-be:
     dependencies:
       '@w/orm':
         specifier: workspace:*
@@ -181,7 +181,7 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@24.2.0)(@vitest/browser@3.2.4)(@vitest/ui@3.2.4)(yaml@2.8.1)
 
-  libs/fe-orm-browser-driver:
+  libs/orm-browser-driver-fe:
     dependencies:
       '@sqlite.org/sqlite-wasm':
         specifier: ^3.50.4-build1
