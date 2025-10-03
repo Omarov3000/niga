@@ -46,3 +46,27 @@ repomix-output.xml
 
 .genkit
 drizzle-zod
+libs/schema/zod-core/api.ts
+libs/schema/zod-core/checks.ts
+libs/schema/zod-core/config.ts
+libs/schema/zod-core/core.ts
+libs/schema/zod-core/doc.ts
+libs/schema/zod-core/errors.ts
+libs/schema/zod-core/index.ts
+libs/schema/zod-core/json-schema.ts
+libs/schema/zod-core/parse.ts
+libs/schema/zod-core/regexes.ts
+libs/schema/zod-core/registries.ts
+libs/schema/zod-core/schemas.ts
+libs/schema/zod-core/standard-schema.ts
+libs/schema/zod-core/to-json-schema.ts
+libs/schema/zod-core/util.ts
+libs/schema/zod-core/versions.ts
+libs/schema/zod-core/zsf.ts
+libs/schema/zod-core/tests/extend.test.ts
+libs/schema/zod-core/tests/index.test.ts
+libs/schema/zod-core/tests/locales/be.test.ts
+libs/schema/zod-core/tests/locales/en.test.ts
+libs/schema/zod-core/tests/locales/es.test.ts
+libs/schema/zod-core/tests/locales/ru.test.ts
+libs/schema/zod-core/tests/locales/tr.test.ts

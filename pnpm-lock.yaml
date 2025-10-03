@@ -194,7 +194,7 @@ importers:
         version: 3.50.4-build1
       '@w/orm':
         specifier: workspace:*
-        version: link:../orm
+        version: link:../schema
     devDependencies:
       '@w/query-fe':
         specifier: workspace:*
@@ -204,7 +204,7 @@ importers:
     dependencies:
       '@w/orm':
         specifier: workspace:*
-        version: link:../orm
+        version: link:../schema
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.9.7
@@ -221,6 +221,15 @@ importers:
       nanoid:
         specifier: ^5.1.5
         version: 5.1.6
+
+  libs/schema:
+    dependencies:
+      '@standard-schema/spec':
+        specifier: ^1.0.0
+        version: 1.0.0
+      zod:
+        specifier: ^4.1.5
+        version: 4.1.5
 
 packages:
 
@@ -1215,6 +1224,9 @@ packages:
   '@sqlite.org/sqlite-wasm@3.50.4-build1':
     resolution: {integrity: sha512-Qig2Wso7gPkU1PtXwFzndh+CTRzrIFxVGqv6eCetjU7YqxlHItj+GvQYwYTppCRgAPawtRN/4AJcEgB9xDHGug==}
     hasBin: true
+
+  '@standard-schema/spec@1.0.0':
+    resolution: {integrity: sha512-m2bOd0f2RT9k8QJx1JN85cZYyH1RqFBdlwtkSlf4tBDYLCiiZnv1fIIwacK6cqwXavOydf0NPToMQgpKq+dVlA==}
 
   '@tanstack/react-store@0.7.7':
     resolution: {integrity: sha512-qqT0ufegFRDGSof9D/VqaZgjNgp4tRPHZIJq2+QIHkMUtHjaJ0lYrrXjeIUJvjnTbgPfSD1XgOMEt0lmANn6Zg==}
@@ -3732,6 +3744,8 @@ snapshots:
   '@speed-highlight/core@1.2.7': {}
 
   '@sqlite.org/sqlite-wasm@3.50.4-build1': {}
+
+  '@standard-schema/spec@1.0.0': {}
 
   '@tanstack/react-store@0.7.7(react-dom@19.1.1(react@19.1.1))(react@19.1.1)':
     dependencies:
