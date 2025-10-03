@@ -63,6 +63,15 @@ export const ObjectSchema = types.$constructor<ObjectSchema<any>>(
   (inst, def: ObjectSchemaDef<any>) => {
     BaseSchema.init(inst, def);
 
+    // Make shape accessor lazy to support recursive types
+    let normalizedShape: any;
+    const getShape = () => {
+      if (!normalizedShape) {
+        normalizedShape = { ...def.shape };
+      }
+      return normalizedShape;
+    };
+
     inst._zod.parse = (payload, ctx) => {
       if (typeof payload.value !== "object" || payload.value === null || Array.isArray(payload.value)) {
         payload.issues.push({
@@ -77,12 +86,13 @@ export const ObjectSchema = types.$constructor<ObjectSchema<any>>(
       const input = payload.value as Record<string, any>;
       const result: Record<string, any> = {};
       const promises: Promise<any>[] = [];
+      const shape = getShape();
 
       // Process shape properties
-      for (const key in def.shape) {
-        if (!Object.prototype.hasOwnProperty.call(def.shape, key)) continue;
+      for (const key in shape) {
+        if (!Object.prototype.hasOwnProperty.call(shape, key)) continue;
 
-        const propSchema = def.shape[key];
+        const propSchema = shape[key];
         const propValue = input[key];
 
         // Check if property is missing and not optional
@@ -139,7 +149,7 @@ export const ObjectSchema = types.$constructor<ObjectSchema<any>>(
     };
 
     Object.defineProperty(inst, "shape", {
-      value: def.shape,
+      get: () => def.shape,
       enumerable: true,
     });
 

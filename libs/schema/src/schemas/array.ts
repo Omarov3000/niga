@@ -9,18 +9,27 @@ export interface ArraySchemaDef<T> extends types.SchemaTypeDef {
   element: T;
 }
 
-export interface ArraySchemaInternals<T>
-  extends types.SchemaInternals<types.output<T>[], types.input<T>[]> {
+export interface ArraySchemaInternals<T> extends types.BaseSchemaInternals {
   def: ArraySchemaDef<T>;
+  output: T extends { _zod: { output: infer O } } ? O[] : unknown[];
+  input: T extends { _zod: { input: infer I } } ? I[] : unknown[];
+  optin?: "optional";
+  optout?: "optional";
 }
 
 export interface ArraySchema<T>
-  extends types.Schema<types.output<T>[], types.input<T>[], ArraySchemaInternals<T>> {
-  parse(data: unknown, params?: types.ParseContext): types.output<T>[];
+  extends types.Schema<
+    T extends { _zod: { output: infer O } } ? O[] : unknown[],
+    T extends { _zod: { input: infer I } } ? I[] : unknown[],
+    ArraySchemaInternals<T>
+  > {
+  parse(data: unknown, params?: types.ParseContext): T extends { _zod: { output: infer O } } ? O[] : unknown[];
   safeParse(
     data: unknown,
     params?: types.ParseContext
-  ): { success: true; data: types.output<T>[] } | { success: false; error: errors.SchemaError };
+  ):
+    | { success: true; data: T extends { _zod: { output: infer O } } ? O[] : unknown[] }
+    | { success: false; error: errors.SchemaError };
 }
 
 export const ArraySchema = types.$constructor<ArraySchema<any>>("ArraySchema", (inst, def: ArraySchemaDef<any>) => {

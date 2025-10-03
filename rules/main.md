@@ -6,7 +6,7 @@ globs: **/*.ts, **/*.tsx
 When working on frontend tasks you cannot run dev commands because an engineer needs to run them and give you feedback.
 Never use `tsx` or `tsc` or `node`. Always use `pnpm exec vite-node scriptName.ts`.
 
-To compile a single file use `pnpm exec tsc --noEmit path/to/file.ts --skipLibCheck --lib esnext`
+When you need to run type test you need to run `pnpm tsc`. You should never pass arguments to this command.
 
 Never add `.js` in the file imports.
 

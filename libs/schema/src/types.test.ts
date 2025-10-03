@@ -248,6 +248,18 @@ describe("Catch", () => {
 });
 
 describe("Complex real-world schemas", () => {
+  it('self referencing type', () => {
+    const Category = s.object({
+      name: s.string(),
+      get subcategories() {
+        return s.array(Category);
+      },
+    });
+
+    type Result = s.infer<typeof Category>;
+    expectTypeOf<Result>().toEqualTypeOf<{ name: string; subcategories: Result[] }>();
+  });
+
   it("user profile", () => {
     const UserProfile = s.object({
       id: s.string(),
