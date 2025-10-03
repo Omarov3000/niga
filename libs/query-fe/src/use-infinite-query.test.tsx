@@ -9,15 +9,14 @@ nextCursor?: number
 prevCursor?: number
 }
 
-let queryClient: QueryClient
+const queryClient = new QueryClient()
 
 beforeEach(() => {
-  queryClient = new QueryClient()
+  queryClient.clear()
   vi.useFakeTimers()
 })
 
 afterEach(() => {
-  queryClient.clear()
   vi.restoreAllMocks()
 })
 
@@ -29,7 +28,7 @@ it('should fetch initial page', async () => {
     })
   )
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useInfiniteQuery(
       {
         queryKey: ['test'],
@@ -60,7 +59,7 @@ it('should fetch next page', async () => {
     })
   )
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useInfiniteQuery(
       {
         queryKey: ['test'],
@@ -98,7 +97,7 @@ it('should not have next page when getNextPageParam returns null', async () => {
     })
   )
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useInfiniteQuery(
       {
         queryKey: ['test'],
@@ -126,7 +125,7 @@ it('should fetch previous page when getPreviousPageParam is provided', async () 
     })
   )
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useInfiniteQuery(
       {
         queryKey: ['test'],
@@ -165,7 +164,7 @@ it('should not have previous page when getPreviousPageParam is not provided', as
     })
   )
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useInfiniteQuery(
       {
         queryKey: ['test'],
@@ -204,7 +203,7 @@ it('should show isFetchingNextPage while fetching next page', async () => {
     }
   )
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useInfiniteQuery(
       {
         queryKey: ['test'],
@@ -240,7 +239,7 @@ it('should handle errors', async () => {
   const error = new Error('fetch failed')
   const queryFn = vi.fn(() => Promise.reject(error))
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useInfiniteQuery(
       {
         queryKey: ['test'],
@@ -272,7 +271,7 @@ it('should not fetch when enabled is false', async () => {
     })
   )
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useInfiniteQuery(
       {
         queryKey: ['test'],
@@ -299,7 +298,7 @@ it('should refetch all pages when calling refetch', async () => {
     })
   )
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useInfiniteQuery(
       {
         queryKey: ['test'],
@@ -332,7 +331,7 @@ it('should refetch on window focus when refetchOnWindowFocus is true', async () 
     })
   )
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useInfiniteQuery(
       {
         queryKey: ['test'],
@@ -368,7 +367,7 @@ it('should refetch at interval when refetchInterval is set', async () => {
     })
   )
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useInfiniteQuery(
       {
         queryKey: ['test'],
@@ -420,7 +419,7 @@ it('should show isRefetching when refetching but not isFetchingNextPage', async 
     }
   )
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useInfiniteQuery(
       {
         queryKey: ['test'],

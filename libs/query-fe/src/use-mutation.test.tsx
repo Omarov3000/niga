@@ -3,15 +3,14 @@ import { describe, expect, expectTypeOf, it, vi, beforeEach, afterEach } from 'v
 import { useMutation } from './use-mutation'
 import { QueryClient } from './query-client'
 
-let queryClient: QueryClient
+const queryClient = new QueryClient()
 
 beforeEach(() => {
-  queryClient = new QueryClient()
+  queryClient.clear()
   vi.useFakeTimers()
 })
 
 afterEach(() => {
-  queryClient.destroy()
   vi.restoreAllMocks()
 })
 
@@ -26,7 +25,7 @@ it('should handle mutation lifecycle: idle -> pending -> success', async () => {
 
   const onSuccess = vi.fn((data: string, variables: { id: number }) => {})
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useMutation(
       {
         mutationFn,
@@ -91,7 +90,7 @@ it('should handle mutation errors', async () => {
   const error = new Error('mutation failed')
   const mutationFn = vi.fn(() => Promise.reject(error))
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useMutation(
       {
         mutationFn,
@@ -124,7 +123,7 @@ it('should call onMutate, onSuccess, and onSettled callbacks', async () => {
   const onSettled = vi.fn()
   const mutationFn = vi.fn((variables: { id: number }) => Promise.resolve('data'))
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useMutation(
       {
         mutationFn,
@@ -153,7 +152,7 @@ it('should call onError and onSettled callbacks on error', async () => {
   const onSettled = vi.fn()
   const mutationFn = vi.fn(() => Promise.reject(error))
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useMutation(
       {
         mutationFn,
@@ -178,7 +177,7 @@ it('should call onError and onSettled callbacks on error', async () => {
 it('should support mutateAsync and return data', async () => {
   const mutationFn = vi.fn((variables: { id: number }) => Promise.resolve(`data-${variables.id}`))
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useMutation(
       {
         mutationFn,
@@ -200,7 +199,7 @@ it('should support mutateAsync and throw on error', async () => {
   const error = new Error('mutation failed')
   const mutationFn = vi.fn(() => Promise.reject(error))
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useMutation(
       {
         mutationFn,
@@ -221,7 +220,7 @@ it('should support mutateAsync and throw on error', async () => {
 it('should reset mutation state', async () => {
   const mutationFn = vi.fn(() => Promise.resolve('data'))
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useMutation(
       {
         mutationFn,
@@ -263,7 +262,7 @@ it('should retry on failure when retry is configured', async () => {
     return Promise.resolve('success')
   })
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useMutation(
       {
         mutationFn,
@@ -290,7 +289,7 @@ it('should retry on failure when retry is configured', async () => {
 it('should cleanup mutation after success', async () => {
   const mutationFn = vi.fn(() => Promise.resolve('data'))
 
-  const { result, unmount } = await renderHook(() =>
+  const { result, unmount } = renderHook(() =>
     useMutation(
       {
         mutationFn,
@@ -314,7 +313,7 @@ it('should cleanup mutation after success', async () => {
 it('should cleanup mutation on unmount', async () => {
   const mutationFn = vi.fn(() => new Promise(() => {})) // Never resolves
 
-  const { result, unmount } = await renderHook(() =>
+  const { result, unmount } = renderHook(() =>
     useMutation(
       {
         mutationFn,

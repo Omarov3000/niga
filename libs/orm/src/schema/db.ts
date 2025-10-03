@@ -115,7 +115,7 @@ export class Db {
       toAst: () => {
         return rawQueryToAst(rawSql);
       },
-      options: <T extends ZodTypeAny>(zodSchema: T, overrides?: Partial<UseQueryOptions<ReturnType<T['array']>['_output']>>): UseQueryOptions<ReturnType<T['array']>['_output']> => {
+      options: <T extends ZodTypeAny>(zodSchema: T, overrides?: Partial<Omit<UseQueryOptions<ReturnType<T['array']>['_output']>, 'queryKey' | 'queryFn'>>): UseQueryOptions<ReturnType<T['array']>['_output']> => {
         const depends = extractTables(rawSql);
         return {
           queryKey: [rawSql.query, ...rawSql.params],

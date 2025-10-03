@@ -16,5 +16,8 @@
   "dependencies": {
     "@sqlite.org/sqlite-wasm": "^3.50.4-build1",
     "@w/orm": "workspace:*"
+  },
+  "devDependencies": {
+    "@w/query-fe": "workspace:*"
   }
 }

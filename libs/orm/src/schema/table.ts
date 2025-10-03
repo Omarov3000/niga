@@ -293,6 +293,54 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     await driver.run(fullQuery);
   }
 
+  insertOptions<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf>>(
+    this: TSelf,
+    overrides?: Partial<Omit<UseMutationOptions<SelectableForCols<TSelfCols>, InsertableForCols<TSelfCols>>, 'mutationFn' | 'invalidates'>>
+  ): UseMutationOptions<SelectableForCols<TSelfCols>, InsertableForCols<TSelfCols>> {
+    const invalidates = [this.__meta__.name];
+    return {
+      ...overrides,
+      mutationFn: (data: InsertableForCols<TSelfCols>) => this.insert(data),
+      invalidates,
+    };
+  }
+
+  insertManyOptions<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf>>(
+    this: TSelf,
+    overrides?: Partial<Omit<UseMutationOptions<SelectableForCols<TSelfCols>[], InsertableForCols<TSelfCols>[]>, 'mutationFn' | 'invalidates'>>
+  ): UseMutationOptions<SelectableForCols<TSelfCols>[], InsertableForCols<TSelfCols>[]> {
+    const invalidates = [this.__meta__.name];
+    return {
+      ...overrides,
+      mutationFn: (data: InsertableForCols<TSelfCols>[]) => this.insertMany(data),
+      invalidates,
+    };
+  }
+
+  updateOptions<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf>>(
+    this: TSelf,
+    overrides?: Partial<Omit<UseMutationOptions<void, { data: Partial<InsertableForCols<TSelfCols>>; where: RawSql | FilterObject }>, 'mutationFn' | 'invalidates'>>
+  ): UseMutationOptions<void, { data: Partial<InsertableForCols<TSelfCols>>; where: RawSql | FilterObject }> {
+    const invalidates = [this.__meta__.name];
+    return {
+      ...overrides,
+      mutationFn: (options: { data: Partial<InsertableForCols<TSelfCols>>; where: RawSql | FilterObject }) => this.update(options),
+      invalidates,
+    };
+  }
+
+  deleteOptions<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf>>(
+    this: TSelf,
+    overrides?: Partial<Omit<UseMutationOptions<void, { where: RawSql | FilterObject }>, 'mutationFn' | 'invalidates'>>
+  ): UseMutationOptions<void, { where: RawSql | FilterObject }> {
+    const invalidates = [this.__meta__.name];
+    return {
+      ...overrides,
+      mutationFn: (options: { where: RawSql | FilterObject }) => this.delete(options),
+      invalidates,
+    };
+  }
+
   //#endregion
 
   secure<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf>, TUser = any>(rule: SecurityRule<TUser, Partial<InsertableForCols<TSelfCols>>>): this {
@@ -486,7 +534,7 @@ export class SelectQueryBuilder<
     return rawQueryToAst(query);
   }
 
-  options(overrides?: Partial<UseQueryOptions<SelectResult<TColMapOrDefault extends undefined ? TSource['__columns__'] : TColMapOrDefault, TJoined, TMode>[]>>): UseQueryOptions<SelectResult<TColMapOrDefault extends undefined ? TSource['__columns__'] : TColMapOrDefault, TJoined, TMode>[]> {
+  options(overrides?: Partial<Omit<UseQueryOptions<SelectResult<TColMapOrDefault extends undefined ? TSource['__columns__'] : TColMapOrDefault, TJoined, TMode>[]>, 'queryKey' | 'queryFn'>>): UseQueryOptions<SelectResult<TColMapOrDefault extends undefined ? TSource['__columns__'] : TColMapOrDefault, TJoined, TMode>[]> {
     const query = this.buildQuery();
     const depends = extractTables(query);
     return {

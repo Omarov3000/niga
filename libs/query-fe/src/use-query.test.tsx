@@ -3,15 +3,14 @@ import { describe, expect, expectTypeOf, it, vi, beforeEach, afterEach } from 'v
 import { useQuery } from './use-query'
 import { QueryClient } from './query-client'
 
-let queryClient: QueryClient
+const queryClient = new QueryClient()
 
 beforeEach(() => {
-  queryClient = new QueryClient()
+  queryClient.clear()
   vi.useFakeTimers()
 })
 
 afterEach(() => {
-  queryClient.destroy()
   vi.restoreAllMocks()
 })
 
@@ -24,7 +23,7 @@ it('should handle complete query lifecycle: fetch, refetch, and show loading sta
       })
   )
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useQuery(
       {
         queryKey: ['test'],
@@ -85,7 +84,7 @@ it('should handle complete query lifecycle: fetch, refetch, and show loading sta
 it('should use initialData without fetching when not stale', async () => {
   const queryFn = vi.fn(() => Promise.resolve('fresh-data'))
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useQuery(
       {
         queryKey: ['test'],
@@ -112,7 +111,7 @@ it('should handle errors', async () => {
   const error = new Error('fetch failed')
   const queryFn = vi.fn(() => Promise.reject(error))
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useQuery(
       {
         queryKey: ['test'],
@@ -138,7 +137,7 @@ it('should handle errors', async () => {
 it('should use select to transform data', async () => {
   const queryFn = vi.fn(() => Promise.resolve({ value: 42 }))
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useQuery(
       {
         queryKey: ['test'],
@@ -161,7 +160,7 @@ it('should use select to transform data', async () => {
 it('should not fetch when enabled is false', async () => {
   const queryFn = vi.fn(() => Promise.resolve('data'))
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useQuery(
       {
         queryKey: ['test'],
@@ -181,7 +180,7 @@ it('should not fetch when enabled is false', async () => {
 it('should refetch when invalidateQueries is called', async () => {
   const queryFn = vi.fn(() => Promise.resolve('data'))
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useQuery(
       {
         queryKey: ['test'],
@@ -211,7 +210,7 @@ it('should refetch when invalidateQueries is called', async () => {
 it('should respect staleTime', async () => {
   const queryFn = vi.fn(() => Promise.resolve('data'))
 
-  const { result, unmount } = await renderHook(() =>
+  const { result, unmount } = renderHook(() =>
     useQuery(
       {
         queryKey: ['test'],
@@ -232,7 +231,7 @@ it('should respect staleTime', async () => {
 
   // Remount before staleTime expires
   await vi.advanceTimersByTimeAsync(3000)
-  const { result: result2 } = await renderHook(() =>
+  const { result: result2 } = renderHook(() =>
     useQuery(
       {
         queryKey: ['test'],
@@ -250,7 +249,7 @@ it('should respect staleTime', async () => {
 it('should refetch on window focus when refetchOnWindowFocus is true', async () => {
   const queryFn = vi.fn(() => Promise.resolve('data'))
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useQuery(
       {
         queryKey: ['test'],
@@ -279,7 +278,7 @@ it('should refetch on window focus when refetchOnWindowFocus is true', async () 
 it('should not refetch on window focus when refetchOnWindowFocus is false', async () => {
   const queryFn = vi.fn(() => Promise.resolve('data'))
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useQuery(
       {
         queryKey: ['test'],
@@ -307,7 +306,7 @@ it('should not refetch on window focus when refetchOnWindowFocus is false', asyn
 it('should refetch at interval when refetchInterval is set', async () => {
   const queryFn = vi.fn(() => Promise.resolve('data'))
 
-  const { result } = await renderHook(() =>
+  const { result } = renderHook(() =>
     useQuery(
       {
         queryKey: ['test'],
@@ -352,7 +351,7 @@ it('should create new query instance when queryKey changes to prevent race condi
     })
   })
 
-  const { result, rerender } = await renderHook(
+  const { result, rerender } = renderHook(
     (props?: { userId: number }) =>
       useQuery(
         {

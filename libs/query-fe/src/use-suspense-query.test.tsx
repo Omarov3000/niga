@@ -4,15 +4,14 @@ import { useSuspenseQuery } from './use-suspense-query'
 import { QueryClient } from './query-client'
 import { render } from './_test-helpers'
 
-let queryClient: QueryClient
+const queryClient = new QueryClient()
 
 beforeEach(() => {
-  queryClient = new QueryClient()
+  queryClient.clear()
   vi.useFakeTimers()
 })
 
 afterEach(() => {
-  queryClient.clear()
   vi.restoreAllMocks()
 })
 

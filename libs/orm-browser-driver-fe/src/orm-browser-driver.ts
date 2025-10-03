@@ -51,7 +51,7 @@ export class OrmBrowserDriver implements OrmDriver {
     try {
       if (params.length) stmt.bind(params)
 
-      if (query.trim().toUpperCase().startsWith('SELECT')) {
+      if (query.trim().toUpperCase().startsWith('SELECT') || query.trim().toUpperCase().startsWith('WITH')) {
         while (stmt.step()) {
           if (stmt.columnCount > 0) results.push(stmt.get({}))
         }
