@@ -9,26 +9,33 @@ export type Shape = Record<string, any>;
 // Check if schema is optional (for type inference)
 type OptionalOutSchema = { _zod: { optout: "optional" } };
 
+// Check if shape has string index signature
+type HasStringIndex<T> = string extends keyof T ? true : false;
+
 // Infer object output type
-export type InferObjectOutput<T extends Shape> = util.Prettify<
-  {
-    -readonly [K in keyof T as T[K] extends OptionalOutSchema ? never : K]: T[K]["_zod"]["output"];
-  } & {
-    -readonly [K in keyof T as T[K] extends OptionalOutSchema ? K : never]?: T[K]["_zod"]["output"];
-  }
->;
+export type InferObjectOutput<T extends Shape> = HasStringIndex<T> extends true
+  ? Record<string, T[keyof T] extends types.SomeSchema ? types.output<T[keyof T]> : unknown>
+  : util.Prettify<
+      {
+        -readonly [K in keyof T as T[K] extends OptionalOutSchema ? never : K]: T[K]["_zod"]["output"];
+      } & {
+        -readonly [K in keyof T as T[K] extends OptionalOutSchema ? K : never]?: T[K]["_zod"]["output"];
+      }
+    >;
 
 // Check if schema is optional input (for type inference)
 type OptionalInSchema = { _zod: { optin: "optional" } };
 
 // Infer object input type
-export type InferObjectInput<T extends Shape> = util.Prettify<
-  {
-    -readonly [K in keyof T as T[K] extends OptionalInSchema ? never : K]: T[K]["_zod"]["input"];
-  } & {
-    -readonly [K in keyof T as T[K] extends OptionalInSchema ? K : never]?: T[K]["_zod"]["input"];
-  }
->;
+export type InferObjectInput<T extends Shape> = HasStringIndex<T> extends true
+  ? Record<string, T[keyof T] extends types.SomeSchema ? types.input<T[keyof T]> : unknown>
+  : util.Prettify<
+      {
+        -readonly [K in keyof T as T[K] extends OptionalInSchema ? never : K]: T[K]["_zod"]["input"];
+      } & {
+        -readonly [K in keyof T as T[K] extends OptionalInSchema ? K : never]?: T[K]["_zod"]["input"];
+      }
+    >;
 
 // Object schema definition
 export interface ObjectSchemaDef<T extends Shape> extends types.SchemaTypeDef {
