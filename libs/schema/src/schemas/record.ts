@@ -24,6 +24,7 @@ export interface RecordSchema<K extends types.Schema, V extends types.Schema>
     Record<Extract<types.input<K>, PropertyKey>, types.input<V>>,
     RecordSchemaInternals<K, V>
   > {
+  meta(metadata: Record<string, any>): this;
   parse(data: unknown, params?: types.ParseContext): Record<Extract<types.output<K>, PropertyKey>, types.output<V>>;
   safeParse(
     data: unknown,

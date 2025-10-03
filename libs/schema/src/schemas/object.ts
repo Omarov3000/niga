@@ -55,6 +55,7 @@ export interface ObjectSchema<T extends Shape>
   pick<K extends keyof T>(...keys: K[]): ObjectSchema<Pick<T, K>>;
   omit<K extends keyof T>(...keys: K[]): ObjectSchema<Omit<T, K>>;
   partial(): ObjectSchema<{ [K in keyof T]: OptionalWrap<T[K]> }>;
+  meta(metadata: Record<string, any>): this;
   parse(data: unknown, params?: types.ParseContext): InferObjectOutput<T>;
   safeParse(
     data: unknown,

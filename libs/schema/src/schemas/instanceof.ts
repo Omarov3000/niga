@@ -15,6 +15,7 @@ export interface InstanceOfSchemaInternals<T extends new (...args: any[]) => any
 
 export interface InstanceOfSchema<T extends new (...args: any[]) => any>
   extends types.Schema<InstanceType<T>, InstanceType<T>, InstanceOfSchemaInternals<T>> {
+  meta(metadata: Record<string, any>): this;
   parse(data: unknown, params?: types.ParseContext): InstanceType<T>;
   safeParse(
     data: unknown,

@@ -12,6 +12,7 @@ export interface RefineSchemaDef<T extends types.Schema> extends types.SchemaTyp
 
 export interface RefineSchema<T extends types.Schema>
   extends types.Schema<types.output<T>, types.input<T>> {
+  meta(metadata: Record<string, any>): this;
   parse(data: unknown, params?: types.ParseContext): types.output<T>;
   safeParse(
     data: unknown,
@@ -101,6 +102,7 @@ export interface TransformSchemaDef<T extends types.Schema, Out> extends types.S
 
 export interface TransformSchema<T extends types.Schema, Out>
   extends types.Schema<Out, types.input<T>> {
+  meta(metadata: Record<string, any>): this;
   parse(data: unknown, params?: types.ParseContext): Out;
   safeParse(
     data: unknown,
@@ -161,6 +163,7 @@ export interface DefaultSchemaDef<T extends types.Schema> extends types.SchemaTy
 
 export interface DefaultSchema<T extends types.Schema>
   extends types.Schema<types.output<T>, types.input<T> | undefined> {
+  meta(metadata: Record<string, any>): this;
   parse(data: unknown, params?: types.ParseContext): types.output<T>;
   safeParse(
     data: unknown,
@@ -208,6 +211,7 @@ export interface CatchSchemaDef<T extends types.Schema> extends types.SchemaType
 
 export interface CatchSchema<T extends types.Schema>
   extends types.Schema<types.output<T>, types.input<T>> {
+  meta(metadata: Record<string, any>): this;
   parse(data: unknown, params?: types.ParseContext): types.output<T>;
   safeParse(
     data: unknown,
@@ -266,6 +270,7 @@ export interface OptionalSchemaInternals<T extends types.Schema>
 
 export interface OptionalSchema<T extends types.Schema>
   extends types.Schema<types.output<T> | undefined, types.input<T> | undefined, OptionalSchemaInternals<T>> {
+  meta(metadata: Record<string, any>): this;
   parse(data: unknown, params?: types.ParseContext): types.output<T> | undefined;
   safeParse(
     data: unknown,

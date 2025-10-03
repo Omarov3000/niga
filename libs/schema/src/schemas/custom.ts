@@ -9,6 +9,7 @@ export interface CustomSchemaDef<T> extends types.SchemaTypeDef {
 }
 
 export interface CustomSchema<T> extends types.Schema<T, T> {
+  meta(metadata: Record<string, any>): this;
   parse(data: unknown, params?: types.ParseContext): T;
   safeParse(
     data: unknown,

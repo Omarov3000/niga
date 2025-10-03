@@ -19,6 +19,7 @@ export interface DateSchemaInternals extends types.SchemaInternals<Date, Date | 
 export interface DateSchema extends types.Schema<Date, Date | string, DateSchemaInternals> {
   min(date: Date, message?: string | { message: string | (() => string) }): this;
   max(date: Date, message?: string | { message: string | (() => string) }): this;
+  meta(metadata: Record<string, any>): this;
   parse(data: unknown, params?: types.ParseContext): Date;
   safeParse(
     data: unknown,

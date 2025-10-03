@@ -23,6 +23,7 @@ export interface ArraySchema<T>
     T extends { _zod: { input: infer I } } ? I[] : unknown[],
     ArraySchemaInternals<T>
   > {
+  meta(metadata: Record<string, any>): this;
   parse(data: unknown, params?: types.ParseContext): T extends { _zod: { output: infer O } } ? O[] : unknown[];
   safeParse(
     data: unknown,

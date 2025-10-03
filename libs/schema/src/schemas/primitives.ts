@@ -4,6 +4,7 @@ import * as types from "../core/types";
 
 // Boolean
 export interface BooleanSchema extends types.Schema<boolean, boolean> {
+  meta(metadata: Record<string, any>): this;
   parse(data: unknown, params?: types.ParseContext): boolean;
   safeParse(
     data: unknown,
@@ -36,6 +37,7 @@ export function boolean(message?: string | { message: string | (() => string) })
 
 // Null
 export interface NullSchema extends types.Schema<null, null> {
+  meta(metadata: Record<string, any>): this;
   parse(data: unknown, params?: types.ParseContext): null;
   safeParse(
     data: unknown,
@@ -68,6 +70,7 @@ export function _null(message?: string | { message: string | (() => string) }): 
 
 // Undefined
 export interface UndefinedSchema extends types.Schema<undefined, undefined> {
+  meta(metadata: Record<string, any>): this;
   parse(data: unknown, params?: types.ParseContext): undefined;
   safeParse(
     data: unknown,
@@ -103,6 +106,7 @@ export function _undefined(message?: string | { message: string | (() => string)
 
 // Unknown
 export interface UnknownSchema extends types.Schema<unknown, unknown> {
+  meta(metadata: Record<string, any>): this;
   parse(data: unknown, params?: types.ParseContext): unknown;
   safeParse(
     data: unknown,

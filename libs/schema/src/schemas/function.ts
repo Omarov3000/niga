@@ -52,6 +52,7 @@ export interface FunctionSchema<
   > {
   implement(fn: InferFunctionType<Input, Output>): InferFunctionType<Input, Output>;
   implement(fn: InferAsyncFunctionType<Input, Output>): InferAsyncFunctionType<Input, Output>;
+  meta(metadata: Record<string, any>): this;
   parse(data: unknown, params?: types.ParseContext): InferFunctionType<Input, Output>;
   safeParse(
     data: unknown,

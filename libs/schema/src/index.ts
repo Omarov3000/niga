@@ -19,6 +19,7 @@ import { union, discriminatedUnion } from "./schemas/union";
 import { refine, transform, _default, _catch, optional } from "./schemas/wrappers";
 import { custom } from "./schemas/custom";
 import { _function } from "./schemas/function";
+import { codec, decode, safeDecode, encode, safeEncode } from "./schemas/codec";
 
 // Export schema types
 export type { StringSchema } from "./schemas/string";
@@ -35,6 +36,7 @@ export type { UnionSchema, DiscriminatedUnionSchema } from "./schemas/union";
 export type { RefineSchema, TransformSchema, DefaultSchema, CatchSchema, OptionalSchema } from "./schemas/wrappers";
 export type { CustomSchema } from "./schemas/custom";
 export type { FunctionSchema } from "./schemas/function";
+export type { CodecSchema } from "./schemas/codec";
 
 // Main API object
 export const s = {
@@ -67,6 +69,13 @@ export const s = {
   catch: _catch,
   optional,
   custom,
+
+  // Codecs
+  codec,
+  decode,
+  safeDecode,
+  encode,
+  safeEncode,
 
   // Error class
   SchemaError: errors.SchemaError,

@@ -14,6 +14,7 @@ export interface LiteralSchemaInternals<T extends util.Literal> extends types.Sc
 }
 
 export interface LiteralSchema<T extends util.Literal> extends types.Schema<T, T, LiteralSchemaInternals<T>> {
+  meta(metadata: Record<string, any>): this;
   parse(data: unknown, params?: types.ParseContext): T;
   safeParse(
     data: unknown,

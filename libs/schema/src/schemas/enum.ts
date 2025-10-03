@@ -16,6 +16,7 @@ export interface EnumSchemaInternals<T extends readonly [string, ...string[]]>
 export interface EnumSchema<T extends readonly [string, ...string[]]>
   extends types.Schema<T[number], T[number], EnumSchemaInternals<T>> {
   readonly options: T;
+  meta(metadata: Record<string, any>): this;
   parse(data: unknown, params?: types.ParseContext): T[number];
   safeParse(
     data: unknown,

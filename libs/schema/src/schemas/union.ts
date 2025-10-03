@@ -17,6 +17,7 @@ export interface UnionSchemaInternals<T extends readonly [types.Schema, types.Sc
 export interface UnionSchema<T extends readonly [types.Schema, types.Schema, ...types.Schema[]]>
   extends types.Schema<types.output<T[number]>, types.input<T[number]>, UnionSchemaInternals<T>> {
   readonly options: T;
+  meta(metadata: Record<string, any>): this;
   parse(data: unknown, params?: types.ParseContext): types.output<T[number]>;
   safeParse(
     data: unknown,
@@ -128,6 +129,7 @@ export interface DiscriminatedUnionSchema<
   K extends string,
   T extends readonly [types.Schema, types.Schema, ...types.Schema[]],
 > extends types.Schema<types.output<T[number]>, types.input<T[number]>> {
+  meta(metadata: Record<string, any>): this;
   parse(data: unknown, params?: types.ParseContext): types.output<T[number]>;
   safeParse(
     data: unknown,

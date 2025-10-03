@@ -342,4 +342,132 @@ describe("Schema Library", () => {
       expect(schema._zod.meta).toMatchObject({ id: "email_field" });
     });
   });
+
+  describe("codec", () => {
+    it("should transform ISO string to Date", () => {
+      const stringToDate = s.codec(
+        s.string(),
+        s.date(),
+        {
+          decode: (isoString) => new Date(isoString),
+          encode: (date) => (date instanceof Date ? date : new Date(date)).toISOString(),
+        }
+      );
+
+      const decoded = s.decode(stringToDate, "2024-01-15T10:30:00.000Z");
+      expect(decoded).toBeInstanceOf(Date);
+      expect(decoded.getTime()).toBe(1705314600000);
+    });
+
+    it("should encode Date to ISO string", () => {
+      const stringToDate = s.codec(
+        s.string(),
+        s.date(),
+        {
+          decode: (isoString) => new Date(isoString),
+          encode: (date) => (date instanceof Date ? date : new Date(date)).toISOString(),
+        }
+      );
+
+      const date = new Date("2024-01-15T10:30:00.000Z");
+      const encoded = s.encode(stringToDate, date);
+      expect(encoded).toBe("2024-01-15T10:30:00.000Z");
+    });
+
+    it("should transform string to number", () => {
+      const stringToNumber = s.codec(
+        s.string(),
+        s.number(),
+        {
+          decode: (str) => Number.parseFloat(str),
+          encode: (num) => num.toString(),
+        }
+      );
+
+      expect(s.decode(stringToNumber, "42.5")).toBe(42.5);
+      expect(s.encode(stringToNumber, 42.5)).toBe("42.5");
+    });
+
+    it("should handle round trips", () => {
+      const stringToNumber = s.codec(
+        s.string(),
+        s.number(),
+        {
+          decode: (str) => Number.parseFloat(str),
+          encode: (num) => num.toString(),
+        }
+      );
+
+      const original = "3.14159";
+      const roundTrip = s.encode(stringToNumber, s.decode(stringToNumber, original));
+      expect(roundTrip).toBe("3.14159");
+    });
+
+    it("should validate input schema", () => {
+      const stringToNumber = s.codec(
+        s.string(),
+        s.number(),
+        {
+          decode: (str) => Number.parseFloat(str),
+          encode: (num) => num.toString(),
+        }
+      );
+
+      expect(() => stringToNumber.parse(123)).toThrow();
+    });
+
+    it("should validate output schema during decode", () => {
+      const stringToNumber = s.codec(
+        s.string(),
+        s.number().min(10),
+        {
+          decode: (str) => Number.parseFloat(str),
+          encode: (num) => num.toString(),
+        }
+      );
+
+      expect(s.decode(stringToNumber, "20")).toBe(20);
+      expect(() => s.decode(stringToNumber, "5")).toThrow();
+    });
+
+    it("should support safe decode", () => {
+      const stringToNumber = s.codec(
+        s.string(),
+        s.number(),
+        {
+          decode: (str) => Number.parseFloat(str),
+          encode: (num) => num.toString(),
+        }
+      );
+
+      const result1 = s.safeDecode(stringToNumber, "42");
+      expect(result1.success).toBe(true);
+      if (result1.success) {
+        expect(result1.data).toBe(42);
+      }
+
+      const result2 = s.safeDecode(stringToNumber, 123 as any);
+      expect(result2.success).toBe(false);
+    });
+
+    it("should support safe encode", () => {
+      const stringToNumber = s.codec(
+        s.string(),
+        s.number(),
+        {
+          decode: (str) => Number.parseFloat(str),
+          encode: (num) => num.toString(),
+        }
+      );
+
+      const result1 = s.safeEncode(stringToNumber, 42);
+      expect(result1.success).toBe(true);
+      if (result1.success) {
+        expect(result1.data).toBe("42");
+      }
+
+      const result2 = s.safeEncode(stringToNumber, "invalid" as any);
+      expect(result2.success).toBe(false);
+    });
+  });
 });
