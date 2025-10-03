@@ -6,6 +6,7 @@ import { normalizeQueryAnalysisToRuntime } from '../true-sql/normalize-analysis'
 import { getDefaultValueFromZodSchema } from '../zod-integration/get-default-value-from-zod-schema';
 import { analyze } from '../true-sql/analyze';
 import { rawQueryToAst } from '../true-sql/raw-query-to-ast';
+import { extractTables } from '../true-sql/extract-tables';
 import { IndexDefinition, ConstraintDefinition, SecurityRule, QueryContext, TableMetadata, OrmDriver, ColumnMetadata } from './types';
 import type { UseQueryOptions } from '../../../query-fe/src/use-query'
 import type { UseMutationOptions } from '../../../query-fe/src/use-mutation'
@@ -426,7 +427,7 @@ export class SelectQueryBuilder<
   constructor(
     private source: TSource,
     private joined: TJoined | undefined,
-    private options?: SelectArgs<TColMapOrDefault>
+    private selectArgs?: SelectArgs<TColMapOrDefault>
   ) {}
 
   join<TJoin extends Table<any, any>>(other: TJoin, on: FilterObject): SelectQueryBuilder<
@@ -435,7 +436,7 @@ export class SelectQueryBuilder<
     JoinResult<TJoined, TJoin>,
     TColMapOrDefault extends undefined ? 'tables' : 'columns'
     >{
-    const builder = new SelectQueryBuilder(this.source, this.joined, this.options) as any;
+    const builder = new SelectQueryBuilder(this.source, this.joined, this.selectArgs) as any;
     builder.joinClauses = [...this.joinClauses, { type: 'INNER', table: other, on: sql`${on}` }];
     return builder;
   };
@@ -446,7 +447,7 @@ export class SelectQueryBuilder<
     JoinResult<TJoined, TJoin>,
     TColMapOrDefault extends undefined ? 'tables' : 'columns'
     >{
-    const builder = new SelectQueryBuilder(this.source, this.joined, this.options) as any;
+    const builder = new SelectQueryBuilder(this.source, this.joined, this.selectArgs) as any;
     builder.joinClauses = [...this.joinClauses, { type: 'LEFT', table: other, on: sql`${on}` }];
     return builder;
   };
@@ -485,14 +486,27 @@ export class SelectQueryBuilder<
     return rawQueryToAst(query);
   }
 
+  options(overrides?: Partial<UseQueryOptions<SelectResult<TColMapOrDefault extends undefined ? TSource['__columns__'] : TColMapOrDefault, TJoined, TMode>[]>>): UseQueryOptions<SelectResult<TColMapOrDefault extends undefined ? TSource['__columns__'] : TColMapOrDefault, TJoined, TMode>[]> {
+    const query = this.buildQuery();
+    const depends = extractTables(query);
+    return {
+      queryKey: [query.query, ...query.params],
+      queryFn: async () => {
+        return await this.execute();
+      },
+      depends,
+      ...overrides,
+    };
+  }
+
   private buildQuery(): RawSql {
     const parts: string[] = [];
     const params: any[] = [];
 
     // SELECT clause
-    if (this.options?.columns) {
+    if (this.selectArgs?.columns) {
       const columnParts: string[] = [];
-      Object.entries(this.options.columns).forEach(([alias, column]) => {
+      Object.entries(this.selectArgs.columns).forEach(([alias, column]) => {
         if (column.__meta__.definition) {
           columnParts.push(`${column.__meta__.definition} AS ${alias}`);
         } else {
@@ -550,15 +564,15 @@ export class SelectQueryBuilder<
     });
 
     // WHERE clause
-    if (this.options?.where) {
-      const whereClause = this.options.where instanceof FilterObject ? sql`${this.options.where}` : this.options.where;
+    if (this.selectArgs?.where) {
+      const whereClause = this.selectArgs.where instanceof FilterObject ? sql`${this.selectArgs.where}` : this.selectArgs.where;
       parts.push(`WHERE ${whereClause.query}`);
       params.push(...whereClause.params);
     }
 
     // GROUP BY clause
-    if (this.options?.groupBy) {
-      const groupByCols = Array.isArray(this.options.groupBy) ? this.options.groupBy : [this.options.groupBy];
+    if (this.selectArgs?.groupBy) {
+      const groupByCols = Array.isArray(this.selectArgs.groupBy) ? this.selectArgs.groupBy : [this.selectArgs.groupBy];
       const groupByParts = groupByCols.map(col => {
         const table = col.__table__;
         return table ? `${table.getDbName()}.${col.__meta__.dbName}` : col.__meta__.dbName;
@@ -567,8 +581,8 @@ export class SelectQueryBuilder<
     }
 
     // ORDER BY clause
-    if (this.options?.orderBy) {
-      const orderByClauses = Array.isArray(this.options.orderBy) ? this.options.orderBy : [this.options.orderBy];
+    if (this.selectArgs?.orderBy) {
+      const orderByClauses = Array.isArray(this.selectArgs.orderBy) ? this.selectArgs.orderBy : [this.selectArgs.orderBy];
       const orderByParts = orderByClauses.map(order => {
         const orderSql = sql`${order}`;
         params.push(...orderSql.params);
@@ -578,26 +592,26 @@ export class SelectQueryBuilder<
     }
 
     // LIMIT clause
-    if (this.options?.limit !== undefined) {
+    if (this.selectArgs?.limit !== undefined) {
       parts.push(`LIMIT ?`);
-      params.push(this.options.limit);
+      params.push(this.selectArgs.limit);
     }
 
     // OFFSET clause
-    if (this.options?.offset !== undefined) {
+    if (this.selectArgs?.offset !== undefined) {
       parts.push(`OFFSET ?`);
-      params.push(this.options.offset);
+      params.push(this.selectArgs.offset);
     }
 
     return { query: parts.join(' '), params };
   }
 
   private processResults(rawResults: any[]): any[] {
-    if (this.options?.columns) {
+    if (this.selectArgs?.columns) {
       // For explicit column selection, return flat objects
       return rawResults.map(row => {
         const result: any = {};
-        Object.entries(this.options!.columns!).forEach(([alias, column]) => {
+        Object.entries(this.selectArgs!.columns!).forEach(([alias, column]) => {
           let value = row[alias];
           if (column.__meta__.decode && value !== null && value !== undefined) {
             value = column.__meta__.decode(value);

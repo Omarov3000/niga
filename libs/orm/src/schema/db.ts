@@ -19,6 +19,7 @@ import { camelCaseKeys } from '../utils/casing';
 import { normalizeQueryAnalysisToRuntime } from '../true-sql/normalize-analysis';
 import { analyze } from '../true-sql/analyze';
 import { rawQueryToAst } from '../true-sql/raw-query-to-ast';
+import { extractTables } from '../true-sql/extract-tables';
 import type { UseQueryOptions } from '../../../query-fe/src/use-query'
 
 export interface DbConstructorOptions {
@@ -111,6 +112,21 @@ export class Db {
       },
       toAst: () => {
         return rawQueryToAst(rawSql);
+      },
+      options: <T extends ZodTypeAny>(zodSchema: T, overrides?: Partial<UseQueryOptions<ReturnType<T['array']>['_output']>>): UseQueryOptions<ReturnType<T['array']>['_output']> => {
+        const depends = extractTables(rawSql);
+        return {
+          queryKey: [rawSql.query, ...rawSql.params],
+          queryFn: async () => {
+            const driver = ensureDriver();
+            await runSecurityChecks();
+            const rows = await Promise.resolve(driver.run(rawSql));
+            const normalized = rows.map((row: Record<string, unknown>) => camelCaseKeys(row));
+            return zodSchema.array().parse(normalized) as ReturnType<T['array']>['_output'];
+          },
+          depends,
+          ...overrides,
+        };
       },
     };
   }
