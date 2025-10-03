@@ -491,9 +491,7 @@ export class SelectQueryBuilder<
     const depends = extractTables(query);
     return {
       queryKey: [query.query, ...query.params],
-      queryFn: async () => {
-        return await this.execute();
-      },
+      queryFn: () => this.execute(),
       depends,
       ...overrides,
     };

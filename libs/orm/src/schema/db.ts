@@ -94,14 +94,16 @@ export class Db {
       }
     };
 
+    const executeQuery = async <T extends ZodTypeAny>(zodSchema: T) => {
+      const driver = ensureDriver();
+      await runSecurityChecks();
+      const rows = await Promise.resolve(driver.run(rawSql));
+      const normalized = rows.map((row: Record<string, unknown>) => camelCaseKeys(row));
+      return zodSchema.array().parse(normalized) as ReturnType<T['array']>['_output'];
+    };
+
     return {
-      execute: async <T extends ZodTypeAny>(zodSchema: T) => {
-        const driver = ensureDriver();
-        await runSecurityChecks();
-        const rows = await Promise.resolve(driver.run(rawSql));
-        const normalized = rows.map((row: Record<string, unknown>) => camelCaseKeys(row));
-        return zodSchema.array().parse(normalized) as ReturnType<T['array']>['_output'];
-      },
+      execute: executeQuery,
       executeAndTakeFirst: async <T extends ZodTypeAny>(zodSchema: T) => {
         const driver = ensureDriver();
         await runSecurityChecks();
@@ -117,13 +119,7 @@ export class Db {
         const depends = extractTables(rawSql);
         return {
           queryKey: [rawSql.query, ...rawSql.params],
-          queryFn: async () => {
-            const driver = ensureDriver();
-            await runSecurityChecks();
-            const rows = await Promise.resolve(driver.run(rawSql));
-            const normalized = rows.map((row: Record<string, unknown>) => camelCaseKeys(row));
-            return zodSchema.array().parse(normalized) as ReturnType<T['array']>['_output'];
-          },
+          queryFn: () => executeQuery(zodSchema),
           depends,
           ...overrides,
         };
