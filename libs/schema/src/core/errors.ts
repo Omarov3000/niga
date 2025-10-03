@@ -7,6 +7,7 @@ export type IssueCode =
   | "invalid_enum_value"
   | "invalid_string"
   | "invalid_format"
+  | "invalid_arguments"
   | "too_small"
   | "too_big"
   | "custom";
