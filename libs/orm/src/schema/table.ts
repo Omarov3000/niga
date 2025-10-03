@@ -7,6 +7,8 @@ import { getDefaultValueFromZodSchema } from '../zod-integration/get-default-val
 import { analyze } from '../true-sql/analyze';
 import { rawQueryToAst } from '../true-sql/raw-query-to-ast';
 import { IndexDefinition, ConstraintDefinition, SecurityRule, QueryContext, TableMetadata, OrmDriver, ColumnMetadata } from './types';
+import type { UseQueryOptions } from '../../../query-fe/src/use-query'
+import type { UseMutationOptions } from '../../../query-fe/src/use-mutation'
 
 type ColumnLike = Column<any, any, any>;
 

@@ -14,16 +14,16 @@ interface QueryState {
   isInvalidated: boolean;
 }
 
-type RetryDelayFunction<TError = DefaultError> = (failureCount: number, error: TError) => number;
-type RetryValue<TError> = boolean | number | ShouldRetryFunction<TError>;
-type RetryDelayValue<TError> = number | RetryDelayFunction<TError>;
-type ShouldRetryFunction<TError = DefaultError> = (failureCount: number, error: TError) => boolean;
+type RetryDelayFunction = (failureCount: number, error: Error) => number;
+type RetryValue = boolean | number | ShouldRetryFunction;
+type RetryDelayValue = number | RetryDelayFunction;
+type ShouldRetryFunction = (failureCount: number, error: Error) => boolean;
 
 interface QueryOptions {
   queryKey: unknown[]
   queryFn: (options: { signal: AbortSignal; queryKey: unknown[] }) => Promise<unknown>
-  retry?: RetryValue<Error>;
-  retryDelay?: RetryDelayValue<TError>;
+  retry?: RetryValue;
+  retryDelay?: RetryDelayValue;
   throwOnError?: boolean;
   onError?: (error: Error, query: Query) => void // non react-query prop to show notification
   initialData?: unknown;

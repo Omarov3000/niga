@@ -16,16 +16,16 @@ export interface QueryState {
   promise: Promise<QueryState> | null
 }
 
-type RetryDelayFunction<TError = Error> = (failureCount: number, error: TError) => number
-type ShouldRetryFunction<TError = Error> = (failureCount: number, error: TError) => boolean
-type RetryValue<TError> = boolean | number | ShouldRetryFunction<TError>
-type RetryDelayValue<TError> = number | RetryDelayFunction<TError>
+type RetryDelayFunction = (failureCount: number, error: Error) => number
+type ShouldRetryFunction = (failureCount: number, error: Error) => boolean
+type RetryValue = boolean | number | ShouldRetryFunction
+type RetryDelayValue = number | RetryDelayFunction
 
 export interface QueryOptions {
   queryKey: unknown[]
   queryFn: (options: { signal: AbortSignal; queryKey: unknown[] }) => Promise<unknown>
-  retry?: RetryValue<Error>
-  retryDelay?: RetryDelayValue<Error>
+  retry?: RetryValue
+  retryDelay?: RetryDelayValue
   throwOnError?: boolean
   onError?: (error: Error, query: Query) => void
   initialData?: unknown
@@ -346,43 +346,43 @@ export class Query {
   }
 }
 
-export interface MutationState<TData = unknown, TError = Error, TVariables = unknown> {
+export interface MutationState<TData = unknown, TVariables = unknown> {
   data: TData | undefined
-  error: TError | undefined
+  error: Error | undefined
   failureCount: number
-  failureReason: TError | undefined
+  failureReason: Error | undefined
   status: 'idle' | 'pending' | 'error' | 'success'
   isPaused: boolean
   variables: TVariables | undefined
   submittedAt: Date | undefined
 }
 
-type RetryMutationDelayFunction<TError = Error> = (failureCount: number, error: TError) => number
-type ShouldRetryMutationFunction<TError = Error> = (failureCount: number, error: TError) => boolean
-type RetryMutationValue<TError> = boolean | number | ShouldRetryMutationFunction<TError>
-type RetryMutationDelayValue<TError> = number | RetryMutationDelayFunction<TError>
+type RetryMutationDelayFunction = (failureCount: number, error: Error) => number
+type ShouldRetryMutationFunction = (failureCount: number, error: Error) => boolean
+type RetryMutationValue = boolean | number | ShouldRetryMutationFunction
+type RetryMutationDelayValue = number | RetryMutationDelayFunction
 
-export interface MutationOptions<TData = unknown, TError = Error, TVariables = unknown> {
+export interface MutationOptions<TData = unknown, TVariables = unknown> {
   mutationFn: (variables: TVariables) => Promise<TData>
   onMutate?: (variables: TVariables) => Promise<void> | void
-  onSuccess?: (data: TData, variables: TVariables, mutation: Mutation<TData, TError, TVariables>) => Promise<void> | void
-  onError?: (error: TError, variables: TVariables, mutation: Mutation<TData, TError, TVariables>) => Promise<void> | void
-  onSettled?: (data: TData | undefined, error: TError | undefined, variables: TVariables, mutation: Mutation<TData, TError, TVariables>) => Promise<void> | void
-  retry?: RetryMutationValue<TError>
-  retryDelay?: RetryMutationDelayValue<TError>
+  onSuccess?: (data: TData, variables: TVariables, mutation: Mutation<TData, TVariables>) => Promise<void> | void
+  onError?: (error: Error, variables: TVariables, mutation: Mutation<TData, TVariables>) => Promise<void> | void
+  onSettled?: (data: TData | undefined, error: Error | undefined, variables: TVariables, mutation: Mutation<TData, TVariables>) => Promise<void> | void
+  retry?: RetryMutationValue
+  retryDelay?: RetryMutationDelayValue
   throwOnError?: boolean
   meta?: Record<string, any>
   invalidates?: string[]
 }
 
-export class Mutation<TData = unknown, TError = Error, TVariables = unknown> {
+export class Mutation<TData = unknown, TVariables = unknown> {
   id: string
-  options: MutationOptions<TData, TError, TVariables>
-  state: MutationState<TData, TError, TVariables>
-  observers: Array<(state: MutationState<TData, TError, TVariables>) => void> = []
+  options: MutationOptions<TData, TVariables>
+  state: MutationState<TData, TVariables>
+  observers: Array<(state: MutationState<TData, TVariables>) => void> = []
   private queryClient?: QueryClient
 
-  constructor(id: string, options: MutationOptions<TData, TError, TVariables>, queryClient?: QueryClient) {
+  constructor(id: string, options: MutationOptions<TData, TVariables>, queryClient?: QueryClient) {
     this.id = id
     this.options = options
     this.queryClient = queryClient
@@ -398,7 +398,7 @@ export class Mutation<TData = unknown, TError = Error, TVariables = unknown> {
     }
   }
 
-  subscribe(observer: (state: MutationState<TData, TError, TVariables>) => void): () => void {
+  subscribe(observer: (state: MutationState<TData, TVariables>) => void): () => void {
     this.observers.push(observer)
     return () => {
       const index = this.observers.indexOf(observer)
@@ -464,7 +464,7 @@ export class Mutation<TData = unknown, TError = Error, TVariables = unknown> {
 
         return data
       } catch (error) {
-        const err = error as TError
+        const err = error as Error
 
         this.state = {
           ...this.state,
@@ -501,7 +501,7 @@ export class Mutation<TData = unknown, TError = Error, TVariables = unknown> {
     return execute()
   }
 
-  private shouldRetry(error: TError): boolean {
+  private shouldRetry(error: Error): boolean {
     const { retry } = this.options
 
     if (retry === undefined) {
@@ -519,7 +519,7 @@ export class Mutation<TData = unknown, TError = Error, TVariables = unknown> {
     return retry(this.state.failureCount, error)
   }
 
-  private getRetryDelay(error: TError): number {
+  private getRetryDelay(error: Error): number {
     const { retryDelay } = this.options
 
     if (retryDelay === undefined) {
@@ -810,26 +810,26 @@ export class QueryClient {
     }
   }
 
-  private mergeMutationOptions<TData = unknown, TError = Error, TVariables = unknown>(
-    options: MutationOptions<TData, TError, TVariables>
-  ): MutationOptions<TData, TError, TVariables> {
+  private mergeMutationOptions<TData = unknown, TVariables = unknown>(
+    options: MutationOptions<TData, TVariables>
+  ): MutationOptions<TData, TVariables> {
     return {
       ...options,
-      retry: options.retry ?? (this.defaultMutationOptions.retry as RetryMutationValue<TError>),
-      retryDelay: options.retryDelay ?? (this.defaultMutationOptions.retryDelay as RetryMutationDelayValue<TError>),
-      onError: options.onError ?? (this.defaultMutationOptions.onError as MutationOptions<TData, TError, TVariables>['onError']),
+      retry: options.retry ?? (this.defaultMutationOptions.retry as RetryMutationValue),
+      retryDelay: options.retryDelay ?? (this.defaultMutationOptions.retryDelay as RetryMutationDelayValue),
+      onError: options.onError ?? (this.defaultMutationOptions.onError as MutationOptions<TData, TVariables>['onError']),
     }
   }
 
-  syncMutationOptions<TData = unknown, TError = Error, TVariables = unknown>(
+  syncMutationOptions<TData = unknown, TVariables = unknown>(
     mutationId: string,
-    options: MutationOptions<TData, TError, TVariables>
-  ): Mutation<TData, TError, TVariables> {
-    let mutation = this.mutations.get(mutationId) as Mutation<TData, TError, TVariables> | undefined
+    options: MutationOptions<TData, TVariables>
+  ): Mutation<TData, TVariables> {
+    let mutation = this.mutations.get(mutationId) as Mutation<TData, TVariables> | undefined
 
     if (!mutation) {
       const mergedOptions = this.mergeMutationOptions(options)
-      mutation = new Mutation<TData, TError, TVariables>(mutationId, mergedOptions, this)
+      mutation = new Mutation<TData, TVariables>(mutationId, mergedOptions, this)
       this.mutations.set(mutationId, mutation as unknown as Mutation)
     } else {
       // Compare options and update if changed
@@ -844,10 +844,10 @@ export class QueryClient {
     return mutation
   }
 
-  addMutation<TData = unknown, TError = Error, TVariables = unknown>(
+  addMutation<TData = unknown, TVariables = unknown>(
     mutationId: string,
-    options: MutationOptions<TData, TError, TVariables>
-  ): Mutation<TData, TError, TVariables> {
+    options: MutationOptions<TData, TVariables>
+  ): Mutation<TData, TVariables> {
     return this.syncMutationOptions(mutationId, options)
   }
 }

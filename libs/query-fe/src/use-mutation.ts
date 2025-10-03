@@ -3,12 +3,12 @@ import { nanoid } from 'nanoid'
 import { QueryClient, type MutationOptions } from './query-client'
 import { useQueryClient } from './query-client-provider'
 
-export interface UseMutationOptions<TData = unknown, TError = Error, TVariables = unknown>
-  extends MutationOptions<TData, TError, TVariables> {}
+export interface UseMutationOptions<TData = unknown, TVariables = unknown>
+  extends MutationOptions<TData, TVariables> {}
 
-export interface UseMutationResult<TData = unknown, TError = Error, TVariables = unknown> {
+export interface UseMutationResult<TData = unknown, TVariables = unknown> {
   data: TData | undefined
-  error: TError | undefined
+  error: Error | undefined
   isError: boolean
   isIdle: boolean
   isPending: boolean
@@ -20,10 +20,10 @@ export interface UseMutationResult<TData = unknown, TError = Error, TVariables =
   status: 'idle' | 'pending' | 'error' | 'success'
 }
 
-export function useMutation<TData = unknown, TError = Error, TVariables = unknown>(
-  options: UseMutationOptions<TData, TError, TVariables>,
+export function useMutation<TData = unknown, TVariables = unknown>(
+  options: UseMutationOptions<TData, TVariables>,
   queryClient?: QueryClient
-): UseMutationResult<TData, TError, TVariables> {
+): UseMutationResult<TData, TVariables> {
   const contextClient = useQueryClient(true)
   const client = queryClient ?? contextClient
 
@@ -34,7 +34,7 @@ export function useMutation<TData = unknown, TError = Error, TVariables = unknow
   const [id] = useState(() => nanoid())
 
   // Sync mutation options and get mutation (runs on every render)
-  const mutation = client.syncMutationOptions<TData, TError, TVariables>(id, options)
+  const mutation = client.syncMutationOptions<TData, TVariables>(id, options)
 
   // Subscribe to mutation state changes
   const subscribe = useCallback((callback: () => void) => mutation.subscribe(callback), [id])

@@ -19,6 +19,7 @@ import { camelCaseKeys } from '../utils/casing';
 import { normalizeQueryAnalysisToRuntime } from '../true-sql/normalize-analysis';
 import { analyze } from '../true-sql/analyze';
 import { rawQueryToAst } from '../true-sql/raw-query-to-ast';
+import type { UseQueryOptions } from '../../../query-fe/src/use-query'
 
 export interface DbConstructorOptions {
   schema: Record<string, Table<any, any>>;

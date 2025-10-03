@@ -18,9 +18,9 @@ export interface UseInfiniteQueryOptions<TData = unknown, TPageParam = unknown> 
   getPreviousPageParam?: (firstPage: TData, allPages: TData[]) => TPageParam | undefined | null
 }
 
-export interface UseInfiniteQueryResult<TData = unknown, TError = Error> {
+export interface UseInfiniteQueryResult<TData = unknown> {
   data: InfiniteData<TData> | undefined
-  error: TError | undefined
+  error: Error | undefined
   isError: boolean
   isFetching: boolean
   isFetchingNextPage: boolean
@@ -37,10 +37,10 @@ export interface UseInfiniteQueryResult<TData = unknown, TError = Error> {
   status: 'pending' | 'error' | 'success'
 }
 
-export function useInfiniteQuery<TData = unknown, TPageParam = unknown, TError = Error>(
+export function useInfiniteQuery<TData = unknown, TPageParam = unknown>(
   options: UseInfiniteQueryOptions<TData, TPageParam>,
   queryClient?: QueryClient
-): UseInfiniteQueryResult<TData, TError> {
+): UseInfiniteQueryResult<TData> {
   const contextClient = useQueryClient(true)
   const client = queryClient ?? contextClient
 
@@ -156,7 +156,7 @@ export function useInfiniteQuery<TData = unknown, TPageParam = unknown, TError =
 
   return {
     data,
-    error: state.error as TError | undefined,
+    error: state.error,
     isError,
     isFetching,
     isFetchingNextPage,
