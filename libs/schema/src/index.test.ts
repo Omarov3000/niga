@@ -253,6 +253,21 @@ describe("Schema Library", () => {
     });
   });
 
+  describe("custom", () => {
+    it("should validate with custom function", () => {
+      const schema = s.custom<string>((val) => val.length > 0);
+      expect(schema.parse("hello")).toBe("hello");
+      expect(() => schema.parse("")).toThrow();
+    });
+
+    it("should work with complex types", () => {
+      type Person = { name: string; age: number };
+      const schema = s.custom<Person>((val) => val.age >= 18);
+      expect(schema.parse({ name: "John", age: 25 })).toMatchObject({ name: "John", age: 25 });
+      expect(() => schema.parse({ name: "Jane", age: 15 })).toThrow();
+    });
+  });
+
   describe("safeParse", () => {
     it("should return success result", () => {
       const schema = s.string();

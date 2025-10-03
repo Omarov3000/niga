@@ -62,6 +62,19 @@ describe("Primitives", () => {
     type Expected = "a" | "b" | "c";
     expectTypeOf<Result>().toEqualTypeOf<Expected>();
   });
+
+  it('custom', () => {
+    const schema = s.custom<string>((val) => val.length > 0);
+    type Result = s.infer<typeof schema>;
+    expectTypeOf<Result>().toEqualTypeOf<string>();
+  })
+
+  it('custom recursive', () => {
+    type Recursive = { name: string;  children: Recursive[] }
+    const recursiveSchema = s.custom<Recursive>((val) => val.name.length > 0);
+    type Result = s.infer<typeof recursiveSchema>;
+    expectTypeOf<Result>().toEqualTypeOf<Recursive>();
+  })
 });
 
 describe("Array", () => {

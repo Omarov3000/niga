@@ -17,6 +17,7 @@ import { record } from "./schemas/record";
 import { object } from "./schemas/object";
 import { union, discriminatedUnion } from "./schemas/union";
 import { refine, transform, _default, _catch, optional } from "./schemas/wrappers";
+import { custom } from "./schemas/custom";
 
 // Export schema types
 export type { StringSchema } from "./schemas/string";
@@ -31,6 +32,7 @@ export type { RecordSchema } from "./schemas/record";
 export type { ObjectSchema, Shape } from "./schemas/object";
 export type { UnionSchema, DiscriminatedUnionSchema } from "./schemas/union";
 export type { RefineSchema, TransformSchema, DefaultSchema, CatchSchema, OptionalSchema } from "./schemas/wrappers";
+export type { CustomSchema } from "./schemas/custom";
 
 // Main API object
 export const s = {
@@ -61,6 +63,7 @@ export const s = {
   default: _default,
   catch: _catch,
   optional,
+  custom,
 
   // Error class
   SchemaError: errors.SchemaError,
@@ -80,6 +83,7 @@ import type { RecordSchema as _RecordSchema } from "./schemas/record";
 import type { ObjectSchema as _ObjectSchema, Shape as _Shape } from "./schemas/object";
 import type { UnionSchema as _UnionSchema, DiscriminatedUnionSchema as _DiscriminatedUnionSchema } from "./schemas/union";
 import type { RefineSchema as _RefineSchema, TransformSchema as _TransformSchema, DefaultSchema as _DefaultSchema, CatchSchema as _CatchSchema, OptionalSchema as _OptionalSchema } from "./schemas/wrappers";
+import type { CustomSchema as _CustomSchema } from "./schemas/custom";
 
 // Type inference helpers as namespace
 export namespace s {
@@ -109,6 +113,7 @@ export namespace s {
   export type DefaultSchema<T extends Schema> = _DefaultSchema<T>;
   export type CatchSchema<T extends Schema> = _CatchSchema<T>;
   export type OptionalSchema<T extends Schema> = _OptionalSchema<T>;
+  export type CustomSchema<T> = _CustomSchema<T>;
 }
 
 // Default export
