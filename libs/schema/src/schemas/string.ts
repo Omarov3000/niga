@@ -33,6 +33,7 @@ export interface StringSchema extends types.Schema<string, string, StringSchemaI
   lowercase(message?: string | { message: string | (() => string) }): this;
   trim(): this;
   optional(): OptionalSchema<this>;
+  meta(metadata: Record<string, any>): this;
   parse(data: unknown, params?: types.ParseContext): string;
   safeParse(
     data: unknown,

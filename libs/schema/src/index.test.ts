@@ -301,4 +301,45 @@ describe("Schema Library", () => {
       expect(PlayerSchema.parse(player)).toMatchObject(player);
     });
   });
+
+  describe("meta", () => {
+    it("should add metadata to string schema", () => {
+      const schema = s.string().meta({ id: "email_field", title: "Email" });
+      expect(schema._zod.meta).toMatchObject({ id: "email_field", title: "Email" });
+    });
+
+    it("should add metadata to number schema", () => {
+      const schema = s.number().meta({ id: "age_field", min: 0, max: 120 });
+      expect(schema._zod.meta).toMatchObject({ id: "age_field", min: 0, max: 120 });
+    });
+
+    it("should merge metadata", () => {
+      const schema = s.string().meta({ id: "field1" }).meta({ title: "Field 1" });
+      expect(schema._zod.meta).toMatchObject({ id: "field1", title: "Field 1" });
+    });
+
+    it("should store any object in meta", () => {
+      const schema = s.string().meta({
+        id: "email_address",
+        title: "Email address",
+        description: "Please enter a valid email address",
+        custom: { nested: { data: true } },
+        array: [1, 2, 3],
+      });
+      expect(schema._zod.meta).toMatchObject({
+        id: "email_address",
+        title: "Email address",
+        description: "Please enter a valid email address",
+        custom: { nested: { data: true } },
+        array: [1, 2, 3],
+      });
+    });
+
+    it("should preserve metadata after validation", () => {
+      const schema = s.string().email().meta({ id: "email_field" });
+      expect(schema._zod.meta).toMatchObject({ id: "email_field" });
+      schema.parse("test@example.com");
+      expect(schema._zod.meta).toMatchObject({ id: "email_field" });
+    });
+  });
 });

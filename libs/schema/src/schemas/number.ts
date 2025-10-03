@@ -30,6 +30,7 @@ export interface NumberSchema extends types.Schema<number, number, NumberSchemaI
   lte(value: number, message?: string | { message: string | (() => string) }): this;
   max(value: number, message?: string | { message: string | (() => string) }): this;
   optional(): OptionalSchema<this>;
+  meta(metadata: Record<string, any>): this;
   parse(data: unknown, params?: types.ParseContext): number;
   safeParse(
     data: unknown,

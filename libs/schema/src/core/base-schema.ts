@@ -9,12 +9,14 @@ export interface BaseSchema<O = unknown, I = unknown> extends types.Schema<O, I>
     data: unknown,
     params?: types.ParseContext
   ): { success: true; data: O } | { success: false; error: errors.SchemaError };
+  meta(metadata: Record<string, any>): this;
 }
 
 export const BaseSchema: types.$constructor<BaseSchema, types.SchemaTypeDef> = types.$constructor<BaseSchema>("BaseSchema", (inst, def: types.SchemaTypeDef) => {
   inst._zod = inst._zod ?? ({} as any);
   inst._zod.def = def;
   inst._zod.bag = inst._zod.bag || {};
+  inst._zod.meta = def.meta;
   inst._zod.traits ??= new Set();
 
   const checks = [...(def.checks ?? [])];
@@ -153,5 +155,12 @@ export const BaseSchema: types.$constructor<BaseSchema, types.SchemaTypeDef> = t
         error: new errors.SchemaError([{ code: "custom", message: String(error) }], errorMap),
       };
     }
+  };
+
+  inst.meta = (metadata: Record<string, any>) => {
+    return new inst._zod.constr({
+      ...def,
+      meta: { ...def.meta, ...metadata },
+    });
   };
 });

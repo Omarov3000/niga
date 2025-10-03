@@ -22,6 +22,7 @@ export interface SchemaTypeDef {
   type: string;
   error?: errors.ErrorMap | string | (() => string);
   checks?: Check<any>[];
+  meta?: Record<string, any>;
   [key: string]: any; // Allow extra properties for specific schema types
 }
 
@@ -41,6 +42,7 @@ export interface BaseSchemaInternals {
   constr: new (def: any) => any;
   deferred?: util.AnyFunc[];
   bag: Record<string, unknown>;
+  meta?: Record<string, any>;
   output?: unknown;
   input?: unknown;
 
