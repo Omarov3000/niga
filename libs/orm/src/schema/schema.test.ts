@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import dedent from 'dedent';
-import { z } from 'zod';
+import { s } from '@w/schema';
 import { o } from './builder';
 
 describe('schema generation', () => {
@@ -47,7 +47,7 @@ describe('schema generation', () => {
   });
 
   it('json(schema) stores schema and emits TEXT', () => {
-    const schema = z.object({ a: z.number(), b: z.string().optional() });
+    const schema = s.object({ a: s.number(), b: s.string().optional() });
     const t = o.table('t', { jsonColumn: o.json(schema) });
     const db = o.db({ schema: { t } });
     expect(db.getSchemaDefinition()).toBe(dedent`

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { z } from 'zod';
+import { s } from '@w/schema';
 import { sql } from '../utils/sql';
 import type { RawSql } from '../utils/sql';
 import { o } from '../schema/builder';
@@ -173,13 +173,13 @@ describe('security rules end-to-end', () => {
       db._connectUser({ role: 'user' });
 
       await expect(
-        db.query`SELECT id, title FROM posts`.execute(z.object({ id: z.string(), title: z.string() }))
+        db.query`SELECT id, title FROM posts`.execute(s.object({ id: s.string(), title: s.string() }))
       ).rejects.toThrow('RBAC: select requires admin role');
 
       db._connectUser({ role: 'admin' });
 
       await expect(
-        db.query`SELECT id, title FROM posts`.execute(z.object({ id: z.string(), title: z.string() }))
+        db.query`SELECT id, title FROM posts`.execute(s.object({ id: s.string(), title: s.string() }))
       ).resolves.toEqual([{ id: 'post-1', title: 'Post' }]);
     });
 
@@ -208,7 +208,7 @@ describe('security rules end-to-end', () => {
 
       await db
         .query`SELECT p.id, u.role FROM posts p JOIN users u ON p.authorId = u.id`
-        .execute(z.object({ id: z.string(), role: z.string() }));
+        .execute(s.object({ id: s.string(), role: s.string() }));
 
       expect(postsRuleInvoked).toBe(1);
       expect(usersRuleInvoked).toBe(1);

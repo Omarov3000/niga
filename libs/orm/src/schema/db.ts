@@ -12,7 +12,8 @@ import type {
 } from './types';
 import { ColumnMutationNotSupportedError } from './types';
 import { deepEqual } from 'fast-equals';
-import type { ZodTypeAny } from 'zod';
+import type { Schema } from '@w/schema';
+import { s } from '@w/schema';
 import { sql } from '../utils/sql';
 import type { Table } from './table';
 import { camelCaseKeys } from '../utils/casing';
@@ -94,32 +95,33 @@ export class Db {
       }
     };
 
-    const executeQuery = async <T extends ZodTypeAny>(zodSchema: T) => {
+    const executeQuery = async <T extends Schema>(schema: T) => {
       const driver = ensureDriver();
       await runSecurityChecks();
       const rows = await Promise.resolve(driver.run(rawSql));
       const normalized = rows.map((row: Record<string, unknown>) => camelCaseKeys(row));
-      return zodSchema.array().parse(normalized) as ReturnType<T['array']>['_output'];
+      const arraySchema = s.array(schema);
+      return (arraySchema as any).parse(normalized) as s.infer<typeof arraySchema>;
     };
 
     return {
       execute: executeQuery,
-      executeAndTakeFirst: async <T extends ZodTypeAny>(zodSchema: T) => {
+      executeAndTakeFirst: async <T extends Schema>(schema: T) => {
         const driver = ensureDriver();
         await runSecurityChecks();
         const rows = await Promise.resolve(driver.run(rawSql));
         if (!rows || rows.length === 0) throw new Error('No rows returned');
         const normalized = camelCaseKeys(rows[0]);
-        return zodSchema.parse(normalized) as ReturnType<T['parse']>;
+        return (schema as any).parse(normalized) as s.infer<T>;
       },
       toAst: () => {
         return rawQueryToAst(rawSql);
       },
-      options: <T extends ZodTypeAny>(zodSchema: T, overrides?: Partial<Omit<UseQueryOptions<ReturnType<T['array']>['_output']>, 'queryKey' | 'queryFn'>>): UseQueryOptions<ReturnType<T['array']>['_output']> => {
+      options: <T extends Schema>(schema: T, overrides?: Partial<Omit<UseQueryOptions<s.infer<ReturnType<typeof s.array<T>>>>, 'queryKey' | 'queryFn'>>): UseQueryOptions<s.infer<ReturnType<typeof s.array<T>>>> => {
         const depends = extractTables(rawSql);
         return {
           queryKey: [rawSql.query, ...rawSql.params],
-          queryFn: () => executeQuery(zodSchema),
+          queryFn: () => executeQuery(schema),
           depends,
           ...overrides,
         };

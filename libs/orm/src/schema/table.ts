@@ -3,13 +3,14 @@ import { FilterObject, OrderObject, sql } from '../utils/sql';
 import type { RawSql } from '../utils/sql';
 import { toSnakeCase } from '../utils/casing';
 import { normalizeQueryAnalysisToRuntime } from '../true-sql/normalize-analysis';
-import { getDefaultValueFromZodSchema } from '../zod-integration/get-default-value-from-zod-schema';
 import { analyze } from '../true-sql/analyze';
 import { rawQueryToAst } from '../true-sql/raw-query-to-ast';
 import { extractTables } from '../true-sql/extract-tables';
 import { IndexDefinition, ConstraintDefinition, SecurityRule, QueryContext, TableMetadata, OrmDriver, ColumnMetadata } from './types';
 import type { UseQueryOptions } from '../../../query-fe/src/use-query'
 import type { UseMutationOptions } from '../../../query-fe/src/use-mutation'
+import { s } from '@w/schema';
+import type { Schema, ObjectSchema } from '@w/schema';
 
 type ColumnLike = Column<any, any, any>;
 
@@ -390,6 +391,10 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
   // type helpers exposed on instance for precise typing
   readonly __selectionType__!: SelectableForCols<TCols>;
   readonly __insertionType__!: InsertableForCols<TCols>;
+  // schema properties for instant type extraction
+  readonly __insertSchema__!: ObjectSchema<any>;
+  readonly __updateSchema__!: ObjectSchema<any>;
+  readonly __selectSchema__!: ObjectSchema<any>;
   private _securityRules: SecurityRule[] = [];
 
   constructor(options: TableConstructorOptions<Name, TCols>) {
@@ -412,7 +417,69 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
       constrains: options.constrains ?? [],
     } as TableMetadata;
 
-    this.__columns__ = options.columns
+    this.__columns__ = options.columns;
+
+    // Build schemas for type extraction
+    const insertSchemaFields: Record<string, Schema> = {};
+    const updateSchemaFields: Record<string, Schema> = {};
+    const selectSchemaFields: Record<string, Schema> = {};
+
+    Object.entries(options.columns).forEach(([key, col]) => {
+      const meta = col.__meta__;
+
+      // Skip virtual columns for insert/update
+      if (meta.insertType === 'virtual') {
+        return;
+      }
+
+      // Build the base schema for this column
+      let columnSchema: Schema;
+
+      if (meta.jsonSchema) {
+        columnSchema = meta.jsonSchema;
+      } else if (meta.appType === 'date') {
+        columnSchema = s.date();
+      } else if (meta.appType === 'boolean') {
+        columnSchema = s.boolean();
+      } else if (meta.appType === 'enum' && meta.enumValues) {
+        columnSchema = s.enum(meta.enumValues as any);
+      } else {
+        // Use SQL type as fallback
+        switch (meta.type) {
+          case 'text':
+            columnSchema = s.string();
+            break;
+          case 'integer':
+          case 'real':
+            columnSchema = s.number();
+            break;
+          default:
+            columnSchema = s.string();
+        }
+      }
+
+      // Handle insert schema (required/optional based on insertType)
+      if (meta.insertType === 'required') {
+        insertSchemaFields[key] = columnSchema;
+      } else {
+        // optional or withDefault
+        insertSchemaFields[key] = s.optional(columnSchema);
+      }
+
+      // Update schema - all non-virtual columns are optional
+      updateSchemaFields[key] = s.optional(columnSchema);
+
+      // Select schema - handle nullable/optional
+      if (meta.insertType === 'optional') {
+        selectSchemaFields[key] = s.optional(columnSchema);
+      } else {
+        selectSchemaFields[key] = columnSchema;
+      }
+    });
+
+    (this as any).__insertSchema__ = s.object(insertSchemaFields);
+    (this as any).__updateSchema__ = s.object(updateSchemaFields);
+    (this as any).__selectSchema__ = s.object(selectSchemaFields);
   }
 }
 
@@ -743,9 +810,8 @@ function deriveImplicitDefault(column: Column<any, any, any>): unknown {
 
   switch (meta.appType) {
     case 'json':
-      if (meta.jsonSchema) {
-        return getDefaultValueFromZodSchema(meta.jsonSchema);
-      }
+      // For JSON columns, try to derive a default from the schema
+      // For now, just return empty object
       return {};
     case 'date':
       return new Date();

@@ -1,4 +1,4 @@
-import type { ZodTypeAny } from 'zod';
+import type { Schema } from '@w/schema';
 import { RawSql } from '../utils/sql';
 import type { QueryAnalysis } from '../true-sql/analyze';
 
@@ -31,7 +31,7 @@ export interface ColumnMetadata {
   decode?: (data: number | string) => unknown;
   aliasedFrom?: string;
   definition?: string // eg COUNT(*) for virtual columns
-  jsonSchema?: ZodTypeAny;
+  jsonSchema?: Schema;
   enumValues?: readonly string[];
   renamedFrom?: string;
 }

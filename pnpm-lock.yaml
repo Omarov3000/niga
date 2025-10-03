@@ -170,15 +170,15 @@ importers:
       '@tursodatabase/database':
         specifier: ^0.1.4
         version: 0.1.4
+      '@w/schema':
+        specifier: workspace:*
+        version: link:../schema
       nanoid:
         specifier: ^5.1.5
         version: 5.1.5
       sql-parser-cst:
         specifier: ^0.33.1
         version: 0.33.1
-      zod:
-        specifier: ^4.1.5
-        version: 4.1.5
     devDependencies:
       dedent:
         specifier: ^1.5.3
@@ -194,7 +194,7 @@ importers:
         version: 3.50.4-build1
       '@w/orm':
         specifier: workspace:*
-        version: link:../schema
+        version: link:../orm
     devDependencies:
       '@w/query-fe':
         specifier: workspace:*
@@ -204,7 +204,7 @@ importers:
     dependencies:
       '@w/orm':
         specifier: workspace:*
-        version: link:../schema
+        version: link:../orm
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.9.7

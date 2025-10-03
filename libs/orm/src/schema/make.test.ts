@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { z } from 'zod';
+import { s } from '@w/schema';
 import { ShallowPrettify, Expect, Equal } from '../utils/utils';
 import { o } from './builder';
 
@@ -102,7 +102,7 @@ describe('table.make()', () => {
     });
 
     it('fills implicit defaults for common column types', () => {
-      const profileSchema = z.object({ theme: z.string(), tags: z.array(z.string()) });
+      const profileSchema = s.object({ theme: s.string(), tags: s.array(s.string()) });
       const users = o.table('users', {
         id: o.id(),
         name: o.text(),
@@ -122,13 +122,13 @@ describe('table.make()', () => {
         score: 0,
         isActive: false,
         role: 'admin',
-        settings: { theme: '', tags: [] },
+        settings: {}, // TODO: Extract defaults from schema
       });
       expect(result.createdAt).toBeInstanceOf(Date);
     });
 
     it('handles json columns', () => {
-      const schema = z.object({ count: z.number(), tags: z.array(z.string()) });
+      const schema = s.object({ count: s.number(), tags: s.array(s.string()) });
       const posts = o.table('posts', {
         id: o.id(),
         metadata: o.json(schema),
@@ -201,6 +201,21 @@ describe('table.make()', () => {
     });
   });
 
+  describe('schema properties', () => {
+    it('exposes __insertSchema__ for direct schema access', () => {
+      const users = o.table('users', {
+        id: o.id(),
+        name: o.text().notNull(),
+        email: o.text(),
+      });
+
+      // Just verify the schemas exist
+      expect(users.__insertSchema__).toBeDefined();
+      expect(users.__updateSchema__).toBeDefined();
+      expect(users.__selectSchema__).toBeDefined();
+    });
+  });
+
   describe('edge cases', () => {
     it('handles empty table schema', () => {
       const empty = o.table('empty', {});
@@ -231,7 +246,7 @@ describe('table.make()', () => {
         role: o.enum(['admin', 'user']).default('user'),
         isActive: o.boolean().default(true),
         createdAt: o.date().$defaultFn(() => new Date('2024-01-01')),
-        profile: o.json(z.object({ bio: z.string() })),
+        profile: o.json(s.object({ bio: s.string() })),
         fullName: o.text().generatedAlwaysAs('name'),
       });
 

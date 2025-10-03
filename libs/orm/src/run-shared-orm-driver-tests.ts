@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, expectTypeOf } from 'vitest';
 import { o } from './schema/builder';
-import { z } from 'zod';
+import { s } from '@w/schema';
 import type { Table } from './schema/table';
 import type { Db } from './schema/db';
 import { sql } from './utils/sql';
@@ -137,7 +137,7 @@ describe('insert', () => {
 
     const rows = await db
       .query`SELECT ${db.users.id}, ${db.users.name}, ${db.users.age} FROM users WHERE ${db.users.id.inArray(['u1','u2'])}`
-      .execute(o.z.object({ id: o.z.id(), name: o.z.text(), age: o.z.integer() }));
+      .execute(o.s.object({ id: o.s.id(), name: o.s.text(), age: o.s.integer() }));
 
     expect(rows.length).toBe(2);
   });
@@ -159,7 +159,7 @@ describe('query', () => {
 
     const rows = await db
       .query`SELECT ${db.users.id}, ${db.users.name}, ${db.users.age} FROM users WHERE ${db.users.age.gte(25)}`
-      .execute(o.z.object({ id: o.z.id(), name: o.z.text(), age: o.z.integer() }));
+      .execute(o.s.object({ id: o.s.id(), name: o.s.text(), age: o.s.integer() }));
 
     expect(rows.length).toBe(2);
     expect(rows[0]).toMatchObject({ id: 'u1', name: 'Alice', age: 30 });
@@ -173,19 +173,19 @@ describe('query', () => {
 
     const row = await db
       .query`SELECT ${db.users.id}, ${db.users.name} FROM users WHERE ${db.users.id.eq('u1')}`
-      .executeAndTakeFirst(o.z.object({ id: o.z.id(), name: o.z.text() }));
+      .executeAndTakeFirst(o.s.object({ id: o.s.id(), name: o.s.text() }));
 
     expect(row).toMatchObject({ id: 'u1', name: 'Alice' });
   });
 
   it('supports date/boolean/enum/json via codecs and filters', async () => {
-    const profileZ = z.object({ bio: z.string() });
+    const profileS = s.object({ bio: s.string() });
     const users = o.table('users', {
       id: o.id(),
       createdAt: o.date(),
       isActive: o.boolean(),
       role: o.enum(['admin', 'user']).default('user'),
-      profile: o.json(profileZ),
+      profile: o.json(profileS),
     });
     const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
@@ -194,12 +194,12 @@ describe('query', () => {
 
     const row = await db
       .query`SELECT ${db.users.id}, ${db.users.createdAt}, ${db.users.isActive}, ${db.users.role}, ${db.users.profile} FROM users WHERE ${db.users.createdAt.gte(now)} AND ${db.users.isActive.eq(true)} AND ${db.users.role.eq('admin')}`
-      .executeAndTakeFirst(o.z.object({
-        id: o.z.id(),
-        createdAt: o.z.date(),
-        isActive: o.z.boolean(),
-        role: o.z.enum(users.role.__meta__.enumValues as any, users.role.__meta__.appDefault as any),
-        profile: o.z.json(users.profile.__meta__.jsonSchema as any),
+      .executeAndTakeFirst(o.s.object({
+        id: o.s.id(),
+        createdAt: o.s.date(),
+        isActive: o.s.boolean(),
+        role: o.s.enum(users.role.__meta__.enumValues as any, users.role.__meta__.appDefault as any),
+        profile: o.s.json(users.profile.__meta__.jsonSchema as any),
       }));
 
     expect(row.id).toBe('u1');
@@ -223,13 +223,13 @@ describe('query', () => {
 
     const rows = await db
       .query`SELECT ${db.items.id}, ${db.items.price} FROM items WHERE ${db.items.price.between(10, 25)} AND ${db.items.id.inArray(['i1','i2'])} AND ${db.items.name.isNull()}`
-      .execute(o.z.object({ id: o.z.id(), price: o.z.integer() }));
+      .execute(o.s.object({ id: o.s.id(), price: o.s.integer() }));
 
     expect(rows.length).toBe(0);
 
     const rows2 = await db
       .query`SELECT ${db.items.id}, ${db.items.price} FROM items WHERE ${db.items.price.between(10, 30)} AND ${db.items.id.inArray(['i1','i3'])} AND ${db.items.name.isNull()}`
-      .execute(o.z.object({ id: o.z.id(), price: o.z.integer() }));
+      .execute(o.s.object({ id: o.s.id(), price: o.s.integer() }));
 
     expect(rows2.length).toBe(1);
     expect(rows2[0].id).toBe('i3');
@@ -256,7 +256,7 @@ describe('query', () => {
     // Test ascending order by age
     const ascByAge = await db
       .query`SELECT ${db.users.id}, ${db.users.name}, ${db.users.age} FROM users ORDER BY ${db.users.age.asc()}`
-      .execute(o.z.object({ id: o.z.id(), name: o.z.text(), age: o.z.integer() }));
+      .execute(o.s.object({ id: o.s.id(), name: o.s.text(), age: o.s.integer() }));
 
     expect(ascByAge).toMatchObject([
       { id: 'u4', name: 'David', age: 20 },
@@ -268,7 +268,7 @@ describe('query', () => {
     // Test descending order by age
     const descByAge = await db
       .query`SELECT ${db.users.id}, ${db.users.name}, ${db.users.age} FROM users ORDER BY ${db.users.age.desc()}`
-      .execute(o.z.object({ id: o.z.id(), name: o.z.text(), age: o.z.integer() }));
+      .execute(o.s.object({ id: o.s.id(), name: o.s.text(), age: o.s.integer() }));
 
     expect(descByAge).toMatchObject([
       { id: 'u3', name: 'Charlie', age: 35 },
@@ -280,7 +280,7 @@ describe('query', () => {
     // Test ascending order by name
     const ascByName = await db
       .query`SELECT ${db.users.id}, ${db.users.name}, ${db.users.age} FROM users ORDER BY ${db.users.name.asc()}`
-      .execute(o.z.object({ id: o.z.id(), name: o.z.text(), age: o.z.integer() }));
+      .execute(o.s.object({ id: o.s.id(), name: o.s.text(), age: o.s.integer() }));
 
     expect(ascByName).toMatchObject([
       { id: 'u1', name: 'Alice', age: 25 },
@@ -312,11 +312,11 @@ describe('query', () => {
     // Test ordering by category ASC, then price DESC
     const ordered = await db
       .query`SELECT ${db.products.id}, ${db.products.category}, ${db.products.name}, ${db.products.price} FROM products ORDER BY ${db.products.category.asc()}, ${db.products.price.desc()}`
-      .execute(o.z.object({
-        id: o.z.id(),
-        category: o.z.text(),
-        name: o.z.text(),
-        price: o.z.integer()
+      .execute(o.s.object({
+        id: o.s.id(),
+        category: o.s.text(),
+        name: o.s.text(),
+        price: o.s.integer()
       }));
 
     expect(ordered).toMatchObject([
@@ -348,7 +348,7 @@ describe('query', () => {
     // Test ordering with WHERE filter
     const activeUsersByAge = await db
       .query`SELECT ${db.users.id}, ${db.users.name}, ${db.users.age} FROM users WHERE ${db.users.status.eq('active')} ORDER BY ${db.users.age.desc()}`
-      .execute(o.z.object({ id: o.z.id(), name: o.z.text(), age: o.z.integer() }));
+      .execute(o.s.object({ id: o.s.id(), name: o.s.text(), age: o.s.integer() }));
 
     expect(activeUsersByAge).toMatchObject([
       { id: 'u2', name: 'Bob', age: 35 },
@@ -379,14 +379,14 @@ describe('aggregate functions', () => {
     // Test COUNT(*) equivalent
     const totalUsers = await db
       .query`SELECT ${db.users.id.count()} FROM users`
-      .executeAndTakeFirst(o.z.object({ userCount: o.z.integer() }));
+      .executeAndTakeFirst(o.s.object({ userCount: o.s.integer() }));
 
     expect(totalUsers?.userCount).toBe(4);
 
     // Test COUNT with WHERE clause
     const activeUsers = await db
       .query`SELECT ${db.users.id.count()} FROM users WHERE ${db.users.status.eq('active')}`
-      .executeAndTakeFirst(o.z.object({ userCount: o.z.integer() }));
+      .executeAndTakeFirst(o.s.object({ userCount: o.s.integer() }));
 
     expect(activeUsers?.userCount).toBe(3);
   });
@@ -411,21 +411,21 @@ describe('aggregate functions', () => {
     // Test MAX(price)
     const maxPrice = await db
       .query`SELECT ${db.products.price.max()} FROM products`
-      .executeAndTakeFirst(o.z.object({ maxValue: o.z.integer() }));
+      .executeAndTakeFirst(o.s.object({ maxValue: o.s.integer() }));
 
     expect(maxPrice?.maxValue).toBe(1200);
 
     // Test MAX with WHERE clause
     const maxElectronicsPrice = await db
       .query`SELECT ${db.products.price.max()} FROM products WHERE ${db.products.category.eq('electronics')}`
-      .executeAndTakeFirst(o.z.object({ maxValue: o.z.integer() }));
+      .executeAndTakeFirst(o.s.object({ maxValue: o.s.integer() }));
 
     expect(maxElectronicsPrice?.maxValue).toBe(1200);
 
     // Test MAX on text column
     const maxName = await db
       .query`SELECT ${db.products.name.max()} FROM products`
-      .executeAndTakeFirst(o.z.object({ maxValue: o.z.text() }));
+      .executeAndTakeFirst(o.s.object({ maxValue: o.s.text() }));
 
     expect(maxName?.maxValue).toBe('Tablet'); // Alphabetically last
   });
@@ -448,7 +448,7 @@ describe('aggregate functions', () => {
     // Test increment() with default amount (1)
     const incrementedBalances = await db
       .query`SELECT ${db.accounts.id}, ${db.accounts.balance.increment()} FROM accounts ORDER BY ${db.accounts.id.asc()}`
-      .execute(o.z.object({ id: o.z.id(), nextValue: o.z.integer() }));
+      .execute(o.s.object({ id: o.s.id(), nextValue: o.s.integer() }));
 
     expect(incrementedBalances).toMatchObject([
       { id: 'acc1', nextValue: 101 },
@@ -459,7 +459,7 @@ describe('aggregate functions', () => {
     // Test increment() with custom amount
     const bonusBalances = await db
       .query`SELECT ${db.accounts.id}, ${db.accounts.balance.increment(100)} FROM accounts WHERE ${db.accounts.balance.gte(200)} ORDER BY ${db.accounts.id.asc()}`
-      .execute(o.z.object({ id: o.z.id(), nextValue: o.z.integer() }));
+      .execute(o.s.object({ id: o.s.id(), nextValue: o.s.integer() }));
 
     expect(bonusBalances).toMatchObject([
       { id: 'acc2', nextValue: 350 },
@@ -491,9 +491,9 @@ describe('aggregate functions', () => {
         ${db.sales.amount.max()}
         FROM sales
         WHERE ${db.sales.region.eq('North')}`
-      .executeAndTakeFirst(o.z.object({
-        userCount: o.z.integer(),
-        maxValue: o.z.integer()
+      .executeAndTakeFirst(o.s.object({
+        userCount: o.s.integer(),
+        maxValue: o.s.integer()
       }));
 
     expect(stats).toMatchObject({

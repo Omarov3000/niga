@@ -1,7 +1,7 @@
 import { nanoid } from 'nanoid';
-import { z, type ZodTypeAny, infer as zInfer } from 'zod';
+import { s } from '@w/schema';
+import type { Schema } from '@w/schema';
 import { IndexBuilder, Table } from './table';
-import { getDefaultValueFromZodSchema } from '../zod-integration/get-default-value-from-zod-schema';
 import { toSnakeCase } from '../utils/casing';
 import { OrmDriver, type ConstraintDefinition, type ConstraintType } from './types';
 import { Column } from './column';
@@ -27,13 +27,13 @@ const date = () => {
   });
 };
 
-function json<TSchema extends ZodTypeAny>(schema: TSchema) {
-  const col = new Column<'json', zInfer<TSchema>, 'optional'>({
+function json<TSchema extends Schema>(schema: TSchema) {
+  const col = new Column<'json', s.infer<TSchema>, 'optional'>({
     kind: 'public',
     name: 'json',
     type: 'text',
     appType: 'json',
-    encode: (data: zInfer<TSchema>) => JSON.stringify(data),
+    encode: (data: s.infer<TSchema>) => JSON.stringify(data),
     decode: (data: number | string) => {
       // JSON columns are stored as text (strings)
       if (typeof data !== 'string') {
@@ -42,7 +42,7 @@ function json<TSchema extends ZodTypeAny>(schema: TSchema) {
       return JSON.parse(data);
     }
   });
-  col.__meta__.jsonSchema = schema;
+  col.__meta__.jsonSchema = schema as any;
   return col;
 }
 
@@ -182,58 +182,59 @@ async function testDb<TSchema extends Record<string, Table<any, any>>>(
   return instance as Db & TSchema;
 }
 
-const zText = () => z.string();
+const sText = () => s.string();
 
-const zInteger = () => z.number().int();
+const sInteger = () => s.number();
 
-const zReal = () => z.number();
+const sReal = () => s.number();
 
-const zDate = () => z.codec(
-  z.number(),
-  z.date(),
+const sDate = () => s.codec(
+  s.number(),
+  s.date(),
   {
-    decode: (timestamp: number) => new Date(timestamp),
-    encode: (date: Date) => date.getTime(),
+    decode: (timestamp, _payload) => new Date(timestamp),
+    encode: (date, _payload) => typeof date === 'string' ? new Date(date).getTime() : date.getTime(),
   }
 );
 
-function zJson<TSchema extends ZodTypeAny>(schema: TSchema) {
-  return z.codec(
-    z.string(),
+function sJson<TSchema extends Schema>(schema: TSchema) {
+  return s.codec(
+    s.string(),
     schema,
     {
-      decode: (jsonString: string) => JSON.parse(jsonString),
-      encode: (data) => JSON.stringify(data),
+      decode: (jsonString: string, _payload) => JSON.parse(jsonString),
+      encode: (data, _payload) => JSON.stringify(data),
     }
   );
 }
 
-const zBoolean = () => z.codec(
-  z.number(),
-  z.boolean(),
+const sBoolean = () => s.codec(
+  s.number(),
+  s.boolean(),
   {
-    decode: (num: number) => num === 1,
-    encode: (bool: boolean) => bool ? 1 : 0,
+    decode: (num: number, _payload) => num === 1,
+    encode: (bool: boolean, _payload) => bool ? 1 : 0,
   }
 );
 
-function zEnum<const T extends string>(values: readonly T[], _default: NoInfer<T>) {
-  return z.codec(
-    z.number(),
-    z.enum(values as any),
+function sEnum<const T extends string>(values: readonly T[], _default: NoInfer<T>) {
+  const codec = s.codec(
+    s.number(),
+    s.enum(values as any),
     {
-      decode: (index: number) => {
+      decode: (index: number, _payload) => {
         if (index < 0 || index >= values.length) {
           throw new Error(`Enum index ${index} out of range for values: [${values.join(', ')}]`);
         }
         return values[index] as T;
       },
-      encode: (enumValue: T) => values.indexOf(enumValue),
+      encode: (enumValue: T, _payload) => values.indexOf(enumValue),
     }
   );
+  return s.default(codec, _default);
 }
 
-const zId = () => z.string().default(() => nanoid());
+const sId = () => s.default(s.string(), () => nanoid());
 
 export const o = {
   text,
@@ -250,15 +251,15 @@ export const o = {
   testDb,
   primaryKey: primaryKeyConstraint,
   unique: uniqueConstraint,
-  z: {
-    text: zText,
-    integer: zInteger,
-    real: zReal,
-    date: zDate,
-    json: zJson,
-    boolean: zBoolean,
-    enum: zEnum,
-    id: zId,
-    object: z.object,
+  s: {
+    text: sText,
+    integer: sInteger,
+    real: sReal,
+    date: sDate,
+    json: sJson,
+    boolean: sBoolean,
+    enum: sEnum,
+    id: sId,
+    object: s.object,
   },
 };
