@@ -1,15 +1,416 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { Query, QueryClient, type QueryOptions, type QueryFilters } from './query-client'
 
+beforeEach(() => {
+  vi.useFakeTimers()
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+it('should fetch query and return data', async () => {
+  const client = new QueryClient()
+  const queryFn = vi.fn(() => Promise.resolve('data'))
+
+  const data = await client.fetchQuery({
+    queryKey: ['test'],
+    queryFn,
+  })
+
+  expect(data).toBe('data')
+  expect(queryFn).toHaveBeenCalledTimes(1)
+})
+
+it('should reuse existing query for same queryKey', async () => {
+  const client = new QueryClient()
+  const queryFn = vi.fn(() => Promise.resolve('data'))
+
+  await client.fetchQuery({
+    queryKey: ['test'],
+    queryFn,
+  })
+
+  await client.fetchQuery({
+    queryKey: ['test'],
+    queryFn,
+  })
+
+  expect(queryFn).toHaveBeenCalledTimes(2) // Both calls trigger fetch
+})
+
+it('should ensure query data returns cached data if not stale', () => {
+  const client = new QueryClient({ queries: { staleTime: 10000 } })
+  const queryFn = vi.fn(() => Promise.resolve('data'))
+
+  const query = new Query({
+    queryKey: ['test'],
+    queryFn,
+    initialData: 'cached',
+    staleTime: 10000,
+  })
+
+  client['queries'].set(JSON.stringify(['test']), query)
+
+  const data = client.ensureQueryData({
+    queryKey: ['test'],
+    queryFn,
+  })
+
+  expect(data).toBe('cached')
+  expect(queryFn).not.toHaveBeenCalled()
+})
+
+it('should ensure query data triggers fetch if stale', async () => {
+  const client = new QueryClient({ queries: { staleTime: 1000 } })
+  const queryFn = vi.fn(() => Promise.resolve('fresh'))
+
+  const query = new Query({
+    queryKey: ['test'],
+    queryFn,
+    initialData: 'cached',
+    staleTime: 1000,
+  })
+
+  await query.fetch()
+  client['queries'].set(JSON.stringify(['test']), query)
+
+  await vi.advanceTimersByTimeAsync(1001)
+
+  const data = client.ensureQueryData({
+    queryKey: ['test'],
+    queryFn,
+  })
+
+  expect(data).toBe('fresh') // Returns old data while fetching
+  await vi.runAllTimersAsync()
+})
+
+it('should prefetch query and return data if available', async () => {
+  const client = new QueryClient()
+  const queryFn = vi.fn(() => Promise.resolve('data'))
+
+  // First call - no data yet, triggers fetch
+  const data1 = client.prefetchQuery({
+    queryKey: ['test'],
+    queryFn,
+  })
+  expect(data1).toBe(undefined)
+
+  // Wait for fetch to complete
+  await vi.runAllTimersAsync()
+
+  // Second call - data is available
+  const data2 = client.prefetchQuery({
+    queryKey: ['test'],
+    queryFn,
+  })
+  expect(data2).toBe('data')
+  expect(queryFn).toHaveBeenCalledTimes(1) // Should not refetch
+})
+
+describe('invalidateQueries', () => {
+  it('should invalidate queries by queryKey', async () => {
+  const client = new QueryClient()
+  const queryFn1 = vi.fn(() => Promise.resolve('data1'))
+  const queryFn2 = vi.fn(() => Promise.resolve('data2'))
+
+  await client.fetchQuery({
+    queryKey: ['test', 1],
+    queryFn: queryFn1,
+  })
+
+  await client.fetchQuery({
+    queryKey: ['test', 2],
+    queryFn: queryFn2,
+  })
+
+  expect(queryFn1).toHaveBeenCalledTimes(1)
+  expect(queryFn2).toHaveBeenCalledTimes(1)
+
+  await client.invalidateQueries({
+    queryKey: ['test'],
+  })
+
+  expect(queryFn1).toHaveBeenCalledTimes(2)
+  expect(queryFn2).toHaveBeenCalledTimes(2)
+})
+
+it('should invalidate queries with exact match', async () => {
+  const client = new QueryClient()
+  const queryFn1 = vi.fn(() => Promise.resolve('data1'))
+  const queryFn2 = vi.fn(() => Promise.resolve('data2'))
+
+  await client.fetchQuery({
+    queryKey: ['test', 1],
+    queryFn: queryFn1,
+  })
+
+  await client.fetchQuery({
+    queryKey: ['test', 2],
+    queryFn: queryFn2,
+  })
+
+  await client.invalidateQueries({
+    queryKey: ['test', 1],
+    exact: true,
+  })
+
+  expect(queryFn1).toHaveBeenCalledTimes(2)
+  expect(queryFn2).toHaveBeenCalledTimes(1)
+})
+
+it('should invalidate queries by type (active/inactive)', async () => {
+  const client = new QueryClient()
+  const queryFn1 = vi.fn(() => Promise.resolve('data1'))
+  const queryFn2 = vi.fn(() => Promise.resolve('data2'))
+
+  await client.fetchQuery({
+    queryKey: ['test', 1],
+    queryFn: queryFn1,
+  })
+
+  await client.fetchQuery({
+    queryKey: ['test', 2],
+    queryFn: queryFn2,
+  })
+
+  const query1 = client.getQuery(['test', 1])!
+  const observer = vi.fn()
+  query1.subscribe(observer)
+
+  await client.invalidateQueries({ type: 'active' })
+
+  expect(queryFn1).toHaveBeenCalledTimes(2)
+  expect(queryFn2).toHaveBeenCalledTimes(1)
+})
+
+it('should invalidate queries by stale status', async () => {
+  const client = new QueryClient({ queries: { staleTime: 1000 } })
+  const queryFn1 = vi.fn(() => Promise.resolve('data1'))
+  const queryFn2 = vi.fn(() => Promise.resolve('data2'))
+
+  await client.fetchQuery({
+    queryKey: ['test', 1],
+    queryFn: queryFn1,
+    staleTime: 1000,
+  })
+
+  await vi.advanceTimersByTimeAsync(1001)
+
+  await client.fetchQuery({
+    queryKey: ['test', 2],
+    queryFn: queryFn2,
+    staleTime: 1000,
+  })
+
+  await client.invalidateQueries({ stale: true })
+
+  expect(queryFn1).toHaveBeenCalledTimes(2)
+  expect(queryFn2).toHaveBeenCalledTimes(1)
+})
+
+it('should invalidate queries by fetchStatus', async () => {
+  const client = new QueryClient()
+  const queryFn1 = vi.fn(() => new Promise((resolve) => setTimeout(() => resolve('data1'), 1000)))
+  const queryFn2 = vi.fn(() => Promise.resolve('data2'))
+
+  const promise1 = client.fetchQuery({
+    queryKey: ['test', 1],
+    queryFn: queryFn1,
+  })
+
+  await client.fetchQuery({
+    queryKey: ['test', 2],
+    queryFn: queryFn2,
+  })
+
+  const invalidatedQueries = await client.invalidateQueries({ fetchStatus: 'fetching' })
+
+  expect(invalidatedQueries).toHaveLength(1)
+  expect(invalidatedQueries[0].queryKey).toEqual(['test', 1])
+
+  await vi.runAllTimersAsync()
+  await promise1
+})
+
+it('should invalidate queries by predicate', async () => {
+  const client = new QueryClient()
+  const queryFn1 = vi.fn(() => Promise.resolve('data1'))
+  const queryFn2 = vi.fn(() => Promise.resolve('data2'))
+
+  await client.fetchQuery({
+    queryKey: ['users', 1],
+    queryFn: queryFn1,
+  })
+
+  await client.fetchQuery({
+    queryKey: ['posts', 1],
+    queryFn: queryFn2,
+  })
+
+  await client.invalidateQueries({
+    predicate: (query) => query.queryKey[0] === 'users',
+  })
+
+  expect(queryFn1).toHaveBeenCalledTimes(2)
+  expect(queryFn2).toHaveBeenCalledTimes(1)
+})
+})
+
+it('should clear all queries', async () => {
+  const client = new QueryClient()
+  const queryFn1 = vi.fn(() => Promise.resolve('data1'))
+  const queryFn2 = vi.fn(() => Promise.resolve('data2'))
+
+  await client.fetchQuery({
+    queryKey: ['test', 1],
+    queryFn: queryFn1,
+  })
+
+  await client.fetchQuery({
+    queryKey: ['test', 2],
+    queryFn: queryFn2,
+  })
+
+  expect(client.getQuery(['test', 1])).toBeDefined()
+  expect(client.getQuery(['test', 2])).toBeDefined()
+
+  client.clear()
+
+  expect(client.getQuery(['test', 1])).toBeUndefined()
+  expect(client.getQuery(['test', 2])).toBeUndefined()
+})
+
+it('should get query by queryKey', async () => {
+  const client = new QueryClient()
+  const queryFn = vi.fn(() => Promise.resolve('data'))
+
+  await client.fetchQuery({
+    queryKey: ['test'],
+    queryFn,
+  })
+
+  const query = client.getQuery(['test'])
+  expect(query).toBeDefined()
+  expect(query?.queryKey).toEqual(['test'])
+})
+
+it('should merge default options with query options', async () => {
+  const defaultOnError = vi.fn()
+  const client = new QueryClient({
+    queries: {
+      staleTime: 5000,
+      gcTime: 30000,
+      onError: defaultOnError,
+    },
+  })
+
+  const queryFn = vi.fn(() => Promise.reject(new Error('error')))
+
+  await client.fetchQuery({
+    queryKey: ['test'],
+    queryFn,
+    retry: false,
+  })
+
+  expect(defaultOnError).toHaveBeenCalled()
+})
+
+it('should schedule garbage collection after gcTime', async () => {
+  const client = new QueryClient()
+  const queryFn = vi.fn(() => Promise.resolve('data'))
+
+  // Fetch query to create it
+  await client.fetchQuery({
+    queryKey: ['test'],
+    queryFn,
+    gcTime: 1000,
+  })
+
+  // Query should exist
+  expect(client.getQuery(['test'])).toBeDefined()
+
+  // Remove all observers to make it inactive
+  const query = client.getQuery(['test'])!
+  query.observers = []
+  query['scheduleGC']()
+
+  // Wait for gcTime to pass
+  await vi.advanceTimersByTimeAsync(999)
+  expect(client.getQuery(['test'])).toBeDefined()
+
+  await vi.advanceTimersByTimeAsync(1)
+  // Note: actual removal would be done by QueryClient's cleanup logic
+  // This test verifies the timeout is scheduled correctly
+})
+
+it('should invalidate queries when mutation with invalidates succeeds', async () => {
+  const client = new QueryClient()
+  const queryFn = vi.fn(() => Promise.resolve('query-data'))
+  const mutationFn = vi.fn(() => Promise.resolve('mutation-data'))
+
+  // Create a query with a dependency and subscribe to it
+  const query = client.syncQueryOptions({
+    queryKey: ['users'],
+    queryFn,
+    depends: ['users-list'],
+  })
+
+  const observer = vi.fn()
+  query.subscribe(observer)
+
+  await query.fetch()
+  expect(query.state.isInvalidated).toBe(false)
+
+  // Create and execute a mutation that invalidates the dependency
+  const mutation = client.addMutation('test-mutation', {
+    mutationFn,
+    invalidates: ['users-list'],
+  })
+
+  // Start mutation but don't await it yet
+  const mutatePromise = mutation.mutate('test-variables')
+
+  // Let the mutation complete and trigger invalidation
+  await mutatePromise
+
+  // Query should have been invalidated and immediately refetched
+  // After refetch completes, isInvalidated is reset to false
+  expect(query.state.isInvalidated).toBe(false)
+  expect(queryFn).toHaveBeenCalledTimes(2)
+})
+
+it('should not invalidate queries when mutation has no invalidates', async () => {
+  const client = new QueryClient()
+  const queryFn = vi.fn(() => Promise.resolve('query-data'))
+  const mutationFn = vi.fn(() => Promise.resolve('mutation-data'))
+
+  // Create a query with a dependency and subscribe to it
+  const query = client.syncQueryOptions({
+    queryKey: ['users'],
+    queryFn,
+    depends: ['users-list'],
+  })
+
+  const observer = vi.fn()
+  query.subscribe(observer)
+
+  await query.fetch()
+  expect(query.state.isInvalidated).toBe(false)
+
+  // Create and execute a mutation without invalidates
+  const mutation = client.addMutation('test-mutation', {
+    mutationFn,
+  })
+
+  await mutation.mutate('test-variables')
+
+  // Query should not be invalidated
+  expect(query.state.isInvalidated).toBe(false)
+})
+
 describe('Query', () => {
-  beforeEach(() => {
-    vi.useFakeTimers()
-  })
-
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
-
   it('should initialize with correct default state', () => {
     const queryFn = vi.fn(() => Promise.resolve('data'))
     const query = new Query({
@@ -296,416 +697,5 @@ describe('Query', () => {
 
     await vi.advanceTimersByTimeAsync(1001)
     expect(query.isStale(1000)).toBe(true)
-  })
-})
-
-describe('QueryClient', () => {
-  beforeEach(() => {
-    vi.useFakeTimers()
-  })
-
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
-
-  it('should fetch query and return data', async () => {
-    const client = new QueryClient()
-    const queryFn = vi.fn(() => Promise.resolve('data'))
-
-    const data = await client.fetchQuery({
-      queryKey: ['test'],
-      queryFn,
-    })
-
-    expect(data).toBe('data')
-    expect(queryFn).toHaveBeenCalledTimes(1)
-  })
-
-  it('should reuse existing query for same queryKey', async () => {
-    const client = new QueryClient()
-    const queryFn = vi.fn(() => Promise.resolve('data'))
-
-    await client.fetchQuery({
-      queryKey: ['test'],
-      queryFn,
-    })
-
-    await client.fetchQuery({
-      queryKey: ['test'],
-      queryFn,
-    })
-
-    expect(queryFn).toHaveBeenCalledTimes(2) // Both calls trigger fetch
-  })
-
-  it('should ensure query data returns cached data if not stale', () => {
-    const client = new QueryClient({ queries: { staleTime: 10000 } })
-    const queryFn = vi.fn(() => Promise.resolve('data'))
-
-    const query = new Query({
-      queryKey: ['test'],
-      queryFn,
-      initialData: 'cached',
-      staleTime: 10000,
-    })
-
-    client['queries'].set(JSON.stringify(['test']), query)
-
-    const data = client.ensureQueryData({
-      queryKey: ['test'],
-      queryFn,
-    })
-
-    expect(data).toBe('cached')
-    expect(queryFn).not.toHaveBeenCalled()
-  })
-
-  it('should ensure query data triggers fetch if stale', async () => {
-    const client = new QueryClient({ queries: { staleTime: 1000 } })
-    const queryFn = vi.fn(() => Promise.resolve('fresh'))
-
-    const query = new Query({
-      queryKey: ['test'],
-      queryFn,
-      initialData: 'cached',
-      staleTime: 1000,
-    })
-
-    await query.fetch()
-    client['queries'].set(JSON.stringify(['test']), query)
-
-    await vi.advanceTimersByTimeAsync(1001)
-
-    const data = client.ensureQueryData({
-      queryKey: ['test'],
-      queryFn,
-    })
-
-    expect(data).toBe('fresh') // Returns old data while fetching
-    await vi.runAllTimersAsync()
-  })
-
-  it('should prefetch query and return data if available', async () => {
-    const client = new QueryClient()
-    const queryFn = vi.fn(() => Promise.resolve('data'))
-
-    // First call - no data yet, triggers fetch
-    const data1 = client.prefetchQuery({
-      queryKey: ['test'],
-      queryFn,
-    })
-    expect(data1).toBe(undefined)
-
-    // Wait for fetch to complete
-    await vi.runAllTimersAsync()
-
-    // Second call - data is available
-    const data2 = client.prefetchQuery({
-      queryKey: ['test'],
-      queryFn,
-    })
-    expect(data2).toBe('data')
-    expect(queryFn).toHaveBeenCalledTimes(1) // Should not refetch
-  })
-
-  describe('invalidateQueries', () => {
-    it('should invalidate queries by queryKey', async () => {
-    const client = new QueryClient()
-    const queryFn1 = vi.fn(() => Promise.resolve('data1'))
-    const queryFn2 = vi.fn(() => Promise.resolve('data2'))
-
-    await client.fetchQuery({
-      queryKey: ['test', 1],
-      queryFn: queryFn1,
-    })
-
-    await client.fetchQuery({
-      queryKey: ['test', 2],
-      queryFn: queryFn2,
-    })
-
-    expect(queryFn1).toHaveBeenCalledTimes(1)
-    expect(queryFn2).toHaveBeenCalledTimes(1)
-
-    await client.invalidateQueries({
-      queryKey: ['test'],
-    })
-
-    expect(queryFn1).toHaveBeenCalledTimes(2)
-    expect(queryFn2).toHaveBeenCalledTimes(2)
-  })
-
-  it('should invalidate queries with exact match', async () => {
-    const client = new QueryClient()
-    const queryFn1 = vi.fn(() => Promise.resolve('data1'))
-    const queryFn2 = vi.fn(() => Promise.resolve('data2'))
-
-    await client.fetchQuery({
-      queryKey: ['test', 1],
-      queryFn: queryFn1,
-    })
-
-    await client.fetchQuery({
-      queryKey: ['test', 2],
-      queryFn: queryFn2,
-    })
-
-    await client.invalidateQueries({
-      queryKey: ['test', 1],
-      exact: true,
-    })
-
-    expect(queryFn1).toHaveBeenCalledTimes(2)
-    expect(queryFn2).toHaveBeenCalledTimes(1)
-  })
-
-  it('should invalidate queries by type (active/inactive)', async () => {
-    const client = new QueryClient()
-    const queryFn1 = vi.fn(() => Promise.resolve('data1'))
-    const queryFn2 = vi.fn(() => Promise.resolve('data2'))
-
-    await client.fetchQuery({
-      queryKey: ['test', 1],
-      queryFn: queryFn1,
-    })
-
-    await client.fetchQuery({
-      queryKey: ['test', 2],
-      queryFn: queryFn2,
-    })
-
-    const query1 = client.getQuery(['test', 1])!
-    const observer = vi.fn()
-    query1.subscribe(observer)
-
-    await client.invalidateQueries({ type: 'active' })
-
-    expect(queryFn1).toHaveBeenCalledTimes(2)
-    expect(queryFn2).toHaveBeenCalledTimes(1)
-  })
-
-  it('should invalidate queries by stale status', async () => {
-    const client = new QueryClient({ queries: { staleTime: 1000 } })
-    const queryFn1 = vi.fn(() => Promise.resolve('data1'))
-    const queryFn2 = vi.fn(() => Promise.resolve('data2'))
-
-    await client.fetchQuery({
-      queryKey: ['test', 1],
-      queryFn: queryFn1,
-      staleTime: 1000,
-    })
-
-    await vi.advanceTimersByTimeAsync(1001)
-
-    await client.fetchQuery({
-      queryKey: ['test', 2],
-      queryFn: queryFn2,
-      staleTime: 1000,
-    })
-
-    await client.invalidateQueries({ stale: true })
-
-    expect(queryFn1).toHaveBeenCalledTimes(2)
-    expect(queryFn2).toHaveBeenCalledTimes(1)
-  })
-
-  it('should invalidate queries by fetchStatus', async () => {
-    const client = new QueryClient()
-    const queryFn1 = vi.fn(() => new Promise((resolve) => setTimeout(() => resolve('data1'), 1000)))
-    const queryFn2 = vi.fn(() => Promise.resolve('data2'))
-
-    const promise1 = client.fetchQuery({
-      queryKey: ['test', 1],
-      queryFn: queryFn1,
-    })
-
-    await client.fetchQuery({
-      queryKey: ['test', 2],
-      queryFn: queryFn2,
-    })
-
-    const invalidatedQueries = await client.invalidateQueries({ fetchStatus: 'fetching' })
-
-    expect(invalidatedQueries).toHaveLength(1)
-    expect(invalidatedQueries[0].queryKey).toEqual(['test', 1])
-
-    await vi.runAllTimersAsync()
-    await promise1
-  })
-
-  it('should invalidate queries by predicate', async () => {
-    const client = new QueryClient()
-    const queryFn1 = vi.fn(() => Promise.resolve('data1'))
-    const queryFn2 = vi.fn(() => Promise.resolve('data2'))
-
-    await client.fetchQuery({
-      queryKey: ['users', 1],
-      queryFn: queryFn1,
-    })
-
-    await client.fetchQuery({
-      queryKey: ['posts', 1],
-      queryFn: queryFn2,
-    })
-
-    await client.invalidateQueries({
-      predicate: (query) => query.queryKey[0] === 'users',
-    })
-
-    expect(queryFn1).toHaveBeenCalledTimes(2)
-    expect(queryFn2).toHaveBeenCalledTimes(1)
-  })
-  })
-
-  it('should clear all queries', async () => {
-    const client = new QueryClient()
-    const queryFn1 = vi.fn(() => Promise.resolve('data1'))
-    const queryFn2 = vi.fn(() => Promise.resolve('data2'))
-
-    await client.fetchQuery({
-      queryKey: ['test', 1],
-      queryFn: queryFn1,
-    })
-
-    await client.fetchQuery({
-      queryKey: ['test', 2],
-      queryFn: queryFn2,
-    })
-
-    expect(client.getQuery(['test', 1])).toBeDefined()
-    expect(client.getQuery(['test', 2])).toBeDefined()
-
-    client.clear()
-
-    expect(client.getQuery(['test', 1])).toBeUndefined()
-    expect(client.getQuery(['test', 2])).toBeUndefined()
-  })
-
-  it('should get query by queryKey', async () => {
-    const client = new QueryClient()
-    const queryFn = vi.fn(() => Promise.resolve('data'))
-
-    await client.fetchQuery({
-      queryKey: ['test'],
-      queryFn,
-    })
-
-    const query = client.getQuery(['test'])
-    expect(query).toBeDefined()
-    expect(query?.queryKey).toEqual(['test'])
-  })
-
-  it('should merge default options with query options', async () => {
-    const defaultOnError = vi.fn()
-    const client = new QueryClient({
-      queries: {
-        staleTime: 5000,
-        gcTime: 30000,
-        onError: defaultOnError,
-      },
-    })
-
-    const queryFn = vi.fn(() => Promise.reject(new Error('error')))
-
-    await client.fetchQuery({
-      queryKey: ['test'],
-      queryFn,
-      retry: false,
-    })
-
-    expect(defaultOnError).toHaveBeenCalled()
-  })
-
-  it('should schedule garbage collection after gcTime', async () => {
-    const client = new QueryClient()
-    const queryFn = vi.fn(() => Promise.resolve('data'))
-
-    // Fetch query to create it
-    await client.fetchQuery({
-      queryKey: ['test'],
-      queryFn,
-      gcTime: 1000,
-    })
-
-    // Query should exist
-    expect(client.getQuery(['test'])).toBeDefined()
-
-    // Remove all observers to make it inactive
-    const query = client.getQuery(['test'])!
-    query.observers = []
-    query['scheduleGC']()
-
-    // Wait for gcTime to pass
-    await vi.advanceTimersByTimeAsync(999)
-    expect(client.getQuery(['test'])).toBeDefined()
-
-    await vi.advanceTimersByTimeAsync(1)
-    // Note: actual removal would be done by QueryClient's cleanup logic
-    // This test verifies the timeout is scheduled correctly
-  })
-
-  it('should invalidate queries when mutation with invalidates succeeds', async () => {
-    const client = new QueryClient()
-    const queryFn = vi.fn(() => Promise.resolve('query-data'))
-    const mutationFn = vi.fn(() => Promise.resolve('mutation-data'))
-
-    // Create a query with a dependency and subscribe to it
-    const query = client.syncQueryOptions({
-      queryKey: ['users'],
-      queryFn,
-      depends: ['users-list'],
-    })
-
-    const observer = vi.fn()
-    query.subscribe(observer)
-
-    await query.fetch()
-    expect(query.state.isInvalidated).toBe(false)
-
-    // Create and execute a mutation that invalidates the dependency
-    const mutation = client.addMutation('test-mutation', {
-      mutationFn,
-      invalidates: ['users-list'],
-    })
-
-    // Start mutation but don't await it yet
-    const mutatePromise = mutation.mutate('test-variables')
-
-    // Let the mutation complete and trigger invalidation
-    await mutatePromise
-
-    // Query should have been invalidated and immediately refetched
-    // After refetch completes, isInvalidated is reset to false
-    expect(query.state.isInvalidated).toBe(false)
-    expect(queryFn).toHaveBeenCalledTimes(2)
-  })
-
-  it('should not invalidate queries when mutation has no invalidates', async () => {
-    const client = new QueryClient()
-    const queryFn = vi.fn(() => Promise.resolve('query-data'))
-    const mutationFn = vi.fn(() => Promise.resolve('mutation-data'))
-
-    // Create a query with a dependency and subscribe to it
-    const query = client.syncQueryOptions({
-      queryKey: ['users'],
-      queryFn,
-      depends: ['users-list'],
-    })
-
-    const observer = vi.fn()
-    query.subscribe(observer)
-
-    await query.fetch()
-    expect(query.state.isInvalidated).toBe(false)
-
-    // Create and execute a mutation without invalidates
-    const mutation = client.addMutation('test-mutation', {
-      mutationFn,
-    })
-
-    await mutation.mutate('test-variables')
-
-    // Query should not be invalidated
-    expect(query.state.isInvalidated).toBe(false)
   })
 })
