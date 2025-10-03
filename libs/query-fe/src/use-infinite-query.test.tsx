@@ -20,12 +20,31 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-it('should fetch initial page', async () => {
-  const queryFn = vi.fn(({ pageParam }: { pageParam: number }) =>
-    Promise.resolve({
-      items: [pageParam, pageParam + 1, pageParam + 2],
-      nextCursor: pageParam + 3,
-    })
+it('should handle pagination flow: initial page, next page, hasNextPage, hasPreviousPage, and isFetchingNextPage states', async () => {
+  let resolveNextPage: ((value: Page) => void) | undefined
+  let callCount = 0
+  const queryFn = vi.fn(
+    ({ pageParam }: { pageParam: number }): Promise<Page> => {
+      callCount++
+      if (callCount === 1) {
+        // Initial page resolves immediately
+        return Promise.resolve({
+          items: [pageParam, pageParam + 1, pageParam + 2],
+          nextCursor: pageParam + 3,
+        })
+      } else if (callCount === 2) {
+        // Next page is controlled for testing isFetchingNextPage
+        return new Promise<Page>((resolve) => {
+          resolveNextPage = resolve
+        })
+      } else {
+        // Final page with no next cursor
+        return Promise.resolve({
+          items: [pageParam, pageParam + 1, pageParam + 2],
+          nextCursor: undefined,
+        })
+      }
+    }
   )
 
   const { result } = renderHook(() =>
@@ -40,80 +59,61 @@ it('should fetch initial page', async () => {
     )
   )
 
+  // Initial page fetch
   await vi.waitFor(() => {
     expect(result.current.isSuccess).toBe(true)
   })
 
-  expect(result.current.data).toMatchObject({
-    pages: [{ items: [0, 1, 2], nextCursor: 3 }],
-    pageParams: [0],
+  expect(result.current).toMatchObject({
+    data: {
+      pages: [{ items: [0, 1, 2], nextCursor: 3 }],
+      pageParams: [0],
+    },
+    hasNextPage: true,
+    hasPreviousPage: false,
   })
-  expect(result.current.hasNextPage).toBe(true)
-})
 
-it('should fetch next page', async () => {
-  const queryFn = vi.fn(({ pageParam }: { pageParam: number }) =>
-    Promise.resolve({
-      items: [pageParam, pageParam + 1, pageParam + 2],
-      nextCursor: pageParam < 6 ? pageParam + 3 : undefined,
-    })
-  )
-
-  const { result } = renderHook(() =>
-    useInfiniteQuery(
-      {
-        queryKey: ['test'],
-        queryFn,
-        initialPageParam: 0,
-        getNextPageParam: (lastPage) => lastPage.nextCursor,
-      },
-      queryClient
-    )
-  )
+  // Fetch next page and test isFetchingNextPage
+  result.current.fetchNextPage()
 
   await vi.waitFor(() => {
-    expect(result.current.isSuccess).toBe(true)
+    expect(result.current.isFetchingNextPage).toBe(true)
   })
 
-  expect(result.current.hasNextPage).toBe(true)
+  resolveNextPage!({
+    items: [3, 4, 5],
+    nextCursor: 6,
+  })
 
+  await vi.waitFor(() => {
+    expect(result.current.isFetchingNextPage).toBe(false)
+  })
+
+  expect(result.current).toMatchObject({
+    data: {
+      pages: [
+        { items: [0, 1, 2], nextCursor: 3 },
+        { items: [3, 4, 5], nextCursor: 6 },
+      ],
+      pageParams: [0, 3],
+    },
+    hasNextPage: true,
+  })
+
+  // Fetch final page with no next cursor
   await result.current.fetchNextPage()
 
-  expect(result.current.data).toMatchObject({
-    pages: [
-      { items: [0, 1, 2], nextCursor: 3 },
-      { items: [3, 4, 5], nextCursor: 6 },
-    ],
-    pageParams: [0, 3],
+  expect(result.current).toMatchObject({
+    data: {
+      pages: [
+        { items: [0, 1, 2], nextCursor: 3 },
+        { items: [3, 4, 5], nextCursor: 6 },
+        { items: [6, 7, 8], nextCursor: undefined },
+      ],
+      pageParams: [0, 3, 6],
+    },
+    hasNextPage: false,
   })
-  expect(result.current.hasNextPage).toBe(true)
-})
-
-it('should not have next page when getNextPageParam returns null', async () => {
-  const queryFn = vi.fn(({ pageParam }: { pageParam: number }) =>
-    Promise.resolve({
-      items: [pageParam, pageParam + 1, pageParam + 2],
-      nextCursor: undefined,
-    })
-  )
-
-  const { result } = renderHook(() =>
-    useInfiniteQuery(
-      {
-        queryKey: ['test'],
-        queryFn,
-        initialPageParam: 0,
-        getNextPageParam: (lastPage) => lastPage.nextCursor,
-      },
-      queryClient
-    )
-  )
-
-  await vi.waitFor(() => {
-    expect(result.current.isSuccess).toBe(true)
-  })
-
-  expect(result.current.hasNextPage).toBe(false)
 })
 
 it('should fetch previous page when getPreviousPageParam is provided', async () => {
@@ -156,85 +156,6 @@ it('should fetch previous page when getPreviousPageParam is provided', async () 
   expect(result.current.hasPreviousPage).toBe(false)
 })
 
-it('should not have previous page when getPreviousPageParam is not provided', async () => {
-  const queryFn = vi.fn(({ pageParam }: { pageParam: number }) =>
-    Promise.resolve({
-      items: [pageParam, pageParam + 1, pageParam + 2],
-      nextCursor: pageParam + 3,
-    })
-  )
-
-  const { result } = renderHook(() =>
-    useInfiniteQuery(
-      {
-        queryKey: ['test'],
-        queryFn,
-        initialPageParam: 0,
-        getNextPageParam: (lastPage) => lastPage.nextCursor,
-      },
-      queryClient
-    )
-  )
-
-  await vi.waitFor(() => {
-    expect(result.current.isSuccess).toBe(true)
-  })
-
-  expect(result.current.hasPreviousPage).toBe(false)
-})
-
-it('should show isFetchingNextPage while fetching next page', async () => {
-  let resolveNextPage: ((value: Page) => void) | undefined
-  let callCount = 0
-  const queryFn = vi.fn(
-    ({ pageParam }: { pageParam: number }): Promise<Page> => {
-      callCount++
-      if (callCount === 1) {
-        // Initial page resolves immediately
-        return Promise.resolve({
-          items: [pageParam, pageParam + 1, pageParam + 2],
-          nextCursor: pageParam + 3,
-        })
-      }
-      // Next page is controlled
-      return new Promise<Page>((resolve) => {
-        resolveNextPage = resolve
-      })
-    }
-  )
-
-  const { result } = renderHook(() =>
-    useInfiniteQuery(
-      {
-        queryKey: ['test'],
-        queryFn,
-        initialPageParam: 0,
-        getNextPageParam: (lastPage) => lastPage.nextCursor,
-      },
-      queryClient
-    )
-  )
-
-  await vi.waitFor(() => {
-    expect(result.current.isSuccess).toBe(true)
-  })
-
-  result.current.fetchNextPage()
-
-  await vi.waitFor(() => {
-    expect(result.current.isFetchingNextPage).toBe(true)
-  })
-
-  resolveNextPage!({
-    items: [3, 4, 5],
-    nextCursor: 6,
-  })
-
-  await vi.waitFor(() => {
-    expect(result.current.isFetchingNextPage).toBe(false)
-  })
-})
-
 it('should handle errors', async () => {
   const error = new Error('fetch failed')
   const queryFn = vi.fn(() => Promise.reject(error))
@@ -263,12 +184,24 @@ it('should handle errors', async () => {
   })
 })
 
-it('should refetch all pages when calling refetch', async () => {
-  const queryFn = vi.fn(({ pageParam }: { pageParam: number }) =>
-    Promise.resolve({
-      items: [pageParam, pageParam + 1, pageParam + 2],
-      nextCursor: pageParam + 3,
-    })
+it('should handle refetch flow: reset to initial page, show isRefetching but not isFetchingNextPage', async () => {
+  let resolveRefetch: ((value: Page) => void) | undefined
+  let callCount = 0
+  const queryFn = vi.fn(
+    ({ pageParam }: { pageParam: number }): Promise<Page> => {
+      callCount++
+      if (callCount === 1 || callCount === 2) {
+        // Initial fetch and first next page resolve immediately
+        return Promise.resolve({
+          items: [pageParam, pageParam + 1, pageParam + 2],
+          nextCursor: pageParam + 3,
+        })
+      }
+      // Refetch is controlled for testing isRefetching state
+      return new Promise<Page>((resolve) => {
+        resolveRefetch = resolve
+      })
+    }
   )
 
   const { result } = renderHook(() =>
@@ -291,47 +224,7 @@ it('should refetch all pages when calling refetch', async () => {
 
   expect(queryFn).toHaveBeenCalledTimes(2) // initial + next page
 
-  await result.current.refetch()
-
-  expect(queryFn).toHaveBeenCalledTimes(3) // refetch resets to initial page
-})
-
-it('should show isRefetching when refetching but not isFetchingNextPage', async () => {
-  let resolveQuery: ((value: Page) => void) | undefined
-  let callCount = 0
-  const queryFn = vi.fn(
-    ({ pageParam }: { pageParam: number }): Promise<Page> => {
-      callCount++
-      if (callCount === 1) {
-        // Initial fetch resolves immediately
-        return Promise.resolve({
-          items: [pageParam],
-          nextCursor: undefined,
-        })
-      }
-      // Refetch is controlled
-      return new Promise<Page>((resolve) => {
-        resolveQuery = resolve
-      })
-    }
-  )
-
-  const { result } = renderHook(() =>
-    useInfiniteQuery(
-      {
-        queryKey: ['test'],
-        queryFn,
-        initialPageParam: 0,
-        getNextPageParam: (lastPage) => lastPage.nextCursor,
-      },
-      queryClient
-    )
-  )
-
-  await vi.waitFor(() => {
-    expect(result.current.isSuccess).toBe(true)
-  })
-
+  // Test refetch and isRefetching state
   result.current.refetch()
 
   await vi.waitFor(() => {
@@ -339,12 +232,14 @@ it('should show isRefetching when refetching but not isFetchingNextPage', async 
     expect(result.current.isFetchingNextPage).toBe(false)
   })
 
-  resolveQuery!({
-    items: [0],
-    nextCursor: undefined,
+  resolveRefetch!({
+    items: [0, 1, 2],
+    nextCursor: 3,
   })
 
   await vi.waitFor(() => {
     expect(result.current.isRefetching).toBe(false)
   })
+
+  expect(queryFn).toHaveBeenCalledTimes(3) // refetch resets to initial page
 })
