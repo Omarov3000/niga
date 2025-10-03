@@ -643,4 +643,69 @@ describe('QueryClient', () => {
     // Note: actual removal would be done by QueryClient's cleanup logic
     // This test verifies the timeout is scheduled correctly
   })
+
+  it('should invalidate queries when mutation with invalidates succeeds', async () => {
+    const client = new QueryClient()
+    const queryFn = vi.fn(() => Promise.resolve('query-data'))
+    const mutationFn = vi.fn(() => Promise.resolve('mutation-data'))
+
+    // Create a query with a dependency and subscribe to it
+    const query = client.syncQueryOptions({
+      queryKey: ['users'],
+      queryFn,
+      depends: ['users-list'],
+    })
+
+    const observer = vi.fn()
+    query.subscribe(observer)
+
+    await query.fetch()
+    expect(query.state.isInvalidated).toBe(false)
+
+    // Create and execute a mutation that invalidates the dependency
+    const mutation = client.addMutation('test-mutation', {
+      mutationFn,
+      invalidates: ['users-list'],
+    })
+
+    // Start mutation but don't await it yet
+    const mutatePromise = mutation.mutate('test-variables')
+
+    // Let the mutation complete and trigger invalidation
+    await mutatePromise
+
+    // Query should have been invalidated and immediately refetched
+    // After refetch completes, isInvalidated is reset to false
+    expect(query.state.isInvalidated).toBe(false)
+    expect(queryFn).toHaveBeenCalledTimes(2)
+  })
+
+  it('should not invalidate queries when mutation has no invalidates', async () => {
+    const client = new QueryClient()
+    const queryFn = vi.fn(() => Promise.resolve('query-data'))
+    const mutationFn = vi.fn(() => Promise.resolve('mutation-data'))
+
+    // Create a query with a dependency and subscribe to it
+    const query = client.syncQueryOptions({
+      queryKey: ['users'],
+      queryFn,
+      depends: ['users-list'],
+    })
+
+    const observer = vi.fn()
+    query.subscribe(observer)
+
+    await query.fetch()
+    expect(query.state.isInvalidated).toBe(false)
+
+    // Create and execute a mutation without invalidates
+    const mutation = client.addMutation('test-mutation', {
+      mutationFn,
+    })
+
+    await mutation.mutate('test-variables')
+
+    // Query should not be invalidated
+    expect(query.state.isInvalidated).toBe(false)
+  })
 })

@@ -35,6 +35,7 @@ export interface QueryOptions {
   refetchOnWindowFocus?: boolean
   refetchInterval?: number
   meta?: Record<string, any>
+  depends?: string[]
 }
 
 export type FetchStatus = 'fetching' | 'paused' | 'idle'
@@ -371,6 +372,7 @@ export interface MutationOptions<TData = unknown, TError = Error, TVariables = u
   retryDelay?: RetryMutationDelayValue<TError>
   throwOnError?: boolean
   meta?: Record<string, any>
+  invalidates?: string[]
 }
 
 export class Mutation<TData = unknown, TError = Error, TVariables = unknown> {
@@ -378,10 +380,12 @@ export class Mutation<TData = unknown, TError = Error, TVariables = unknown> {
   options: MutationOptions<TData, TError, TVariables>
   state: MutationState<TData, TError, TVariables>
   observers: Array<(state: MutationState<TData, TError, TVariables>) => void> = []
+  private queryClient?: QueryClient
 
-  constructor(id: string, options: MutationOptions<TData, TError, TVariables>) {
+  constructor(id: string, options: MutationOptions<TData, TError, TVariables>, queryClient?: QueryClient) {
     this.id = id
     this.options = options
+    this.queryClient = queryClient
     this.state = {
       data: undefined,
       error: undefined,
@@ -444,6 +448,18 @@ export class Mutation<TData = unknown, TError = Error, TVariables = unknown> {
 
         if (this.options.onSettled) {
           await this.options.onSettled(data, undefined, variables, this)
+        }
+
+        // Auto-invalidate dependent queries
+        if (this.queryClient && this.options.invalidates) {
+          for (const dep of this.options.invalidates) {
+            const queries = this.queryClient['dependencyAndQuery'].get(dep)
+            if (queries) {
+              for (const query of queries) {
+                query.invalidate()
+              }
+            }
+          }
         }
 
         return data
@@ -539,6 +555,7 @@ export class Mutation<TData = unknown, TError = Error, TVariables = unknown> {
 export class QueryClient {
   private queries = new Map<string, Query>()
   private mutations = new Map<string, Mutation>()
+  private dependencyAndQuery = new Map<string, Set<Query>>()
   private defaultOptions: GlobalQuerySettings
   private defaultMutationOptions: GlobalMutationSettings
   private windowFocusUnsubscribe?: () => void
@@ -608,6 +625,16 @@ export class QueryClient {
       query['enabled'] = enabled
       this.queries.set(queryHash, query)
 
+      // Register dependencies
+      if (mergedOptions.depends) {
+        for (const dep of mergedOptions.depends) {
+          if (!this.dependencyAndQuery.has(dep)) {
+            this.dependencyAndQuery.set(dep, new Set())
+          }
+          this.dependencyAndQuery.get(dep)!.add(query)
+        }
+      }
+
       // Set up window focus listener if this query needs it (delayed to avoid race conditions)
       if (mergedOptions.refetchOnWindowFocus) {
         queueMicrotask(() => this.ensureWindowFocusListener())
@@ -631,6 +658,23 @@ export class QueryClient {
         query.options = this.mergeOptions(options)
         if (enabledChanged) {
           query.setEnabled(newEnabledValue)
+        }
+      }
+
+      // Update dependencies
+      const oldDepends = oldOptionsWithoutEnabled.depends || []
+      const newDepends = mergedNewOptions.depends || []
+      if (!deepEqual(oldDepends, newDepends)) {
+        // Remove old dependencies
+        for (const dep of oldDepends) {
+          this.dependencyAndQuery.get(dep)?.delete(query)
+        }
+        // Add new dependencies
+        for (const dep of newDepends) {
+          if (!this.dependencyAndQuery.has(dep)) {
+            this.dependencyAndQuery.set(dep, new Set())
+          }
+          this.dependencyAndQuery.get(dep)!.add(query)
         }
       }
     }
@@ -785,7 +829,7 @@ export class QueryClient {
 
     if (!mutation) {
       const mergedOptions = this.mergeMutationOptions(options)
-      mutation = new Mutation<TData, TError, TVariables>(mutationId, mergedOptions)
+      mutation = new Mutation<TData, TError, TVariables>(mutationId, mergedOptions, this)
       this.mutations.set(mutationId, mutation as unknown as Mutation)
     } else {
       // Compare options and update if changed
