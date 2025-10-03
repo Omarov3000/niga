@@ -12,10 +12,10 @@ function sortedJSONStringify(obj: any): string {
 
 function migrateDB(
   db: Database,
-  bin: Db,
+  orm: Db,
   logging = false,
 ) {
-  const currentSnapshot = bin._prepareSnapshot().snapshot
+  const currentSnapshot = orm._prepareSnapshot().snapshot
   const currentSnapshotS = sortedJSONStringify(currentSnapshot)
   const currentSnapshotHash = hashString128(currentSnapshotS)
 
@@ -56,7 +56,7 @@ function migrateDB(
     }
   }
 
-  const { migration } = bin._prepareSnapshot(prevSnapshot)
+  const { migration } = orm._prepareSnapshot(prevSnapshot)
 
   const migrationTableCreate = `
     CREATE TABLE IF NOT EXISTS _migrations (
@@ -88,7 +88,7 @@ export class OrmMigratingBrowserDriver implements OrmDriver {
   private _driver?: OrmBrowserDriver
 
   constructor(
-    private bin: Db,
+    private orm: Db,
     private dbPath = ':memory:',
     private onInit?: (driver: OrmBrowserDriver) => void,
     logging = false,
@@ -107,7 +107,7 @@ export class OrmMigratingBrowserDriver implements OrmDriver {
   private async init(): Promise<void> {
     try {
       const db = makeBrowserSQLite(this.dbPath)
-      migrateDB(db, this.bin, this.logging)
+      migrateDB(db, this.orm, this.logging)
       this._driver = new OrmBrowserDriver(db)
       this._driver.logging = this.logging
       this.onInit?.(this._driver)

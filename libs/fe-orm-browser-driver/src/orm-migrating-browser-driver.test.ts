@@ -8,8 +8,8 @@ test('creates tables on first use', async () => {
     name: o.text(),
   })
 
-  const bin = o.db({ schema: { users } })
-  const driver = new OrmMigratingBrowserDriver(bin)
+  const orm = o.db({ schema: { users } })
+  const driver = new OrmMigratingBrowserDriver(orm)
 
   const result = await driver.run({ query: 'SELECT COUNT(*) as count FROM users', params: [] })
 
@@ -33,8 +33,8 @@ test('handles schema changes', async () => {
   })
 
   // First migration with users table
-  const initialBin = o.db({ schema: { users } })
-  const driver1 = new OrmMigratingBrowserDriver(initialBin, ':memory:')
+  const initialOrm = o.db({ schema: { users } })
+  const driver1 = new OrmMigratingBrowserDriver(initialOrm, ':memory:')
 
   await driver1.run({ query: 'SELECT COUNT(*) FROM users', params: [] })
 
@@ -45,8 +45,8 @@ test('handles schema changes', async () => {
     userId: o.integer(),
   })
 
-  const updatedBin = o.db({ schema: { users, posts } })
-  const driver2 = new OrmMigratingBrowserDriver(updatedBin, ':memory:')
+  const updatedOrm = o.db({ schema: { users, posts } })
+  const driver2 = new OrmMigratingBrowserDriver(updatedOrm, ':memory:')
 
   await driver2.run({ query: 'SELECT COUNT(*) FROM posts', params: [] })
 
@@ -67,8 +67,8 @@ test('handles initialization errors', async () => {
     name: o.text(),
   })
 
-  const bin = o.db({ schema: { users } })
-  const driver = new OrmMigratingBrowserDriver(bin, '/invalid/path')
+  const orm = o.db({ schema: { users } })
+  const driver = new OrmMigratingBrowserDriver(orm, '/invalid/path')
 
   await expect(driver.run({ query: 'SELECT 1', params: [] })).rejects.toThrow()
 })
@@ -79,13 +79,13 @@ test('calls onInit callback', async () => {
     name: o.text(),
   })
 
-  const bin = o.db({ schema: { users } })
+  const orm = o.db({ schema: { users } })
 
   let initCallbackCalled = false
   let callbackDriver = null
 
   const driver = new OrmMigratingBrowserDriver(
-    bin,
+    orm,
     ':memory:',
     (browserDriver) => {
       initCallbackCalled = true
@@ -105,8 +105,8 @@ test('basic operations work', async () => {
     name: o.text(),
   })
 
-  const bin = o.db({ schema: { users } })
-  const driver = new OrmMigratingBrowserDriver(bin)
+  const orm = o.db({ schema: { users } })
+  const driver = new OrmMigratingBrowserDriver(orm)
 
   // Insert data using exec
   await driver.exec('INSERT INTO users (id, name) VALUES (1, \'Alice\')')
