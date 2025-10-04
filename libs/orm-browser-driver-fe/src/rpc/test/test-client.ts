@@ -2,6 +2,7 @@ import type { AnyRouter, AnyProcedure, Procedure, MiddlewareContext } from '../c
 import { executeMiddlewares } from '../core/middleware'
 import { RpcError } from '../core/error'
 import { SchemaError } from '@w/schema'
+import type { output } from '@w/schema'
 
 type InferProcedureInput<T> = T extends Procedure<infer TInput, any, any, any> ? TInput : never
 type InferProcedureOutput<T> = T extends Procedure<any, infer TOutput, any, any> ? TOutput : never
@@ -9,8 +10,12 @@ type InferProcedureOutput<T> = T extends Procedure<any, infer TOutput, any, any>
 type CreateClientRouter<TRouter extends AnyRouter> = {
   [K in keyof TRouter]: TRouter[K] extends AnyProcedure
     ? {
-        query: (input?: InferProcedureInput<TRouter[K]>) => Promise<InferProcedureOutput<TRouter[K]>>
-        mutate: (input?: InferProcedureInput<TRouter[K]>) => Promise<InferProcedureOutput<TRouter[K]>>
+        query: InferProcedureInput<TRouter[K]> extends undefined
+          ? (input?: undefined) => Promise<InferProcedureOutput<TRouter[K]>>
+          : (input: InferProcedureInput<TRouter[K]>) => Promise<InferProcedureOutput<TRouter[K]>>
+        mutate: InferProcedureInput<TRouter[K]> extends undefined
+          ? (input?: undefined) => Promise<InferProcedureOutput<TRouter[K]>>
+          : (input: InferProcedureInput<TRouter[K]>) => Promise<InferProcedureOutput<TRouter[K]>>
       }
     : TRouter[K] extends AnyRouter
     ? CreateClientRouter<TRouter[K]>

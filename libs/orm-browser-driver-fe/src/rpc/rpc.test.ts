@@ -48,6 +48,8 @@ it('executes basic query', async () => {
 
   const client = createRpcTestClient({ appRouter })
 
+  expectTypeOf(client.users.list.query).toEqualTypeOf<(input?: undefined) => Promise<{ id: string; name: string }[]>>()
+
   const result = await client.users.list.query()
 
   expect(result).toMatchObject([
@@ -72,6 +74,8 @@ it('executes mutation with input validation', async () => {
   })
 
   const client = createRpcTestClient({ appRouter })
+
+  expectTypeOf(client.users.create.mutate).toEqualTypeOf<(input: { name: string }) => Promise<{ id: string; name: string }>>()
 
   const result = await client.users.create.mutate({ name: 'Charlie' })
 
@@ -254,4 +258,93 @@ it('supports procedures without output schema', async () => {
   const result = await client.test.query()
 
   expect(result).toEqual({ arbitrary: 'data', number: 42 })
+})
+
+it('infers output from .output() schema when provided', async () => {
+  const appRouter = t.router({
+    withOutputSchema: publicProcedure
+      .input(s.object({ name: s.string() }))
+      .output(s.object({ id: s.string(), success: s.boolean() }))
+      .mutation(({ input }) => ({ id: '1', success: true })),
+  })
+
+  const client = createRpcTestClient({ appRouter })
+
+  expectTypeOf(client.withOutputSchema.mutate).toEqualTypeOf<
+    (input: { name: string }) => Promise<{ id: string; success: boolean }>
+  >()
+
+  const result = await client.withOutputSchema.mutate({ name: 'test' })
+  expect(result).toEqual({ id: '1', success: true })
+  expectTypeOf(result).toEqualTypeOf<{ id: string; success: boolean }>()
+})
+
+describe('rpc type inference', () => {
+  it('infers all input/output combinations correctly', () => {
+    const userSchema = s.object({ id: s.string(), name: s.string() })
+    const inputSchema = s.object({ name: s.string() })
+    const outputSchema = s.object({ id: s.string(), success: s.boolean() })
+
+    const appRouter = t.router({
+      // No input, no output - infers from return
+      noInputNoOutput: publicProcedure.query(() => ({ value: 42 })),
+
+      // No input, with output schema
+      noInputWithOutput: publicProcedure.output(userSchema).query(() => ({ id: '1', name: 'Alice' })),
+
+      // With input, no output - infers from return
+      withInputNoOutput: publicProcedure.input(inputSchema).mutation(({ input }) => ({
+        id: '1',
+        name: input.name,
+      })),
+
+      // With input, with output schema
+      withInputWithOutput: publicProcedure
+        .input(inputSchema)
+        .output(outputSchema)
+        .mutation(() => ({ id: '1', success: true })),
+
+      // Async without output schema
+      asyncNoOutput: publicProcedure.input(inputSchema).query(async ({ input }) => ({
+        name: input.name,
+        timestamp: Date.now(),
+      })),
+
+      // Async with output schema
+      asyncWithOutput: publicProcedure
+        .input(inputSchema)
+        .output(userSchema)
+        .query(async () => ({ id: '1', name: 'Alice' })),
+    })
+
+    const client = createRpcTestClient({ appRouter })
+
+    // No input = optional undefined parameter
+    expectTypeOf(client.noInputNoOutput.query).toEqualTypeOf<
+      (input?: undefined) => Promise<{ value: number }>
+    >()
+
+    expectTypeOf(client.noInputWithOutput.query).toEqualTypeOf<
+      (input?: undefined) => Promise<{ id: string; name: string }>
+    >()
+
+    // With input = required parameter
+    expectTypeOf(client.withInputNoOutput.mutate).toEqualTypeOf<
+      (input: { name: string }) => Promise<{ id: string; name: string }>
+    >()
+
+    // Output schema overrides inferred type
+    expectTypeOf(client.withInputWithOutput.mutate).toEqualTypeOf<
+      (input: { name: string }) => Promise<{ id: string; success: boolean }>
+    >()
+
+    // Async handlers work the same
+    expectTypeOf(client.asyncNoOutput.query).toEqualTypeOf<
+      (input: { name: string }) => Promise<{ name: string; timestamp: number }>
+    >()
+
+    expectTypeOf(client.asyncWithOutput.query).toEqualTypeOf<
+      (input: { name: string }) => Promise<{ id: string; name: string }>
+    >()
+  })
 })

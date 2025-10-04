@@ -4,28 +4,42 @@ export interface RpcBuilderConfig<TCtx, TMeta> {
   defaultCtx?: TCtx
 }
 
-export interface ProcedureBuilder<TCtx = any, TMeta = any> {
+export interface ProcedureBuilder<TCtx = any, TMeta = any, TInputSchema = undefined, TOutputSchema = undefined> {
   input<TSchema extends { _zod: { output: any } }>(
     schema: TSchema
-  ): ProcedureBuilder<TCtx, TMeta> & { _inputSchema: TSchema }
+  ): ProcedureBuilder<TCtx, TMeta, TSchema, TOutputSchema>
 
   output<TSchema extends { _zod: { output: any } }>(
     schema: TSchema
-  ): ProcedureBuilder<TCtx, TMeta> & { _outputSchema: TSchema }
+  ): ProcedureBuilder<TCtx, TMeta, TInputSchema, TSchema>
 
-  meta(metadata: TMeta): ProcedureBuilder<TCtx, TMeta>
+  meta(metadata: TMeta): ProcedureBuilder<TCtx, TMeta, TInputSchema, TOutputSchema>
 
   use<TNewCtx = TCtx>(
     middleware: Middleware<TCtx, TNewCtx, TMeta>
-  ): ProcedureBuilder<TNewCtx, TMeta>
+  ): ProcedureBuilder<TNewCtx, TMeta, TInputSchema, TOutputSchema>
 
   query<TOutput>(
-    handler: (opts: ProcedureContext<TCtx, TMeta>) => Promise<TOutput> | TOutput
-  ): Procedure<any, TOutput, TCtx, TMeta>
+    handler: (opts: Omit<ProcedureContext<TCtx, TMeta>, 'input'> & {
+      input: TInputSchema extends { _zod: { output: infer TInput } } ? TInput : undefined
+    }) => Promise<TOutput> | TOutput
+  ): Procedure<
+    TInputSchema extends { _zod: { output: infer TInput } } ? TInput : undefined,
+    TOutputSchema extends { _zod: { output: infer TOut } } ? TOut : TOutput,
+    TCtx,
+    TMeta
+  >
 
   mutation<TOutput>(
-    handler: (opts: ProcedureContext<TCtx, TMeta>) => Promise<TOutput> | TOutput
-  ): Procedure<any, TOutput, TCtx, TMeta>
+    handler: (opts: Omit<ProcedureContext<TCtx, TMeta>, 'input'> & {
+      input: TInputSchema extends { _zod: { output: infer TInput } } ? TInput : undefined
+    }) => Promise<TOutput> | TOutput
+  ): Procedure<
+    TInputSchema extends { _zod: { output: infer TInput } } ? TInput : undefined,
+    TOutputSchema extends { _zod: { output: infer TOut } } ? TOut : TOutput,
+    TCtx,
+    TMeta
+  >
 
   _middlewares: Middleware<any, any, TMeta>[]
   _inputSchema?: any
@@ -33,9 +47,9 @@ export interface ProcedureBuilder<TCtx = any, TMeta = any> {
   _meta?: TMeta
 }
 
-function createProcedureBuilder<TCtx, TMeta>(
+function createProcedureBuilder<TCtx, TMeta, TInputSchema = undefined, TOutputSchema = undefined>(
   middlewares: Middleware<any, any, TMeta>[] = []
-): ProcedureBuilder<TCtx, TMeta> {
+): ProcedureBuilder<TCtx, TMeta, TInputSchema, TOutputSchema> {
   const builder: any = {
     _middlewares: middlewares,
     _inputSchema: undefined,
@@ -43,7 +57,7 @@ function createProcedureBuilder<TCtx, TMeta>(
     _meta: undefined,
 
     input(schema: any) {
-      const newBuilder = createProcedureBuilder<TCtx, TMeta>(this._middlewares)
+      const newBuilder = createProcedureBuilder<TCtx, TMeta, any, TOutputSchema>(this._middlewares)
       newBuilder._inputSchema = schema
       newBuilder._outputSchema = this._outputSchema
       newBuilder._meta = this._meta
@@ -51,7 +65,7 @@ function createProcedureBuilder<TCtx, TMeta>(
     },
 
     output(schema: any) {
-      const newBuilder = createProcedureBuilder<TCtx, TMeta>(this._middlewares)
+      const newBuilder = createProcedureBuilder<TCtx, TMeta, TInputSchema, any>(this._middlewares)
       newBuilder._inputSchema = this._inputSchema
       newBuilder._outputSchema = schema
       newBuilder._meta = this._meta
@@ -59,7 +73,7 @@ function createProcedureBuilder<TCtx, TMeta>(
     },
 
     meta(metadata: TMeta) {
-      const newBuilder = createProcedureBuilder<TCtx, TMeta>(this._middlewares)
+      const newBuilder = createProcedureBuilder<TCtx, TMeta, TInputSchema, TOutputSchema>(this._middlewares)
       newBuilder._inputSchema = this._inputSchema
       newBuilder._outputSchema = this._outputSchema
       newBuilder._meta = metadata
@@ -67,7 +81,7 @@ function createProcedureBuilder<TCtx, TMeta>(
     },
 
     use(middleware: Middleware<any, any, TMeta>) {
-      return createProcedureBuilder<any, TMeta>([...this._middlewares, middleware])
+      return createProcedureBuilder<any, TMeta, TInputSchema, TOutputSchema>([...this._middlewares, middleware])
     },
 
     query(handler: any) {
@@ -80,7 +94,7 @@ function createProcedureBuilder<TCtx, TMeta>(
           middlewares: this._middlewares,
           meta: this._meta,
         },
-      }
+      } as any
     },
 
     mutation(handler: any) {
@@ -93,7 +107,7 @@ function createProcedureBuilder<TCtx, TMeta>(
           middlewares: this._middlewares,
           meta: this._meta,
         },
-      }
+      } as any
     },
   }
 
