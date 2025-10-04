@@ -6,6 +6,18 @@ import { o } from '@w/orm'
 import { OrmBrowserDriver, makeBrowserSQLite } from './orm-browser-driver'
 
 const queryClient = new QueryClient()
+const driver = new OrmBrowserDriver(makeBrowserSQLite())
+const clearRef: { current?: Array<() => Promise<void>> } = { current: [] };
+
+afterEach(async () => {
+  const clearFns = [...(clearRef.current ?? [])];
+    clearRef.current = [];
+
+  for (const fn of clearFns.reverse()) {
+    await fn();
+  }
+});
+
 
 beforeEach(() => {
   queryClient.clear()
@@ -22,10 +34,7 @@ it('should update query when mutations are applied (insert, update, delete)', as
     name: o.text().notNull(),
     age: o.integer(),
   })
-  const db = o.db({ schema: { users: usersTable } })
-  const sqlite = makeBrowserSQLite()
-  await db._connectDriver(new OrmBrowserDriver(sqlite))
-  sqlite.exec(db.getSchemaDefinition())
+  const db = await o.testDb({ schema: { users: usersTable } }, driver, clearRef)
 
   function TestComponent() {
     const query = useSuspenseQuery(db.users.select().options(), queryClient)
@@ -83,10 +92,7 @@ it('should update db.query with CTE when insert mutation is applied', async () =
     id: o.id(),
     name: o.text().notNull(),
   })
-  const db = o.db({ schema: { users: usersTable } })
-  const sqlite = makeBrowserSQLite()
-  await db._connectDriver(new OrmBrowserDriver(sqlite))
-  sqlite.exec(db.getSchemaDefinition())
+  const db = await o.testDb({ schema: { users: usersTable } }, driver, clearRef)
 
   const userCountSchema = o.s.object({
     count: o.s.integer(),
