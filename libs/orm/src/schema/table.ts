@@ -7,8 +7,8 @@ import { analyze } from '../true-sql/analyze';
 import { rawQueryToAst } from '../true-sql/raw-query-to-ast';
 import { extractTables } from '../true-sql/extract-tables';
 import { IndexDefinition, ConstraintDefinition, SecurityRule, QueryContext, TableMetadata, OrmDriver, ColumnMetadata } from './types';
-import type { UseQueryOptions } from '../../../query-fe/src/use-query'
-import type { UseMutationOptions } from '../../../query-fe/src/use-mutation'
+import type { UseQueryOptions } from '../../../query-fe/src/use-query-types'
+import type { UseMutationOptions } from '../../../query-fe/src/use-mutation-types'
 import { s } from '@w/schema';
 import type { Schema, ObjectSchema } from '@w/schema';
 

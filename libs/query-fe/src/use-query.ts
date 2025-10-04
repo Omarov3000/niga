@@ -1,12 +1,9 @@
 import { useCallback, useSyncExternalStore } from 'react'
-import { Query, QueryClient, type QueryOptions, type QueryState } from './query-client'
+import { Query, QueryClient, type QueryState } from './query-client'
 import { useQueryClient } from './query-client-provider'
+import type { UseQueryOptions } from './use-query-types'
 
-export interface UseQueryOptions<TQueryFnData = unknown, TData = TQueryFnData>
-  extends Omit<QueryOptions, 'queryFn'> {
-  queryFn: (options: { signal: AbortSignal; queryKey: unknown[] }) => Promise<TQueryFnData>
-  select?: (data: TQueryFnData) => TData
-}
+export type { UseQueryOptions } from './use-query-types'
 
 export interface UseQueryResult<TData = unknown> {
   data: TData | undefined

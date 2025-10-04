@@ -4,3 +4,6 @@ declare module "cloudflare:test" {
     testD1: D1Database
   }
 }
+
+// For query-fe compatibility
+declare const window: any;

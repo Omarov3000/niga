@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { nanoid } from 'nanoid'
-import { QueryClient, type MutationOptions } from './query-client'
+import { QueryClient } from './query-client'
 import { useQueryClient } from './query-client-provider'
+import type { UseMutationOptions } from './use-mutation-types'
 
-export interface UseMutationOptions<TData = unknown, TVariables = unknown>
-  extends MutationOptions<TData, TVariables> {}
+export type { UseMutationOptions } from './use-mutation-types'
 
 export interface UseMutationResult<TData = unknown, TVariables = unknown> {
   data: TData | undefined

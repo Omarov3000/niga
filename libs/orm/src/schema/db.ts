@@ -21,7 +21,7 @@ import { normalizeQueryAnalysisToRuntime } from '../true-sql/normalize-analysis'
 import { analyze } from '../true-sql/analyze';
 import { rawQueryToAst } from '../true-sql/raw-query-to-ast';
 import { extractTables } from '../true-sql/extract-tables';
-import type { UseQueryOptions } from '../../../query-fe/src/use-query'
+import type { UseQueryOptions } from '../../../query-fe/src/use-query-types'
 
 export interface DbConstructorOptions {
   schema: Record<string, Table<any, any>>;

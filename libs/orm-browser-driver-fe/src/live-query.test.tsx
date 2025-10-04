@@ -88,8 +88,8 @@ it('should update db.query with CTE when insert mutation is applied', async () =
   await db._connectDriver(new OrmBrowserDriver(sqlite))
   sqlite.exec(db.getSchemaDefinition())
 
-  const userCountSchema = o.z.object({
-    count: o.z.integer(),
+  const userCountSchema = o.s.object({
+    count: o.s.integer(),
   })
 
   function TestComponent() {
