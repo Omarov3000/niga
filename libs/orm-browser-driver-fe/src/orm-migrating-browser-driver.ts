@@ -5,99 +5,28 @@ import type { Db } from '@w/orm'
 import { o } from '@w/orm'
 import { OrmBrowserDriver, makeBrowserSQLite } from './orm-browser-driver'
 import { hashString128 } from './hash-string'
-
-function sortedJSONStringify(obj: any): string {
-  return JSON.stringify(obj, Object.keys(obj).sort())
-}
-
-function migrateDB(
-  db: Database,
-  orm: Db,
-  logging = false,
-) {
-  const currentSnapshot = orm._prepareSnapshot().snapshot
-  const currentSnapshotS = sortedJSONStringify(currentSnapshot)
-  const currentSnapshotHash = hashString128(currentSnapshotS)
-
-  let needsMigration = false
-  let hasMigrationsTable = false
-
-  // Check if migrations table exists using prepare/step pattern
-  const checkTableStmt = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='_migrations'`)
-  const tableExists = checkTableStmt.step()
-  checkTableStmt.finalize()
-
-  if (!tableExists) {
-    needsMigration = true
-  } else {
-    hasMigrationsTable = true
-    // Check if current snapshot hash exists
-    const checkHashStmt = db.prepare('SELECT 1 FROM _migrations WHERE snapshot_hash = ?')
-    checkHashStmt.bind([currentSnapshotHash])
-    const hashExists = checkHashStmt.step()
-    checkHashStmt.finalize()
-    if (!hashExists) needsMigration = true
-  }
-
-  if (!needsMigration) return
-
-  let prevSnapshot: TableSnapshot[] | undefined
-  if (hasMigrationsTable) {
-    const getSnapshotStmt = db.prepare('SELECT snapshot FROM _migrations')
-    const snapshots = []
-    while (getSnapshotStmt.step()) {
-      snapshots.push(getSnapshotStmt.get({}))
-    }
-    getSnapshotStmt.finalize()
-
-    if (snapshots.length > 1) throw new Error('Multiple migrations not supported (impossible)')
-    if (snapshots.length > 0) {
-      prevSnapshot = JSON.parse(snapshots[0].snapshot as string) as TableSnapshot[]
-    }
-  }
-
-  const { migration } = orm._prepareSnapshot(prevSnapshot)
-
-  const migrationTableCreate = `
-    CREATE TABLE IF NOT EXISTS _migrations (
-      id TEXT PRIMARY KEY,
-      snapshot TEXT NOT NULL,
-      snapshot_hash TEXT NOT NULL
-    );
-
-    ${migration.sql}
-
-    INSERT OR REPLACE INTO _migrations (id, snapshot, snapshot_hash) VALUES ('snapshot', '${currentSnapshotS}', '${currentSnapshotHash}');`
-
-  if (logging) {
-    console.info('migrationTableCreate')
-    console.info(migrationTableCreate)
-  }
-
-  db.transaction(() => {
-    db.exec(migrationTableCreate)
-  })
-
-  if (logging) console.info('migrateDb succeeded')
-}
+import { WorkerDriverAdapter } from './worker/worker-driver-adapter'
+import { migrateDB, sortedJSONStringify } from './migrate-db'
 
 export class OrmMigratingBrowserDriver implements OrmDriver {
   logging: boolean = false
   private connectingPromise?: Promise<void>
   private connectionError?: Error
-  private _driver?: OrmBrowserDriver
+  private _driver?: OrmDriver
+  private workerAdapter?: WorkerDriverAdapter
 
   constructor(
     private orm: Db,
     private dbPath = ':memory:',
     private onInit?: (driver: OrmBrowserDriver) => void,
     logging = false,
+    private useWorkerThread = false,
   ) {
     this.logging = logging
     this.connectingPromise = this.init()
   }
 
-  private async driver(): Promise<OrmBrowserDriver> {
+  private async driver(): Promise<OrmDriver> {
     if (this.connectingPromise) await this.connectingPromise
     if (this.connectionError) throw this.connectionError
     if (!this._driver) throw new Error('Driver not initialized')
@@ -106,11 +35,43 @@ export class OrmMigratingBrowserDriver implements OrmDriver {
 
   private async init(): Promise<void> {
     try {
-      const db = makeBrowserSQLite(this.dbPath)
-      migrateDB(db, this.orm, this.logging)
-      this._driver = new OrmBrowserDriver(db)
-      this._driver.logging = this.logging
-      this.onInit?.(this._driver)
+      if (this.useWorkerThread) {
+        // Create worker and use WorkerDriverAdapter
+        const worker = new Worker(new URL('./worker/db-worker.ts', import.meta.url), { type: 'module' })
+        this.workerAdapter = new WorkerDriverAdapter(worker)
+        this.workerAdapter.logging = this.logging
+
+        // Prepare snapshot and migration for worker
+        const currentSnapshot = this.orm._prepareSnapshot().snapshot
+        const currentSnapshotS = sortedJSONStringify(currentSnapshot)
+        const currentSnapshotHash = hashString128(currentSnapshotS)
+        const { migration } = this.orm._prepareSnapshot()
+
+        // Initialize worker with migration
+        await this.workerAdapter.sendMessage('init', {
+          dbPath: this.dbPath,
+          snapshot: currentSnapshot,
+          migrationSql: migration.sql,
+          snapshotHash: currentSnapshotHash,
+          logging: this.logging,
+        })
+
+        this._driver = this.workerAdapter
+        // Note: onInit callback expects OrmBrowserDriver, but we have WorkerDriverAdapter
+        // This is a type limitation - the callback won't be called in worker mode
+      } else {
+        // Existing: create OrmBrowserDriver on main thread
+        const db = makeBrowserSQLite(this.dbPath)
+        const currentSnapshot = this.orm._prepareSnapshot().snapshot
+        const currentSnapshotS = sortedJSONStringify(currentSnapshot)
+        const currentSnapshotHash = hashString128(currentSnapshotS)
+        const { migration } = this.orm._prepareSnapshot()
+        migrateDB(db, currentSnapshot, migration.sql, currentSnapshotHash, this.logging)
+        const browserDriver = new OrmBrowserDriver(db)
+        browserDriver.logging = this.logging
+        this._driver = browserDriver
+        this.onInit?.(browserDriver)
+      }
     } catch (e) {
       this.connectionError = e instanceof Error ? e : new Error(String(e))
     }
