@@ -55,6 +55,14 @@ export interface Procedure<TInput = any, TOutput = any, TCtx = any, TMeta = any>
     middlewares: Middleware<any, any, TMeta>[]
     meta?: TMeta
   }
+  _types: {
+    query: TInput extends undefined
+      ? (input?: undefined) => Promise<TOutput>
+      : (input: TInput) => Promise<TOutput>
+    mutate: TInput extends undefined
+      ? (input?: undefined) => Promise<TOutput>
+      : (input: TInput) => Promise<TOutput>
+  }
 }
 
 export type inferRouterInputs<TRouter extends AnyRouter> = {

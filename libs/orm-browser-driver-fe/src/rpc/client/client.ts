@@ -1,13 +1,10 @@
-import type { AnyRouter, AnyProcedure, Procedure } from '../core/types'
-
-type InferProcedureInput<T> = T extends Procedure<infer TInput, any, any, any> ? TInput : never
-type InferProcedureOutput<T> = T extends Procedure<any, infer TOutput, any, any> ? TOutput : never
+import type { AnyRouter, AnyProcedure } from '../core/types'
 
 type CreateClientRouter<TRouter extends AnyRouter> = {
   [K in keyof TRouter]: TRouter[K] extends AnyProcedure
     ? {
-        query: (input?: InferProcedureInput<TRouter[K]>) => Promise<InferProcedureOutput<TRouter[K]>>
-        mutate: (input?: InferProcedureInput<TRouter[K]>) => Promise<InferProcedureOutput<TRouter[K]>>
+        query: TRouter[K]['_types']['query']
+        mutate: TRouter[K]['_types']['mutate']
       }
     : TRouter[K] extends AnyRouter
     ? CreateClientRouter<TRouter[K]>
