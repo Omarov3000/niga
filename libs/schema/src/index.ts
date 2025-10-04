@@ -21,6 +21,9 @@ import { custom } from "./schemas/custom";
 import { _function } from "./schemas/function";
 import { codec, decode, safeDecode, encode, safeEncode } from "./schemas/codec";
 
+// Export toZod utility
+export { toZod } from "./to-zod";
+
 // Export schema types
 export type { StringSchema } from "./schemas/string";
 export type { NumberSchema } from "./schemas/number";
