@@ -46,7 +46,7 @@ it('executes basic query', async () => {
     },
   })
 
-  const client = createRpcTestClient({ appRouter, ctx: (ctx) => ({ ...ctx, db }) })
+  const client = createRpcTestClient({ appRouter })
 
   const result = await client.users.list.query()
 
@@ -63,7 +63,6 @@ it('executes mutation with input validation', async () => {
     users: {
       create: publicProcedure
         .input(s.object({ name: s.string() }))
-        .output(s.object({ id: s.string(), name: s.string() }))
         .mutation(async ({ input, ctx }) => {
           const newUser = { id: String(ctx.db.users.length + 1), name: input.name }
           ctx.db.users.push(newUser)
@@ -72,7 +71,7 @@ it('executes mutation with input validation', async () => {
     },
   })
 
-  const client = createRpcTestClient({ appRouter, ctx: (ctx) => ({ ...ctx, db }) })
+  const client = createRpcTestClient({ appRouter })
 
   const result = await client.users.create.mutate({ name: 'Charlie' })
 
@@ -94,14 +93,22 @@ it('validates input schema', async () => {
 
   const client = createRpcTestClient({ appRouter })
 
-  await expect(client.users.create.mutate({ name: 123 } as any)).rejects.toThrow('Input validation failed')
+  try {
+    await client.users.create.mutate({ name: 123 } as any)
+    expect.fail('Should have thrown')
+  } catch (error) {
+    expect(error).toBeInstanceOf(RpcError)
+    const rpcError = error as RpcError
+    expect(rpcError.code).toBe(400)
+    expect(rpcError.message).toBe('Input validation failed')
+    expect(rpcError.cause).toBeInstanceOf(s.SchemaError)
+  }
 })
 
 it('applies middleware correctly', async () => {
   const appRouter = t.router({
     users: {
       me: protectedProcedure
-        .output(s.object({ id: s.string() }))
         .query(async ({ ctx }) => {
           return ctx.getUser()
         }),
@@ -132,7 +139,7 @@ it('handles nested routers', async () => {
     },
   })
 
-  const client = createRpcTestClient({ appRouter, ctx: (ctx) => ({ ...ctx, db }) })
+  const client = createRpcTestClient({ appRouter })
 
   const result = await client.users.profile.get.query({ id: '1' })
 
@@ -206,7 +213,16 @@ it('validates output schema', async () => {
 
   const client = createRpcTestClient({ appRouter })
 
-  await expect(client.test.query()).rejects.toThrow('Output validation failed')
+  try {
+    await client.test.query()
+    expect.fail('Should have thrown')
+  } catch (error) {
+    expect(error).toBeInstanceOf(RpcError)
+    const rpcError = error as RpcError
+    expect(rpcError.code).toBe(500)
+    expect(rpcError.message).toBe('Output validation failed')
+    expect(rpcError.cause).toBeInstanceOf(s.SchemaError)
+  }
 })
 
 it('supports procedures without input', async () => {

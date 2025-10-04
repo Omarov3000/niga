@@ -4,10 +4,12 @@ export type ErrorCode = ClientErrorCode | ServerErrorCode
 
 export class RpcError extends Error {
   code: ErrorCode
+  cause?: Error
 
-  constructor(code: ErrorCode, message: string) {
+  constructor(code: ErrorCode, message: string, options?: { cause?: Error }) {
     super(message)
     this.code = code
     this.name = 'RpcError'
+    this.cause = options?.cause
   }
 }

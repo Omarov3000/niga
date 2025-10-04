@@ -1,5 +1,7 @@
 import type { AnyRouter, AnyProcedure, Procedure, MiddlewareContext } from '../core/types'
 import { executeMiddlewares } from '../core/middleware'
+import { RpcError } from '../core/error'
+import { SchemaError } from '@w/schema'
 
 type InferProcedureInput<T> = T extends Procedure<infer TInput, any, any, any> ? TInput : never
 type InferProcedureOutput<T> = T extends Procedure<any, infer TOutput, any, any> ? TOutput : never
@@ -16,7 +18,7 @@ type CreateClientRouter<TRouter extends AnyRouter> = {
 }
 
 export interface TestClientConfig<TRouter extends AnyRouter, TCtx> {
-  appRouter: TRouter
+  appRouter: TRouter & { _rpcConfig?: { defaultCtx?: any } }
   ctx?: (baseCtx: any) => TCtx
 }
 
@@ -33,19 +35,22 @@ export function createRpcTestClient<TRouter extends AnyRouter>(
       if (inputResult instanceof Promise) {
         const resolved = await inputResult
         if (resolved.issues.length > 0) {
-          throw new Error(`Input validation failed: ${JSON.stringify(resolved.issues)}`)
+          const schemaError = new SchemaError(resolved.issues)
+          throw new RpcError(400, 'Input validation failed', { cause: schemaError })
         }
         input = resolved.value
       } else {
         if (inputResult.issues.length > 0) {
-          throw new Error(`Input validation failed: ${JSON.stringify(inputResult.issues)}`)
+          const schemaError = new SchemaError(inputResult.issues)
+          throw new RpcError(400, 'Input validation failed', { cause: schemaError })
         }
         input = inputResult.value
       }
     }
 
-    // Build middleware context - ensure we get the base context from config
-    const baseCtx = config?.ctx ? config.ctx({}) : {}
+    // Build middleware context - start with defaultCtx, then apply custom ctx function
+    const defaultCtx = (config.appRouter as any)._rpcConfig?.defaultCtx || {}
+    const baseCtx = config?.ctx ? config.ctx(defaultCtx) : defaultCtx
     const context: MiddlewareContext = {
       path,
       type: procedure._def.type,
@@ -78,12 +83,14 @@ export function createRpcTestClient<TRouter extends AnyRouter>(
       if (outputResult instanceof Promise) {
         const resolved = await outputResult
         if (resolved.issues.length > 0) {
-          throw new Error(`Output validation failed: ${JSON.stringify(resolved.issues)}`)
+          const schemaError = new SchemaError(resolved.issues)
+          throw new RpcError(500, 'Output validation failed', { cause: schemaError })
         }
         output = resolved.value
       } else {
         if (outputResult.issues.length > 0) {
-          throw new Error(`Output validation failed: ${JSON.stringify(outputResult.issues)}`)
+          const schemaError = new SchemaError(outputResult.issues)
+          throw new RpcError(500, 'Output validation failed', { cause: schemaError })
         }
         output = outputResult.value
       }

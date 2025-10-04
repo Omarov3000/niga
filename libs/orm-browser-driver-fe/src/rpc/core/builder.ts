@@ -120,7 +120,11 @@ export const initRpc: RpcBuilder<any, any> = {
 
   create(config?: RpcBuilderConfig<any, any>) {
     return {
-      router: <T extends AnyRouter>(routes: T): T => routes,
+      router: <T extends AnyRouter>(routes: T): T & { _rpcConfig?: RpcBuilderConfig<any, any> } => {
+        const router = routes as any
+        router._rpcConfig = config
+        return router
+      },
       procedure: createProcedureBuilder<any, any>(),
     }
   },
