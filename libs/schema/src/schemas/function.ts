@@ -19,21 +19,13 @@ type InferParams<T extends readonly types.Schema[]> = T extends readonly [infer 
     : []
   : [];
 
-// Infer function type
+// Infer function type for schema (s.infer)
 type InferFunctionType<
   Input extends readonly types.Schema[],
   Output extends types.Schema | undefined
 > = Output extends types.Schema
   ? (...args: InferParams<Input>) => types.output<Output>
   : (...args: InferParams<Input>) => void;
-
-// Infer async function type
-type InferAsyncFunctionType<
-  Input extends readonly types.Schema[],
-  Output extends types.Schema | undefined
-> = Output extends types.Schema
-  ? (...args: InferParams<Input>) => Promise<types.output<Output>>
-  : (...args: InferParams<Input>) => Promise<void>;
 
 export interface FunctionSchemaInternals<
   Input extends readonly types.Schema[],
@@ -50,8 +42,7 @@ export interface FunctionSchema<
     InferFunctionType<Input, Output>,
     FunctionSchemaInternals<Input, Output>
   > {
-  implement(fn: InferFunctionType<Input, Output>): InferFunctionType<Input, Output>;
-  implement(fn: InferAsyncFunctionType<Input, Output>): InferAsyncFunctionType<Input, Output>;
+  implement<F extends (...args: InferParams<Input>) => any>(fn: F): F;
   meta(metadata: Record<string, any>): this;
   parse(data: unknown, params?: types.ParseContext): InferFunctionType<Input, Output>;
   safeParse(
@@ -154,6 +145,7 @@ export const FunctionSchema = types.$constructor<FunctionSchema<any, any>>(
           return outputResult.value;
         }
 
+        // No output schema - return the raw function result
         return fnResult;
       };
 

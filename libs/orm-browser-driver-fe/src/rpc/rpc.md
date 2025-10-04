@@ -11,7 +11,9 @@ const procedure = createProcedure<Ctx>()
 
 const appRouter = router({
   users: {
-    create: procedure.mutation()
+    create: procedure
+      .input(s.object({ name: s.string() }))
+      .mutation()
   }
 })
 
