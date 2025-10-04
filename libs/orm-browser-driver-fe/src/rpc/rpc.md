@@ -3,26 +3,74 @@ we need to implement rpc library that can be used for fe to be communication as 
 ```ts
 // on server (be)
 
+interface Meta {
+  docs?: string
+}
+
 // dependency injection
 interface Ctx {
   db: ...
-  user: { id: string }
+  getUser: () => { id: string }
 }
 type PublicCtx = Omit<Ctx, 'user'>
 
-const procedure = createProcedure<Ctx>()
+const t = initRpc.context<Ctx>().meta<Meta>().create({ defaultCtx: { db, getUser: () => { throw new Error('Not implemented') } }})
+const router = t.router
+const publicProcedure = t.procedure
 
-const publicProcedure = createProcedure<PublicCtx>()
+interface MiddlewareOptions<Ctx, Meta> {
+  path: string
+  type: 'query' | 'mutation'
+  ctx: Ctx
+  input: any
+  meta: Meta
+
+  next: (opts: Partial<{ ctx: Ctx, input: any, meta: Meta }>) => Promise<{ ok: true; data: any } | { ok: false; error: RpcError }>
+
+  getHeader: (name: string) => string
+  getCookie: (name: string) => string
+  setCookie: (cookie: Cookie) => void
+}
+
+interface Cookie {
+  name: string;
+  value: string;
+  path?: string;
+  domain?: string;
+  expires?: Date | string;
+  maxAge?: number;
+  secure?: boolean;
+  httpOnly?: boolean;
+  sameSite?: "Strict" | "Lax" | "None";
+}
+
+type ClientErrorCode = 400 | 401 | 403 | 404 | 429
+type ServerErrorCode = 500
+type ErrorCode = ClientErrorCode | ServerErrorCode
+class RpcError extends Error {
+  code: ErrorCode
+  constructor(code: ErrorCode, message: string){
+    super(message)
+    this.code = code
+  }
+}
+
+const protectedProcedure = publicProcedure.use((opts) => {
+  const userToken = opts.getCookie('userToken')
+  const user = parseToken(userToken)
+  return opts.next({ ctx: { ...opts.ctx, user } })
+})
 
 const appRouter = router({
   users: {
-    create: procedure
+    create: protectedProcedure
       .input(s.object({ name: s.string() }))
       .mutation(async ({ input, ctx }) => {
         await ctx.db.users.insert({ name: input.name });
-        return { success: true };
+        return { success: true }; // type is inferred from the return type of the mutation
       }),
-    list: procedure
+    list: protectedProcedure
+      .output(s.array(s.object({ id: s.string(), name: s.string() })))
       .query(async ({ ctx }) => {
         return await ctx.db.users.select().execute();
       }),
@@ -30,4 +78,11 @@ const appRouter = router({
 })
 
 export AppRouter = typeof appRouter // this type can be imported on fe
+
+
+type RouterInput = inferRouterInputs<AppRouter>;
+type RouterOutput = inferRouterOutputs<AppRouter>;
+
+type UsersCreateInput = RouterInput['users']['create'];
+type UsersCreateOutput = RouterOutput['users']['create'];
 ```

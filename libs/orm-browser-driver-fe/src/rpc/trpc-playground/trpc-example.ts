@@ -5,7 +5,11 @@ const t = initTRPC.create();
 
 const router = t.router;
 const publicProcedure = t.procedure;
-
+publicProcedure.use(async (opts) => {
+  const result = await opts.next()
+  const value = result.ok ? result.data : result.error
+  return result
+})
 const appRouter = router({
   userList: publicProcedure
     .query(async (opts) => {
