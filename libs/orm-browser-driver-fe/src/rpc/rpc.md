@@ -1,7 +1,7 @@
 we need to implement rpc library that can be used for fe to be communication as well as for between threads communication on fe.
 
 ```ts
-// on server (be)
+// shared (but it runs on be)
 
 interface Meta {
   docs?: string
@@ -79,10 +79,26 @@ const appRouter = router({
 
 export AppRouter = typeof appRouter // this type can be imported on fe
 
-
 type RouterInput = inferRouterInputs<AppRouter>;
 type RouterOutput = inferRouterOutputs<AppRouter>;
 
 type UsersCreateInput = RouterInput['users']['create'];
 type UsersCreateOutput = RouterOutput['users']['create'];
+
+const client = createRpcTestClient({ appRouter, ctx: (ctx) => ({ ...ctx, getUser: () => ({ id: '1' }) }) })
+const result = await client.users.create.mutate({ name: 'John' })
+
+// client usage fe
+
+const rpcClient = createRpcClient<AppRouter>({
+  url: 'http://localhost:3000',
+  queryClient: {} as any,
+});
+
+const result = await rpcClient.users.create.mutate({ name: 'John' })
+const options = rpcClient.users.create.mutationOptions()
+
+// be specific
+
+createHttpServer({ appRouter, port: 3000, cors: '*' }) // it should use latest node api to implement a simple http server
 ```
