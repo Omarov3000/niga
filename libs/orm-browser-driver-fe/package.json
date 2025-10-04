@@ -18,6 +18,9 @@
     "@w/orm": "workspace:*"
   },
   "devDependencies": {
-    "@w/query-fe": "workspace:*"
+    "@w/query-fe": "workspace:*",
+    "@trpc/server": "11.6.0",
+    "@trpc/client": "11.6.0",
+    "@trpc/tanstack-react-query": "11.6.0"
   }
 }
