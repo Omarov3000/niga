@@ -27,8 +27,8 @@ export interface ColumnMetadata {
   serverTime?: boolean; // TODO: how?
   appDefault?: (() => unknown) | unknown;
   appOnUpdate?: (() => unknown) | unknown;
-  encode?: (data: unknown) => number | string;
-  decode?: (data: number | string) => unknown;
+  encode?: (data: unknown) => number | string | Uint8Array;
+  decode?: (data: number | string | Uint8Array) => unknown;
   aliasedFrom?: string;
   definition?: string // eg COUNT(*) for virtual columns
   jsonSchema?: Schema;

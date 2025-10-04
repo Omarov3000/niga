@@ -20,7 +20,7 @@ describe('schema generation', () => {
 
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE users (
-        id TEXT PRIMARY KEY,
+        id BLOB PRIMARY KEY,
         name TEXT,
         age INTEGER,
         score REAL
@@ -68,7 +68,7 @@ describe('schema generation', () => {
 
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE posts (
-        id TEXT PRIMARY KEY,
+        id BLOB PRIMARY KEY,
         title TEXT NOT NULL UNIQUE DEFAULT 'Untitled'
       );
     `);
@@ -85,7 +85,7 @@ describe('schema generation', () => {
 
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE posts (
-        id TEXT PRIMARY KEY,
+        id BLOB PRIMARY KEY,
         author_id TEXT REFERENCES users(id)
       );
     `);
@@ -123,7 +123,7 @@ describe('schema generation', () => {
     const db = o.db({ schema: { users } });
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE users (
-        id TEXT PRIMARY KEY,
+        id BLOB PRIMARY KEY,
         email TEXT,
         name TEXT,
         age INTEGER
@@ -143,7 +143,7 @@ describe('schema generation', () => {
     const db = o.db({ schema: { t } });
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE t (
-        id TEXT PRIMARY KEY,
+        id BLOB PRIMARY KEY,
         a INTEGER,
         b INTEGER GENERATED ALWAYS AS (a + 1) VIRTUAL
       );
@@ -220,7 +220,7 @@ describe('schema generation', () => {
 
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE users (
-        id TEXT PRIMARY KEY,
+        id BLOB PRIMARY KEY,
         email TEXT,
         name TEXT,
         UNIQUE (email)
@@ -245,7 +245,7 @@ describe('schema generation', () => {
 
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE users (
-        id TEXT PRIMARY KEY,
+        id BLOB PRIMARY KEY,
         first_name TEXT,
         last_name TEXT,
         email TEXT,
@@ -272,7 +272,7 @@ describe('schema generation', () => {
 
     expect(db.getSchemaDefinition()).toBe(dedent`
       CREATE TABLE products (
-        id TEXT PRIMARY KEY,
+        id BLOB PRIMARY KEY,
         sku TEXT,
         barcode TEXT,
         name TEXT,

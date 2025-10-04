@@ -25,7 +25,14 @@ export class OrmNodeDriver implements OrmDriver {
     const stmt = this.db.prepare(query);
     if (query.trim().toUpperCase().startsWith('SELECT')) {
       const result = stmt.all(...params);
-      return result as any[];
+      // Convert Buffer to Uint8Array for blob columns
+      return result.map((row: any) => {
+        const converted: any = {};
+        for (const [key, value] of Object.entries(row)) {
+          converted[key] = value instanceof Buffer ? new Uint8Array(value) : value;
+        }
+        return converted;
+      });
     }
     stmt.run(...params);
     return [];

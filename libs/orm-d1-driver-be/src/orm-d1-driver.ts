@@ -58,11 +58,19 @@ export class OrmD1Driver implements OrmDriver {
         assertSuccessful(result)
 
         const rows = Array.isArray(result.results) ? result.results : []
+        // Convert Array (D1's blob representation) to Uint8Array
+        const convertedRows = rows.map((row: any) => {
+          const converted: any = {}
+          for (const [key, value] of Object.entries(row)) {
+            converted[key] = Array.isArray(value) ? new Uint8Array(value) : value
+          }
+          return converted
+        })
         const existing = finalResults[meta.index]
         if (existing === undefined) {
-          finalResults[meta.index] = rows
-        } else if (rows.length > 0) {
-          finalResults[meta.index] = [...existing, ...rows]
+          finalResults[meta.index] = convertedRows
+        } else if (convertedRows.length > 0) {
+          finalResults[meta.index] = [...existing, ...convertedRows]
         }
       })
 

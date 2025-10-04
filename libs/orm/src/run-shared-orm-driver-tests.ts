@@ -7,6 +7,9 @@ import { sql } from './utils/sql';
 import { OrmDriver, fakeOrmDriver } from './schema/types';
 import { ShallowPrettify } from './utils/utils';
 
+// Helper to convert string id to Uint8Array for blob storage
+const idToBlob = (id: string) => new TextEncoder().encode(id);
+
 export function runSharedOrmDriverTests(makeDriver: () => OrmDriver, opts: { skipTableCleanup?: boolean } = {}) {
 
 const driver = makeDriver()
@@ -40,10 +43,11 @@ describe('insert', () => {
       age: 20,
     });
 
-    const rows = await driver.run({ query: 'SELECT id, name, email, age FROM users WHERE id = ?', params: ['test-123'] });
+    const rows = await driver.run({ query: 'SELECT id, name, email, age FROM users WHERE id = ?', params: [idToBlob('test-123')] });
 
+    // Raw driver.run returns Uint8Array for blob columns
     expect(rows).toMatchObject([
-      { id: 'test-123', name: 'John Doe', email: 'john@example.com', age: 20 },
+      { id: idToBlob('test-123'), name: 'John Doe', email: 'john@example.com', age: 20 },
     ]);
   });
 
@@ -70,10 +74,10 @@ describe('insert', () => {
     // Check row count
     const count = await driver.run({ query: 'SELECT COUNT(*) as count FROM posts', params: [] });
 
-    const rows = await driver.run({ query: 'SELECT id, title, published, views FROM posts WHERE id = ?', params: ['post-123'] });
+    const rows = await driver.run({ query: 'SELECT id, title, published, views FROM posts WHERE id = ?', params: [idToBlob('post-123')] });
 
     expect(rows).toMatchObject([
-      { id: 'post-123', title: 'Test Post', published: 1, views: 42 },
+      { id: idToBlob('post-123'), title: 'Test Post', published: 1, views: 42 },
     ]);
   });
 
@@ -89,9 +93,9 @@ describe('insert', () => {
 
     expect(returned).toMatchObject({ id: 'user-123', name: 'Alice' });
 
-    const rows = await driver.run({ query: 'SELECT id, name FROM users WHERE id = ?', params: ['user-123'] });
+    const rows = await driver.run({ query: 'SELECT id, name FROM users WHERE id = ?', params: [idToBlob('user-123')] });
 
-    expect(rows).toMatchObject([{ id: 'user-123', name: 'Alice' }]);
+    expect(rows).toMatchObject([{ id: idToBlob('user-123'), name: 'Alice' }]);
   });
 
   it('should maintain type safety', async () => {
@@ -111,7 +115,7 @@ describe('insert', () => {
 
     expect(model).toMatchObject({ id: 'type-safe-test', name: 'Type Safe User', age: 30 });
 
-    const rows = await driver.run({ query: 'SELECT name, age FROM users WHERE id = ?', params: ['type-safe-test'] });
+    const rows = await driver.run({ query: 'SELECT name, age FROM users WHERE id = ?', params: [idToBlob('type-safe-test')] });
 
     expect(rows).toMatchObject([{ name: 'Type Safe User', age: 30 }]);
   });
@@ -154,8 +158,8 @@ describe('query', () => {
     const db = await o.testDb({ schema: { users } }, driver , clearRef);
 
     // Seed some rows directly
-    await driver.run({ query: 'INSERT INTO users (id, name, age) VALUES (?, ?, ?)', params: ['u1', 'Alice', 30] });
-    await driver.run({ query: 'INSERT INTO users (id, name, age) VALUES (?, ?, ?)', params: ['u2', 'Bob', 25] });
+    await driver.run({ query: 'INSERT INTO users (id, name, age) VALUES (?, ?, ?)', params: [idToBlob('u1'), 'Alice', 30] });
+    await driver.run({ query: 'INSERT INTO users (id, name, age) VALUES (?, ?, ?)', params: [idToBlob('u2'), 'Bob', 25] });
 
     const rows = await db
       .query`SELECT ${db.users.id}, ${db.users.name}, ${db.users.age} FROM users WHERE ${db.users.age.gte(25)}`
@@ -169,7 +173,7 @@ describe('query', () => {
     const users = o.table('users', { id: o.id(), name: o.text() });
     const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
-    await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: ['u1', 'Alice'] });
+    await driver.run({ query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: [idToBlob('u1'), 'Alice'] });
 
     const row = await db
       .query`SELECT ${db.users.id}, ${db.users.name} FROM users WHERE ${db.users.id.eq('u1')}`
@@ -190,7 +194,7 @@ describe('query', () => {
     const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     const now = new Date(1700000000000);
-    await driver.run({ query: 'INSERT INTO users (id, created_at, is_active, role, profile) VALUES (?, ?, ?, ?, ?)', params: ['u1', now.getTime(), 1, 0, JSON.stringify({ bio: 'Dev' })] });
+    await driver.run({ query: 'INSERT INTO users (id, created_at, is_active, role, profile) VALUES (?, ?, ?, ?, ?)', params: [idToBlob('u1'), now.getTime(), 1, 0, JSON.stringify({ bio: 'Dev' })] });
 
     const row = await db
       .query`SELECT ${db.users.id}, ${db.users.createdAt}, ${db.users.isActive}, ${db.users.role}, ${db.users.profile} FROM users WHERE ${db.users.createdAt.gte(now)} AND ${db.users.isActive.eq(true)} AND ${db.users.role.eq('admin')}`
@@ -217,9 +221,9 @@ describe('query', () => {
     });
     const db = await o.testDb({ schema: { items } }, driver, clearRef);
 
-    await driver.run({ query: 'INSERT INTO items (id, price, name) VALUES (?, ?, ?)', params: ['i1', 10, 'A'] });
-    await driver.run({ query: 'INSERT INTO items (id, price, name) VALUES (?, ?, ?)', params: ['i2', 20, 'B'] });
-    await driver.run({ query: 'INSERT INTO items (id, price, name) VALUES (?, ?, ?)', params: ['i3', 30, null] });
+    await driver.run({ query: 'INSERT INTO items (id, price, name) VALUES (?, ?, ?)', params: [idToBlob('i1'), 10, 'A'] });
+    await driver.run({ query: 'INSERT INTO items (id, price, name) VALUES (?, ?, ?)', params: [idToBlob('i2'), 20, 'B'] });
+    await driver.run({ query: 'INSERT INTO items (id, price, name) VALUES (?, ?, ?)', params: [idToBlob('i3'), 30, null] });
 
     const rows = await db
       .query`SELECT ${db.items.id}, ${db.items.price} FROM items WHERE ${db.items.price.between(10, 25)} AND ${db.items.id.inArray(['i1','i2'])} AND ${db.items.name.isNull()}`
@@ -839,14 +843,14 @@ describe('update', () => {
     });
 
     // Verify user-1 was updated
-    const updatedUserResults = await driver.run({ query: 'SELECT id, name, age FROM users WHERE id = ?', params: ['user-1'] });
+    const updatedUserResults = await driver.run({ query: 'SELECT id, name, age FROM users WHERE id = ?', params: [idToBlob('user-1')] });
     const updatedUser = updatedUserResults[0];
-    expect(updatedUser).toMatchObject({ id: 'user-1', name: 'Johnny Doe', age: 26 });
+    expect(updatedUser).toMatchObject({ id: idToBlob('user-1'), name: 'Johnny Doe', age: 26 });
 
     // Verify user-2 was not affected
-    const unchangedUserResults = await driver.run({ query: 'SELECT id, name, age FROM users WHERE id = ?', params: ['user-2'] });
+    const unchangedUserResults = await driver.run({ query: 'SELECT id, name, age FROM users WHERE id = ?', params: [idToBlob('user-2')] });
     const unchangedUser = unchangedUserResults[0];
-    expect(unchangedUser).toMatchObject({ id: 'user-2', name: 'Jane Smith', age: 30 });
+    expect(unchangedUser).toMatchObject({ id: idToBlob('user-2'), name: 'Jane Smith', age: 30 });
   });
 
   it('should handle different data types in updates', async () => {
@@ -874,10 +878,10 @@ describe('update', () => {
     });
 
     // Verify update (boolean stored as integer)
-    const updatedPostResults = await driver.run({ query: 'SELECT id, title, published, views FROM posts WHERE id = ?', params: ['post-1'] });
+    const updatedPostResults = await driver.run({ query: 'SELECT id, title, published, views FROM posts WHERE id = ?', params: [idToBlob('post-1')] });
     const updatedPost = updatedPostResults[0];
     expect(updatedPost).toMatchObject({
-      id: 'post-1',
+      id: idToBlob('post-1'),
       title: 'Published Post',
       published: 1, // boolean true stored as 1
       views: 100
@@ -914,10 +918,10 @@ describe('update', () => {
     expect(updateCallCount).toBe(1);
 
     // Verify updatedAt was updated to the onUpdate value
-    const updatedUserResults = await driver.run({ query: 'SELECT id, name, updated_at FROM users WHERE id = ?', params: ['user-1'] });
+    const updatedUserResults = await driver.run({ query: 'SELECT id, name, updated_at FROM users WHERE id = ?', params: [idToBlob('user-1')] });
     const updatedUser = updatedUserResults[0];
     expect(updatedUser).toMatchObject({
-      id: 'user-1',
+      id: idToBlob('user-1'),
       name: 'Johnny Doe',
       updated_at: 1700000000000 // The fixed timestamp from onUpdate
     });
@@ -974,9 +978,9 @@ describe('update', () => {
     // Verify only user-2 was updated
     const allUsers = await driver.run({ query: 'SELECT id, status FROM users ORDER BY id', params: [] });
     expect(allUsers).toMatchObject([
-      { id: 'user-1', status: 'active' }, // age 25, not updated
-      { id: 'user-2', status: 'senior' }, // age 30, updated
-      { id: 'user-3', status: 'inactive' }, // inactive, not updated
+      { id: idToBlob('user-1'), status: 'active' }, // age 25, not updated
+      { id: idToBlob('user-2'), status: 'senior' }, // age 30, updated
+      { id: idToBlob('user-3'), status: 'inactive' }, // inactive, not updated
     ]);
   });
 
@@ -1022,9 +1026,9 @@ describe('update', () => {
     })).resolves.not.toThrow();
 
     // Verify the update actually worked
-    const updatedUserResults = await driver.run({ query: 'SELECT id, name, age FROM users WHERE id = ?', params: ['user-1'] });
+    const updatedUserResults = await driver.run({ query: 'SELECT id, name, age FROM users WHERE id = ?', params: [idToBlob('user-1')] });
     const updatedUser = updatedUserResults[0];
-    expect(updatedUser).toMatchObject({ id: 'user-1', name: 'Johnny', age: 26 });
+    expect(updatedUser).toMatchObject({ id: idToBlob('user-1'), name: 'Johnny', age: 26 });
   });
 
   it('should handle malformed UPDATE queries in security parsing', async () => {
@@ -1074,8 +1078,8 @@ describe('delete', () => {
     // Verify user-2 was deleted
     const remainingUsers = await driver.run({ query: 'SELECT id, name FROM users ORDER BY id', params: [] });
     expect(remainingUsers).toMatchObject([
-      { id: 'user-1', name: 'John Doe' },
-      { id: 'user-3', name: 'Bob Johnson' },
+      { id: idToBlob('user-1'), name: 'John Doe' },
+      { id: idToBlob('user-3'), name: 'Bob Johnson' },
     ]);
   });
 
@@ -1105,8 +1109,8 @@ describe('delete', () => {
     // Verify only active users remain
     const remainingUsers = await driver.run({ query: 'SELECT id, name, status FROM users ORDER BY id', params: [] });
     expect(remainingUsers).toMatchObject([
-      { id: 'user-1', name: 'John', status: 'active' },
-      { id: 'user-4', name: 'Alice', status: 'active' },
+      { id: idToBlob('user-1'), name: 'John', status: 'active' },
+      { id: idToBlob('user-4'), name: 'Alice', status: 'active' },
     ]);
   });
 
@@ -1136,8 +1140,8 @@ describe('delete', () => {
     // Verify only published posts and high-view drafts remain
     const remainingPosts = await driver.run({ query: 'SELECT id, title, views, published FROM posts ORDER BY id', params: [] });
     expect(remainingPosts).toMatchObject([
-      { id: 'post-2', title: 'Published 1', views: 100, published: 1 },
-      { id: 'post-4', title: 'Published 2', views: 50, published: 1 },
+      { id: idToBlob('post-2'), title: 'Published 1', views: 100, published: 1 },
+      { id: idToBlob('post-4'), title: 'Published 2', views: 50, published: 1 },
     ]);
   });
 
@@ -1165,8 +1169,8 @@ describe('delete', () => {
     // Verify only user-2 and user-4 remain
     const remainingUsers = await driver.run({ query: 'SELECT id, name FROM users ORDER BY id', params: [] });
     expect(remainingUsers).toMatchObject([
-      { id: 'user-2', name: 'Jane' },
-      { id: 'user-4', name: 'Alice' },
+      { id: idToBlob('user-2'), name: 'Jane' },
+      { id: idToBlob('user-4'), name: 'Alice' },
     ]);
   });
 
@@ -1204,7 +1208,7 @@ describe('delete', () => {
     // Create a malformed RawSql object that should trigger parsing errors
     const malformedSql: any = {
       query: 'id = ? AND INVALID SYNTAX',
-      params: ['user-1']
+      params: [idToBlob('user-1')]
     };
 
     // The security parsing should catch malformed SQL
@@ -1254,7 +1258,7 @@ describe('transaction', () => {
       })
     ).rejects.toThrow();
 
-    const rows = await driver.run({ query: 'SELECT id, name FROM users WHERE id = ?', params: ['u1'] });
+    const rows = await driver.run({ query: 'SELECT id, name FROM users WHERE id = ?', params: [idToBlob('u1')] });
     expect(rows).toMatchObject([]);
   });
 });
@@ -1270,12 +1274,12 @@ describe('batch', () => {
 
     await expect(
       driver.batch([
-        { query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: ['u1', 'Alice'] },
-        { query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: ['u1', 'Duplicate'] },
+        { query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: [idToBlob('u1'), 'Alice'] },
+        { query: 'INSERT INTO users (id, name) VALUES (?, ?)', params: [idToBlob('u1'), 'Duplicate'] },
       ])
     ).rejects.toThrow()
 
-    const rows = await driver.run({ query: 'SELECT id, name FROM users WHERE id = ?', params: ['u1'] })
+    const rows = await driver.run({ query: 'SELECT id, name FROM users WHERE id = ?', params: [idToBlob('u1')] })
     expect(rows).toMatchObject([])
   })
 })

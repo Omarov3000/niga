@@ -1,4 +1,4 @@
-export type RawSql = { query: string; params: any[] }; // we get this as input
+export type RawSql = { query: string; params: any[]; debugParams?: any[] }; // we get this as input
 import { Column } from '../schema/column';
 import { Sql } from '../true-sql/sql-types';
 
@@ -139,15 +139,16 @@ export class OrderObject extends SqlPart {
 }
 
 export function inlineParams(rawSql: RawSql): string {
-  let { query, params } = rawSql;
+  let { query, params, debugParams } = rawSql;
   let paramIndex = 0;
+  const paramsToUse = debugParams ?? params;
 
   return query.replace(/\?/g, () => {
-    if (paramIndex >= params.length) {
+    if (paramIndex >= paramsToUse.length) {
       return '?';
     }
 
-    const param = params[paramIndex++];
+    const param = paramsToUse[paramIndex++];
 
     if (param === null) {
       return 'NULL';

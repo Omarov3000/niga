@@ -27,6 +27,7 @@ export interface DbConstructorOptions {
   schema: Record<string, Table<any, any>>;
   name?: string;
   origin?: 'client' | 'server';
+  isProd?: () => boolean;
 }
 
 export class Db {
@@ -49,6 +50,7 @@ export class Db {
         },
         getCurrentUser: () => this.currentUser,
         getSchema: () => this.options.schema,
+        isProd: () => this.options.isProd ? this.options.isProd() : false,
       };
     });
   }
@@ -188,6 +190,7 @@ export class Db {
           getDriver: () => txDriver,
           getCurrentUser: () => this.currentUser,
           getSchema: () => this.options.schema,
+          isProd: () => this.options.isProd ? this.options.isProd() : false,
         },
         enumerable: false,
         configurable: true,
@@ -236,6 +239,7 @@ export class Db {
           getDriver: () => batchDriver,
           getCurrentUser: () => this.currentUser,
           getSchema: () => this.options.schema,
+          isProd: () => this.options.isProd ? this.options.isProd() : false,
         },
         enumerable: false,
         configurable: true,

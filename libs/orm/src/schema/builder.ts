@@ -17,7 +17,7 @@ const date = () => {
     type: 'integer',
     appType: 'date',
     encode: (date: Date) => date.getTime(),
-    decode: (data: number | string) => {
+    decode: (data: number | string | Uint8Array) => {
       // Date columns are stored as integers (timestamps)
       if (typeof data !== 'number') {
         throw new Error(`Date column expects number (timestamp), got ${typeof data}: ${data}`);
@@ -34,7 +34,7 @@ function json<TSchema extends Schema>(schema: TSchema) {
     type: 'text',
     appType: 'json',
     encode: (data: s.infer<TSchema>) => JSON.stringify(data),
-    decode: (data: number | string) => {
+    decode: (data: number | string | Uint8Array) => {
       // JSON columns are stored as text (strings)
       if (typeof data !== 'string') {
         throw new Error(`JSON column expects string, got ${typeof data}: ${data}`);
@@ -53,7 +53,7 @@ const boolean = () => {
     type: 'integer',
     appType: 'boolean',
     encode: (bool: boolean) => bool ? 1 : 0,
-    decode: (data: number | string) => {
+    decode: (data: number | string | Uint8Array) => {
       // Boolean columns are stored as integers (0 or 1)
       if (typeof data !== 'number') {
         throw new Error(`Boolean column expects number (0 or 1), got ${typeof data}: ${data}`);
@@ -70,7 +70,7 @@ function enum_<const T extends string>(values: readonly T[]) {
     type: 'integer',
     appType: 'enum',
     encode: (enumValue: T) => values.indexOf(enumValue),
-    decode: (data: number | string) => {
+    decode: (data: number | string | Uint8Array) => {
       // Enum columns are stored as integers (indexes)
       if (typeof data !== 'number') {
         throw new Error(`Enum column expects number (index), got ${typeof data}: ${data}`);
@@ -85,7 +85,41 @@ function enum_<const T extends string>(values: readonly T[]) {
   return col;
 }
 
-const id = () => new Column<'id', string, 'withDefault'>({ kind: 'public', name: 'id', type: 'text' }).$defaultFn(() => nanoid()).primaryKey();
+const id = () => {
+  const textEncoder = new TextEncoder();
+  const textDecoder = new TextDecoder();
+
+  return new Column<'id', string, 'withDefault'>({
+    kind: 'public',
+    name: 'id',
+    type: 'blob',
+    encode: (id: string) => textEncoder.encode(id),
+    decode: (data: Uint8Array | number | string) => {
+      if (data instanceof Uint8Array) {
+        return textDecoder.decode(data);
+      }
+      throw new Error(`ID column expects Uint8Array, got ${typeof data}: ${data}`);
+    }
+  }).$defaultFn(() => nanoid()).primaryKey();
+};
+
+const idFk = () => {
+  const textEncoder = new TextEncoder();
+  const textDecoder = new TextDecoder();
+
+  return new Column<'idFk', string, 'optional'>({
+    kind: 'public',
+    name: 'idFk',
+    type: 'blob',
+    encode: (id: string) => textEncoder.encode(id),
+    decode: (data: Uint8Array | number | string) => {
+      if (data instanceof Uint8Array) {
+        return textDecoder.decode(data);
+      }
+      throw new Error(`ID foreign key column expects Uint8Array, got ${typeof data}: ${data}`);
+    }
+  });
+};
 
 const ensureConstraintColumns = (type: ConstraintType, columns: Column[]): ConstraintDefinition => {
   if (columns.length === 0) {
@@ -142,8 +176,8 @@ function table<Name extends string, TCols extends Record<string, Column<any, any
 
 const index = () => new IndexBuilder();
 
-function db<TSchema extends Record<string, Table<any, any>>>(opts: { schema: TSchema; name?: string; origin?: 'client' | 'server' }): Db & TSchema {
-  const instance = new Db({ schema: opts.schema as any, name: opts.name, origin: opts.origin });
+function db<TSchema extends Record<string, Table<any, any>>>(opts: { schema: TSchema; name?: string; origin?: 'client' | 'server'; isProd?: () => boolean }): Db & TSchema {
+  const instance = new Db({ schema: opts.schema as any, name: opts.name, origin: opts.origin, isProd: opts.isProd });
   Object.entries(opts.schema).forEach(([key, table]) => {
     (instance as any)[key] = table;
   });
@@ -155,7 +189,7 @@ const quoteIdentifier = (name: string) => `"${name.replaceAll('"', '""')}"`;
 type ClearRef = { current?: Array<() => Promise<void>> } | undefined;
 
 async function testDb<TSchema extends Record<string, Table<any, any>>>(
-  opts: { schema: TSchema; name?: string; origin?: 'client' | 'server' },
+  opts: { schema: TSchema; name?: string; origin?: 'client' | 'server'; isProd?: () => boolean },
   driver: OrmDriver,
   clearRef?: ClearRef
 ): Promise<Db & TSchema> {
@@ -234,7 +268,32 @@ function sEnum<const T extends string>(values: readonly T[], _default: NoInfer<T
   return s.default(codec, _default);
 }
 
-const sId = () => s.default(s.string(), () => nanoid());
+const sId = () => {
+  const textDecoder = new TextDecoder();
+  const textEncoder = new TextEncoder();
+  const codec = s.codec(
+    s.instanceof(Uint8Array),
+    s.string(),
+    {
+      decode: (blob: Uint8Array, _payload) => textDecoder.decode(blob),
+      encode: (id: string, _payload) => new Uint8Array(textEncoder.encode(id)),
+    }
+  );
+  return s.default(codec, () => nanoid());
+};
+
+const sIdFk = () => {
+  const textDecoder = new TextDecoder();
+  const textEncoder = new TextEncoder();
+  return s.codec(
+    s.instanceof(Uint8Array),
+    s.string(),
+    {
+      decode: (blob: Uint8Array, _payload) => textDecoder.decode(blob),
+      encode: (id: string, _payload) => new Uint8Array(textEncoder.encode(id)),
+    }
+  );
+};
 
 export const o = {
   text,
@@ -245,6 +304,7 @@ export const o = {
   boolean,
   enum: enum_,
   id,
+  idFk,
   table,
   index,
   db,
@@ -260,6 +320,7 @@ export const o = {
     boolean: sBoolean,
     enum: sEnum,
     id: sId,
+    idFk: sIdFk,
     object: s.object,
   },
 };

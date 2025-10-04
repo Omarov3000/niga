@@ -161,6 +161,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     const colsMeta = this.__meta__.columns;
     const columnNames: string[] = [];
     const params: any[] = [];
+    const debugParams: any[] = [];
 
     for (const [key] of Object.entries(colsMeta)) {
       const col = (this as any)[key] as Column<any, any, any> | undefined;
@@ -171,6 +172,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
       const encoded = col.__meta__.encode ? col.__meta__.encode(value as any) : value;
       columnNames.push(col.__meta__.dbName);
       params.push(encoded);
+      debugParams.push(value); // Store the original unencoded value for debugging
     }
 
     // Validate missing required columns
@@ -192,7 +194,8 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     // Generate raw SQL INSERT statement
     const placeholders = params.map(() => '?').join(', ');
     const query = `INSERT INTO ${this.__meta__.dbName} (${columnNames.join(', ')}) VALUES (${placeholders})`;
-    const fullQuery = { query, params };
+    const isProd = this.__db__.isProd();
+    const fullQuery = isProd ? { query, params } : { query, params, debugParams };
 
     await this.checkSecurity(fullQuery, dataToInsert);
 
@@ -239,6 +242,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
 
     const setClause: string[] = [];
     const params: any[] = [];
+    const debugParams: any[] = [];
 
     // Build SET clause from data
     for (const [key, value] of Object.entries(updatedData)) {
@@ -250,12 +254,14 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
         const expressionSql = value.build(col);
         setClause.push(`${col.__meta__.dbName} = ${expressionSql.query}`);
         params.push(...expressionSql.params);
+        debugParams.push(...expressionSql.params); // For expressions, use the same params
         continue;
       }
 
       const encoded = col.__meta__.encode ? col.__meta__.encode(value as any) : value;
       setClause.push(`${col.__meta__.dbName} = ?`);
       params.push(encoded);
+      debugParams.push(value); // Store the original unencoded value for debugging
     }
 
     if (setClause.length === 0) {
@@ -264,9 +270,11 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
 
     // Add WHERE clause parameters
     params.push(...whereClause.params);
+    debugParams.push(...(whereClause.debugParams ?? whereClause.params));
 
     const query = `UPDATE ${this.__meta__.dbName} SET ${setClause.join(', ')} WHERE ${whereClause.query}`;
-    const fullQuery = { query, params };
+    const isProd = this.__db__.isProd();
+    const fullQuery = isProd ? { query, params } : { query, params, debugParams };
 
     // Parse for security analysis and check security
     await this.checkSecurity(fullQuery, updatedData);
@@ -286,7 +294,9 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
 
     const query = `DELETE FROM ${this.__meta__.dbName} WHERE ${whereClause.query}`;
     const params = [...whereClause.params];
-    const fullQuery = { query, params };
+    const debugParams = [...(whereClause.debugParams ?? whereClause.params)];
+    const isProd = this.__db__.isProd();
+    const fullQuery = isProd ? { query, params } : { query, params, debugParams };
 
     // Parse for security analysis and check security
     await this.checkSecurity(fullQuery);
@@ -387,7 +397,7 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
 
   readonly __meta__: TableMetadata;
   readonly __columns__: TCols;
-  readonly __db__!: { getDriver: () => OrmDriver; getCurrentUser: () => any; getSchema: () => Record<string, Table<any, any>> };
+  readonly __db__!: { getDriver: () => OrmDriver; getCurrentUser: () => any; getSchema: () => Record<string, Table<any, any>>; isProd: () => boolean };
   // type helpers exposed on instance for precise typing
   readonly __selectionType__!: SelectableForCols<TCols>;
   readonly __insertionType__!: InsertableForCols<TCols>;

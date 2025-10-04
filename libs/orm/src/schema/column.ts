@@ -31,11 +31,11 @@ export class Column<
     return this.cloneMeta({ unique: true });
   }
 
-  encode(fn: (data: unknown) => number | string): Column<Name, Type, InsertType> {
+  encode(fn: (data: unknown) => number | string | Uint8Array): Column<Name, Type, InsertType> {
     return this.cloneMeta({ encode: fn });
   }
 
-  decode(fn: (data: number | string) => unknown): Column<Name, Type, InsertType> {
+  decode(fn: (data: number | string | Uint8Array) => unknown): Column<Name, Type, InsertType> {
     return this.cloneMeta({ decode: fn });
   }
 
@@ -319,7 +319,7 @@ export class Column<
   }
 
   constructor(init:
-    | { kind: 'public'; name: Name; type: ColumnType; appType?: ApplicationType; appDefault?: Type | (() => Type); encode?: (data: Type) => number | string; decode?: (data: number | string) => Type }
+    | { kind: 'public'; name: Name; type: ColumnType; appType?: ApplicationType; appDefault?: Type | (() => Type); encode?: (data: Type) => number | string | Uint8Array; decode?: (data: number | string | Uint8Array) => Type }
     | { kind: 'internal'; meta: ColumnMetadata; table?: { getName: () => string; getDbName: () => string }; valueSample?: Type | (() => Type) }
   ) {
     if (init.kind === 'public') {
