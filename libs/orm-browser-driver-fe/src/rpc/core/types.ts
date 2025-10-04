@@ -55,6 +55,9 @@ export interface Procedure<TInput = any, TOutput = any, TCtx = any, TMeta = any>
     middlewares: Middleware<any, any, TMeta>[]
     meta?: TMeta
   }
+  // Pre-computed function signatures for O(1) type resolution performance.
+  // Client code accesses these via property lookup (fast) instead of evaluating
+  // conditional types on every autocomplete/hover (slow).
   _types: {
     query: TInput extends undefined
       ? (input?: undefined) => Promise<TOutput>
@@ -62,6 +65,10 @@ export interface Procedure<TInput = any, TOutput = any, TCtx = any, TMeta = any>
     mutate: TInput extends undefined
       ? (input?: undefined) => Promise<TOutput>
       : (input: TInput) => Promise<TOutput>
+    queryOptions: TInput extends undefined
+      ? (input?: undefined) => { queryKey: any[]; queryFn: (ctx: { signal: AbortSignal }) => Promise<TOutput> }
+      : (input: TInput) => { queryKey: any[]; queryFn: (ctx: { signal: AbortSignal }) => Promise<TOutput> }
+    mutationOptions: () => { mutationFn: (variables: TInput) => Promise<TOutput> }
   }
 }
 

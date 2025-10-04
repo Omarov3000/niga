@@ -1,20 +1,10 @@
-import type { AnyRouter, AnyProcedure, Procedure } from '../core/types'
-import type { UseQueryOptions } from '@w/query-fe'
-import type { UseMutationOptions } from '@w/query-fe'
-
-type InferProcedureInput<T> = T extends Procedure<infer TInput, any, any, any> ? TInput : never
-type InferProcedureOutput<T> = T extends Procedure<any, infer TOutput, any, any> ? TOutput : never
+import type { AnyRouter, AnyProcedure } from '../core/types'
 
 type CreateOptionsProxy<TRouter extends AnyRouter> = {
   [K in keyof TRouter]: TRouter[K] extends AnyProcedure
     ? {
-        queryOptions: (
-          input?: InferProcedureInput<TRouter[K]>
-        ) => UseQueryOptions<InferProcedureOutput<TRouter[K]>, InferProcedureOutput<TRouter[K]>>
-        mutationOptions: () => UseMutationOptions<
-          InferProcedureOutput<TRouter[K]>,
-          InferProcedureInput<TRouter[K]>
-        >
+        queryOptions: TRouter[K]['_types']['queryOptions']
+        mutationOptions: TRouter[K]['_types']['mutationOptions']
       }
     : TRouter[K] extends AnyRouter
     ? CreateOptionsProxy<TRouter[K]>
