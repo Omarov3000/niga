@@ -12,6 +12,10 @@ const sqlite3 = await sqlite3Module() // up to 200ms
 setTimeout(() => (console.warn = warn), 100) // without setTimeout 100, it doesn't work
 
 export function makeBrowserSQLite(path = ':memory:'): Database {
+  if (path !== ':memory:' && inWorkerCtx) {
+    throw new Error('path is not supported in worker context')
+  }
+  if (path !== ':memory:') return new sqlite3.oo1.OpfsDb(path)
   return new sqlite3.oo1.DB(path)
 }
 
@@ -121,3 +125,5 @@ export class OrmBrowserDriver implements OrmDriver {
     }
   }
 }
+
+const inWorkerCtx = self.constructor && self.constructor.name === 'DedicatedWorkerGlobalScope'
