@@ -1,7 +1,7 @@
 import { expect, it, describe } from 'vitest'
 import { o } from '../schema/builder'
 import { OrmNodeDriver } from '../orm-node-driver'
-import { RemoteDb } from './remote-db'
+import { TestRemoteDb } from './remote-db'
 import { ulid } from 'ulidx'
 
 it('syncs data from remote on initialization', async () => {
@@ -18,7 +18,7 @@ it('syncs data from remote on initialization', async () => {
     { name: 'Bob', email: 'bob@example.com' }
   ])
 
-  const remoteDb = new RemoteDb(remoteDbInstance, remoteDriver, { users })
+  const remoteDb = new TestRemoteDb(remoteDbInstance, remoteDriver, { users })
 
   const driver = new OrmNodeDriver()
   const db = await o.syncedDb({
@@ -43,7 +43,7 @@ it('handles empty remote database', async () => {
   const remoteDriver = new OrmNodeDriver()
   const remoteDbInstance = await o.testDb({ schema: { users } }, remoteDriver)
 
-  const remoteDb = new RemoteDb(remoteDbInstance, remoteDriver, { users })
+  const remoteDb = new TestRemoteDb(remoteDbInstance, remoteDriver, { users })
 
   const driver = new OrmNodeDriver()
 
@@ -83,7 +83,7 @@ it('syncs multiple tables', async () => {
   await remoteDbInstance.posts.insert({ id: postId1, title: 'First Post', authorId: userId1 })
   await remoteDbInstance.posts.insert({ id: postId2, title: 'Second Post', authorId: userId2 })
 
-  const remoteDb = new RemoteDb(remoteDbInstance, remoteDriver, { users, posts })
+  const remoteDb = new TestRemoteDb(remoteDbInstance, remoteDriver, { users, posts })
 
   const driver = new OrmNodeDriver()
 
@@ -117,7 +117,7 @@ it('resumes pull from last synced offset', async () => {
     await remoteDbInstance.users.insert({ id: ulid(), name: `User ${i}` })
   }
 
-  const remoteDb = new RemoteDb(remoteDbInstance, remoteDriver, { users })
+  const remoteDb = new TestRemoteDb(remoteDbInstance, remoteDriver, { users })
 
   // Create local driver and manually initialize sync tables
   const driver1 = new OrmNodeDriver()

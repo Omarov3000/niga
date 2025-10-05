@@ -11,11 +11,7 @@ export interface RemoteDbConfig {
 
 export type PullResumeState = Map<string, number> // tableName -> offset
 
-/**
- * RemoteDb handles syncing data with a remote database
- * Uses streaming with configurable memory limits
- */
-export class RemoteDb {
+export class TestRemoteDb {
   private maxMemoryBytes: number
 
   constructor(

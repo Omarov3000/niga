@@ -1,7 +1,7 @@
 import { Db } from '../schema/db'
 import type { Table } from '../schema/table'
 import type { OrmDriver } from '../schema/types'
-import type { RemoteDb, PullResumeState } from './remote-db'
+import type { TestRemoteDb, PullResumeState } from './remote-db'
 import { internalTables } from './internal-tables'
 import { SyncedTable } from './synced-table'
 import type { DbMutation } from './types'
@@ -11,12 +11,12 @@ import { tableFromIPC } from 'apache-arrow'
 export interface SyncedDbOptions {
   schema: Record<string, Table<any, any>>
   driver: OrmDriver
-  remoteDb: RemoteDb
+  remoteDb: TestRemoteDb
   name?: string
 }
 
 export class SyncedDb extends Db {
-  private remoteDb: RemoteDb
+  private remoteDb: TestRemoteDb
   private userSchema: Record<string, Table<any, any>>
   private localDriver: OrmDriver
 
