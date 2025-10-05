@@ -8,6 +8,7 @@ import type { DbMutation, DbMutationBatch } from './types'
 import { BinaryStreamParser } from './stream'
 import { tableFromIPC } from 'apache-arrow'
 import { ulid } from 'ulidx'
+import { sql } from '../utils/sql'
 
 export interface SyncedDbOptions {
   schema: Record<string, Table<any, any>>
@@ -24,11 +25,14 @@ type SyncedDbBatch = Record<string, Table<any, any>> & {
   _sync_pull_progress: typeof internalSyncTables._sync_pull_progress
 }
 
+export type SyncState = 'pulling' | 'gettingLatest' | 'synced'
+
 export class SyncedDb extends Db {
   private remoteDb: RemoteDb
   private userSchema: Record<string, Table<any, any>>
   private localDriver: OrmDriver
   private skipPull: boolean
+  public syncState: SyncState = 'pulling'
 
   constructor(opts: SyncedDbOptions) {
     // Merge user schema with internal tables
@@ -66,21 +70,44 @@ export class SyncedDb extends Db {
     if (this.skipPull) {
       // Mark all tables as complete without pulling
       await this.markAllTablesComplete()
+      this.syncState = 'gettingLatest'
     } else {
       // Check if pull is completed
       const pullCompleted = await this.isPullCompleted()
 
       if (!pullCompleted) {
         // Pull not complete - either first time or interrupted
+        this.syncState = 'pulling'
         await this.pullAll()
       }
+      this.syncState = 'gettingLatest'
     }
-
-    // Sync mutations from server
-    await this.syncMutationsFromServer()
 
     // Wrap user tables as SyncedTable instances
     this.wrapTablesAsSynced()
+
+    // Sync mutations from server in background (non-blocking)
+    this.syncMutationsFromServerInBackground()
+  }
+
+  private syncPromise?: Promise<void>
+
+  private syncMutationsFromServerInBackground(): void {
+    // Fire and forget - sync mutations in background
+    this.syncPromise = this.syncMutationsFromServer()
+      .then(() => {
+        this.syncState = 'synced'
+      })
+      .catch((error) => {
+        console.error('Failed to sync mutations from server:', error)
+        this.syncState = 'synced' // Still mark as synced to not block usage
+      })
+  }
+
+  async waitForSync(): Promise<void> {
+    if (this.syncPromise) {
+      await this.syncPromise
+    }
   }
 
   private async markAllTablesComplete(): Promise<void> {
@@ -139,10 +166,16 @@ export class SyncedDb extends Db {
             await table.insert(row)
           }
         } else if (mutation.type === 'update') {
-          await table.update(mutation.data)
+          const { id, ...data } = mutation.data
+          // Manually encode ID for WHERE clause
+          const idCol = (table as any).id
+          const encodedId = idCol?.__meta__.encode ? idCol.__meta__.encode(id) : id
+          await table.update({ data, where: sql`id = ${encodedId}` })
         } else if (mutation.type === 'delete') {
+          const idCol = (table as any).id
           for (const id of mutation.ids) {
-            await table.delete({ id })
+            const encodedId = idCol?.__meta__.encode ? idCol.__meta__.encode(id) : id
+            await table.delete({ where: sql`id = ${encodedId}` })
           }
         }
       }

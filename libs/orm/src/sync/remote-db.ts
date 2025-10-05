@@ -4,6 +4,7 @@ import { tableFromArrays } from 'apache-arrow'
 import type { Db } from '../schema/db'
 import type { OrmDriver } from '../schema/types'
 import { BinaryStreamGenerator } from './stream'
+import { sql } from '../utils/sql'
 
 export interface RemoteDbConfig {
   maxMemoryMb?: number // Default: 50MB
@@ -147,10 +148,17 @@ export class TestRemoteDb implements RemoteDb, RemoteDbServer {
                 await (tx as any)[mutation.table].insert(row)
               }
             } else if (mutation.type === 'update') {
-              await (tx as any)[mutation.table].update(mutation.data)
+              const { id, ...data } = mutation.data
+              const table = (tx as any)[mutation.table]
+              const idCol = table.id
+              const encodedId = idCol?.__meta__.encode ? idCol.__meta__.encode(id) : id
+              await table.update({ data, where: sql`id = ${encodedId}` })
             } else if (mutation.type === 'delete') {
+              const table = (tx as any)[mutation.table]
+              const idCol = table.id
               for (const id of mutation.ids) {
-                await (tx as any)[mutation.table].delete({ id })
+                const encodedId = idCol?.__meta__.encode ? idCol.__meta__.encode(id) : id
+                await table.delete({ where: sql`id = ${encodedId}` })
               }
             }
           }

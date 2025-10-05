@@ -185,9 +185,15 @@ it('syncs mutations between clients', async () => {
     skipPull: true,
   })
 
-  await client1.users.insertWithUndo({ name: 'Charlie', email: 'charlie@example.com' })
+  // Insert a user
+  const inserted = await client1.users.insertWithUndo({ name: 'Charlie', email: 'charlie@example.com' })
+  const userId = inserted.id
 
-  // Client 2: initialize and should receive mutation from client 1
+  // Verify insert worked locally on client1
+  let client1Result = await client1.users.select().execute()
+  expect(client1Result).toHaveLength(1)
+
+  // Client 2: initialize and should receive insert mutation from client 1
   const client2Driver = new OrmNodeDriver()
   const client2 = await o.syncedDb({
     schema: { users },
@@ -196,8 +202,66 @@ it('syncs mutations between clients', async () => {
     skipPull: true,
   })
 
-  const result = await client2.users.select().execute()
+  // Verify sync state transitions
+  expect(client2.syncState).toBe('gettingLatest')
+
+  // Wait for background sync to complete
+  await client2.waitForSync()
+
+  expect(client2.syncState).toBe('synced')
+
+  let result = await client2.users.select().execute()
   expect(result).toMatchObject([
     { name: 'Charlie', email: 'charlie@example.com' }
   ])
+
+  // Update the user from client1
+  await client1.users.updateWithUndo({
+    data: { email: 'charlie.updated@example.com' },
+    where: { id: userId }
+  })
+
+  // Client 3: initialize and should receive both insert and update mutations
+  const client3Driver = new OrmNodeDriver()
+  const client3 = await o.syncedDb({
+    schema: { users },
+    driver: client3Driver,
+    remoteDb,
+    skipPull: true,
+  })
+
+  // Wait for background sync to complete
+  await client3.waitForSync()
+
+  result = await client3.users.select().execute()
+  expect(result).toMatchObject([
+    { name: 'Charlie', email: 'charlie.updated@example.com' }
+  ])
+
+  // Delete the user from client1
+  await client1.users.deleteWithUndo({ where: { id: userId } })
+
+  // Client 4: initialize and should have empty table (insert, update, then delete)
+  const client4Driver = new OrmNodeDriver()
+  const client4 = await o.syncedDb({
+    schema: { users },
+    driver: client4Driver,
+    remoteDb,
+    skipPull: true,
+  })
+
+  // Wait for background sync to complete
+  await client4.waitForSync()
+
+  // Verify all 3 mutations were received
+  const client4Mutations = await client4Driver.run({
+    query: 'SELECT id, value FROM _db_mutations_queue ORDER BY server_timestamp_ms',
+    params: [],
+  })
+  expect(client4Mutations).toHaveLength(3)
+  expect(client4Mutations.map((m: any) => JSON.parse(m.value).mutation[0].type)).toEqual(['insert', 'update', 'delete'])
+
+  // After all mutations applied (insert -> update -> delete), table should be empty
+  result = await client4.users.select().execute()
+  expect(result).toHaveLength(0)
 })

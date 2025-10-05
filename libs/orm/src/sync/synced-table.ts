@@ -60,11 +60,111 @@ export class SyncedTable<Name extends string, TCols extends Record<string, Colum
     return fullData
   }
 
-  async updateWithUndo(_options: any): Promise<void> {
-    throw new Error('updateWithUndo not implemented yet')
+  async updateWithUndo(options: { data: Record<string, any>; where: { id: any } }): Promise<void> {
+    const driver = this.__db__.getDriver()
+
+    // Encode ID for query
+    const idCol = (this as any).id
+    const encodedId = idCol?.__meta__.encode ? idCol.__meta__.encode(options.where.id) : options.where.id
+
+    // IMPORTANT: Read original data before updating for undo
+    const originalRows = await driver.run({
+      query: `SELECT * FROM ${this.__meta__.dbName} WHERE id = ?`,
+      params: [encodedId],
+    })
+
+    if (originalRows.length === 0) {
+      throw new Error(`No row found with id ${options.where.id}`)
+    }
+
+    // Convert snake_case to camelCase for original data
+    const originalData: Record<string, any> = {}
+    for (const [key, value] of Object.entries(originalRows[0])) {
+      const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
+      // Decode if column has decode function
+      const col = (this as any)[camelKey]
+      originalData[camelKey] = col?.__meta__.decode ? col.__meta__.decode(value) : value
+    }
+
+    // Perform the update
+    const setClause: string[] = []
+    const params: any[] = []
+
+    for (const [key, value] of Object.entries(options.data)) {
+      if (value === undefined) continue
+      const col = (this as any)[key]
+      if (!col || col.__meta__.insertType === 'virtual') continue
+
+      const encoded = col.__meta__.encode ? col.__meta__.encode(value) : value
+      setClause.push(`${col.__meta__.dbName} = ?`)
+      params.push(encoded)
+    }
+
+    if (setClause.length === 0) {
+      throw new Error('No columns to update')
+    }
+
+    params.push(encodedId)
+    const query = `UPDATE ${this.__meta__.dbName} SET ${setClause.join(', ')} WHERE id = ?`
+    await driver.run({ query, params })
+
+    // Create mutation with undo
+    const mutation: DbMutation = {
+      table: this.__meta__.name,
+      type: 'update',
+      data: { ...options.data, id: options.where.id },
+      undo: {
+        type: 'update',
+        data: [originalData],
+      },
+    }
+
+    // Enqueue mutation for sync
+    await this.onMutation(mutation)
   }
 
-  async deleteWithUndo(_options: any): Promise<void> {
-    throw new Error('deleteWithUndo not implemented yet')
+  async deleteWithUndo(options: { where: { id: any } }): Promise<void> {
+    const driver = this.__db__.getDriver()
+
+    // Encode ID for query
+    const idCol = (this as any).id
+    const encodedId = idCol?.__meta__.encode ? idCol.__meta__.encode(options.where.id) : options.where.id
+
+    // IMPORTANT: Read data before deleting for undo
+    const rows = await driver.run({
+      query: `SELECT * FROM ${this.__meta__.dbName} WHERE id = ?`,
+      params: [encodedId],
+    })
+
+    if (rows.length === 0) {
+      throw new Error(`No row found with id ${options.where.id}`)
+    }
+
+    // Convert snake_case to camelCase
+    const deletedData: Record<string, any> = {}
+    for (const [key, value] of Object.entries(rows[0])) {
+      const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
+      // Decode if column has decode function
+      const col = (this as any)[camelKey]
+      deletedData[camelKey] = col?.__meta__.decode ? col.__meta__.decode(value) : value
+    }
+
+    // Perform the delete
+    const query = `DELETE FROM ${this.__meta__.dbName} WHERE id = ?`
+    await driver.run({ query, params: [encodedId] })
+
+    // Create mutation with undo
+    const mutation: DbMutation = {
+      table: this.__meta__.name,
+      type: 'delete',
+      ids: [options.where.id],
+      undo: {
+        type: 'insert',
+        data: [deletedData],
+      },
+    }
+
+    // Enqueue mutation for sync
+    await this.onMutation(mutation)
   }
 }
