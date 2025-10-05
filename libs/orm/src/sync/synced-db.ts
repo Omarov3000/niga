@@ -17,6 +17,13 @@ export interface SyncedDbOptions {
   skipPull?: boolean // For tests: skip pull phase, only sync mutations
 }
 
+// Type for the batch transaction - includes all schema tables plus internal tables
+type SyncedDbBatch = Record<string, Table<any, any>> & {
+  _db_mutations_queue: typeof internalTables._db_mutations_queue
+  _db_mutations_queue_dead: typeof internalTables._db_mutations_queue_dead
+  _sync_pull_progress: typeof internalTables._sync_pull_progress
+}
+
 export class SyncedDb extends Db {
   private remoteDb: RemoteDb
   private userSchema: Record<string, Table<any, any>>
@@ -121,23 +128,27 @@ export class SyncedDb extends Db {
     }
 
     // Apply mutations in transaction
-    await this.batch(async (tx) => {
+    await this.batch(async (tx: SyncedDbBatch) => {
       for (const mutation of batch.mutation) {
+        // as any: Dynamic table access by name from mutation - TS can't infer specific table type
+        const table = tx[mutation.table] as any
+        if (!table) continue
+
         if (mutation.type === 'insert') {
           for (const row of mutation.data) {
-            await (tx as any)[mutation.table].insert(row)
+            await table.insert(row)
           }
         } else if (mutation.type === 'update') {
-          await (tx as any)[mutation.table].update(mutation.data)
+          await table.update(mutation.data)
         } else if (mutation.type === 'delete') {
           for (const id of mutation.ids) {
-            await (tx as any)[mutation.table].delete({ id })
+            await table.delete({ id })
           }
         }
       }
 
       // Store mutation in local queue with server timestamp
-      await (tx as any)._db_mutations_queue.insert({
+      await tx._db_mutations_queue.insert({
         id: batch.id,
         value: JSON.stringify(batch),
         serverTimestampMs,
@@ -253,9 +264,13 @@ export class SyncedDb extends Db {
     })
 
     // Insert rows and update progress in transaction
-    await this.batch(async (batch) => {
+    await this.batch(async (batch: SyncedDbBatch) => {
+      // as any: Dynamic table access by name - TS can't infer specific table type from string variable
+      const batchTable = batch[tableName] as any
+      if (!batchTable) return
+
       for (const row of convertedRows) {
-        await (batch as any)[tableName].insert(row)
+        await batchTable.insert(row)
       }
     })
   }
@@ -320,6 +335,7 @@ export class SyncedDb extends Db {
       // Create SyncedTable with same options as the original table
       const syncedTable = new SyncedTable(
         {
+          // as any: Table name is a string literal type but we're creating dynamically - TS can't narrow the type
           name: table.__meta__.name as any,
           columns: table.__columns__,
           indexes: table.__meta__.indexes,
@@ -329,15 +345,21 @@ export class SyncedDb extends Db {
       )
 
       // Connect to the same driver and db context
-      ;(syncedTable as any).__db__ = {
-        getDriver: () => {
-          if (!this.localDriver) throw new Error('No driver connected.')
-          return this.localDriver
+      // TypeScript doesn't allow direct assignment to readonly properties, but we need to initialize it
+      Object.defineProperty(syncedTable, '__db__', {
+        value: {
+          getDriver: () => {
+            if (!this.localDriver) throw new Error('No driver connected.')
+            return this.localDriver
+          },
+          getCurrentUser: () => this.currentUser,
+          getSchema: () => this.options.schema,
+          isProd: () => this.options.isProd ? this.options.isProd() : false,
         },
-        getCurrentUser: () => (this as any).currentUser,
-        getSchema: () => (this as any).options.schema,
-        isProd: () => (this as any).options.isProd ? (this as any).options.isProd() : false,
-      }
+        writable: false,
+        enumerable: false,
+        configurable: false,
+      })
 
       typedThis[name] = syncedTable
     }
@@ -346,7 +368,7 @@ export class SyncedDb extends Db {
   private async enqueueMutation(mutation: DbMutation): Promise<void> {
     const batch: DbMutationBatch = {
       id: ulid(),
-      dbName: (this as any).options.name ?? 'synced',
+      dbName: this.options.name ?? 'synced',
       mutation: [mutation],
       node: {
         id: ulid(),

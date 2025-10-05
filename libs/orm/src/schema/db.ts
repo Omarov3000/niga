@@ -32,11 +32,11 @@ export interface DbConstructorOptions {
 
 export class Db {
   private driver?: OrmDriver;
-  private currentUser?: any;
+  protected currentUser?: any;
   readonly name: string;
   readonly origin?: 'client' | 'server';
 
-  constructor(private options: DbConstructorOptions) {
+  constructor(protected options: DbConstructorOptions) {
     this.name = options.name ?? 'orm';
     this.origin = options.origin;
     // expose tables on the db instance and wire driver access for table methods
