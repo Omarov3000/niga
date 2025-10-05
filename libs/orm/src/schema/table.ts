@@ -583,9 +583,7 @@ export class SelectQueryBuilder<
     return builder;
   };
 
-  async execute(): Promise<SelectResult<TColMapOrDefault extends undefined ? TSource['__columns__'] : TColMapOrDefault, TJoined, TMode>[]>;
-  async execute<T extends Schema>(schema: T): Promise<s.infer<ReturnType<typeof s.array<T>>>>;
-  async execute<T extends Schema>(schema?: T): Promise<any> {
+  async execute(): Promise<SelectResult<TColMapOrDefault extends undefined ? TSource['__columns__'] : TColMapOrDefault, TJoined, TMode>[]> {
     const driver = this.source.__db__.getDriver();
     const query = this.buildQuery();
 
@@ -603,13 +601,6 @@ export class SelectQueryBuilder<
     await this.source.enforceSecurityRules(queryContext, user);
 
     const rawResults = await driver.run(query);
-
-    if (schema) {
-      // Runtime validation with schema
-      const normalized = rawResults.map((row: Record<string, unknown>) => camelCaseKeys(row));
-      const arraySchema = s.array(schema);
-      return (arraySchema as any).parse(normalized) as s.infer<typeof arraySchema>;
-    }
 
     return this.processResults(rawResults);
   }

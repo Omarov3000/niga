@@ -2,7 +2,7 @@ import { Db } from '../schema/db'
 import type { Table } from '../schema/table'
 import type { OrmDriver } from '../schema/types'
 import type { RemoteDb, PullResumeState } from './remote-db'
-import { internalTables } from './internal-tables'
+import { internalSyncTables } from './internal-tables'
 import { SyncedTable } from './synced-table'
 import type { DbMutation, DbMutationBatch } from './types'
 import { BinaryStreamParser } from './stream'
@@ -19,9 +19,9 @@ export interface SyncedDbOptions {
 
 // Type for the batch transaction - includes all schema tables plus internal tables
 type SyncedDbBatch = Record<string, Table<any, any>> & {
-  _db_mutations_queue: typeof internalTables._db_mutations_queue
-  _db_mutations_queue_dead: typeof internalTables._db_mutations_queue_dead
-  _sync_pull_progress: typeof internalTables._sync_pull_progress
+  _db_mutations_queue: typeof internalSyncTables._db_mutations_queue
+  _db_mutations_queue_dead: typeof internalSyncTables._db_mutations_queue_dead
+  _sync_pull_progress: typeof internalSyncTables._sync_pull_progress
 }
 
 export class SyncedDb extends Db {
@@ -32,7 +32,7 @@ export class SyncedDb extends Db {
 
   constructor(opts: SyncedDbOptions) {
     // Merge user schema with internal tables
-    const fullSchema = { ...opts.schema, ...internalTables }
+    const fullSchema = { ...opts.schema, ...internalSyncTables }
 
     super({
       schema: fullSchema,

@@ -3,6 +3,7 @@ import { o } from '../schema/builder'
 import { OrmNodeDriver } from '../orm-node-driver'
 import { TestRemoteDb } from './remote-db'
 import { ulid } from 'ulidx'
+import { internalSyncTables } from './internal-tables'
 
 it('syncs data from remote on initialization', async () => {
   const users = o.table('users', {
@@ -27,7 +28,7 @@ it('syncs data from remote on initialization', async () => {
     remoteDb,
   })
 
-  const result = await db.users.select().execute(o.s.object({ id: o.s.id(), name: o.s.text(), email: o.s.text() }))
+  const result = await db.users.select().execute()
   expect(result).toMatchObject([
     { name: 'Alice', email: 'alice@example.com' },
     { name: 'Bob', email: 'bob@example.com' }
@@ -53,7 +54,7 @@ it('handles empty remote database', async () => {
     remoteDb,
   })
 
-  const result = await db.users.select().execute(o.s.object({ id: o.s.id(), name: o.s.text() }))
+  const result = await db.users.select().execute()
 
   expect(result).toHaveLength(0)
 })
@@ -93,8 +94,8 @@ it('syncs multiple tables', async () => {
     remoteDb,
   })
 
-  const userResult = await db.users.select().execute(o.s.object({ id: o.s.id(), name: o.s.text() }))
-  const postResult = await db.posts.select().execute(o.s.object({ id: o.s.id(), title: o.s.text(), authorId: o.s.id() }))
+  const userResult = await db.users.select().execute()
+  const postResult = await db.posts.select().execute()
 
   expect(userResult).toHaveLength(2)
   expect(postResult).toHaveLength(2)
@@ -130,7 +131,7 @@ it('resumes pull from last synced offset', async () => {
   })
 
   // Verify first sync got all 5 users
-  const result1 = await db1.users.select().execute(o.s.object({ id: o.s.id(), name: o.s.text() }))
+  const result1 = await db1.users.select().execute()
   expect(result1).toHaveLength(5)
 
   // Verify pull was marked as complete
@@ -148,7 +149,7 @@ it('resumes pull from last synced offset', async () => {
   })
 
   // Verify data is still there (pull was skipped)
-  const result2 = await db2.users.select().execute(o.s.object({ id: o.s.id(), name: o.s.text() }))
+  const result2 = await db2.users.select().execute()
   expect(result2).toHaveLength(5)
 })
 
@@ -159,15 +160,20 @@ it('syncs mutations between clients', async () => {
     email: o.text(),
   })
 
-  // Create server DB with internal tables for mutation queue
+  // Create server DB with internal mutation tables
   const serverDriver = new OrmNodeDriver()
-  const serverDb = await o.syncedDb({
-    schema: { users },
-    driver: serverDriver,
-    remoteDb: new TestRemoteDb(await o.testDb({ schema: { users } }, new OrmNodeDriver()), new OrmNodeDriver(), { users }),
-    skipPull: true,
-  })
+  const serverDb = await o.testDb(
+    {
+      schema: {
+        users,
+        ...internalSyncTables,
+      },
+      origin: 'server',
+    },
+    serverDriver
+  )
 
+  // Single RemoteDb wrapping the server
   const remoteDb = new TestRemoteDb(serverDb, serverDriver, { users })
 
   // Client 1: insert user with mutation
@@ -190,7 +196,7 @@ it('syncs mutations between clients', async () => {
     skipPull: true,
   })
 
-  const result = await client2.users.select().execute(o.s.object({ id: o.s.id(), name: o.s.text(), email: o.s.text() }))
+  const result = await client2.users.select().execute()
   expect(result).toMatchObject([
     { name: 'Charlie', email: 'charlie@example.com' }
   ])
