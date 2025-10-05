@@ -151,3 +151,47 @@ it('resumes pull from last synced offset', async () => {
   const result2 = await db2.users.select().execute(o.s.object({ id: o.s.id(), name: o.s.text() }))
   expect(result2).toHaveLength(5)
 })
+
+it('syncs mutations between clients', async () => {
+  const users = o.table('users', {
+    id: o.id(),
+    name: o.text(),
+    email: o.text(),
+  })
+
+  // Create server DB with internal tables for mutation queue
+  const serverDriver = new OrmNodeDriver()
+  const serverDb = await o.syncedDb({
+    schema: { users },
+    driver: serverDriver,
+    remoteDb: new TestRemoteDb(await o.testDb({ schema: { users } }, new OrmNodeDriver()), new OrmNodeDriver(), { users }),
+    skipPull: true,
+  })
+
+  const remoteDb = new TestRemoteDb(serverDb, serverDriver, { users })
+
+  // Client 1: insert user with mutation
+  const client1Driver = new OrmNodeDriver()
+  const client1 = await o.syncedDb({
+    schema: { users },
+    driver: client1Driver,
+    remoteDb,
+    skipPull: true,
+  })
+
+  await client1.users.insertWithUndo({ name: 'Charlie', email: 'charlie@example.com' })
+
+  // Client 2: initialize and should receive mutation from client 1
+  const client2Driver = new OrmNodeDriver()
+  const client2 = await o.syncedDb({
+    schema: { users },
+    driver: client2Driver,
+    remoteDb,
+    skipPull: true,
+  })
+
+  const result = await client2.users.select().execute(o.s.object({ id: o.s.id(), name: o.s.text(), email: o.s.text() }))
+  expect(result).toMatchObject([
+    { name: 'Charlie', email: 'charlie@example.com' }
+  ])
+})

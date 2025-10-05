@@ -17,9 +17,47 @@ export class SyncedTable<Name extends string, TCols extends Record<string, Colum
     this.onMutation = onMutation
   }
 
-  // Mutation methods - throw for now, will implement later
-  async insertWithUndo(_data: any): Promise<any> {
-    throw new Error('insertWithUndo not implemented yet')
+  async insertWithUndo(data: any): Promise<any> {
+    // Build full object using make
+    const fullData = this.make(data)
+
+    // Perform the insert using driver directly
+    const driver = this.__db__.getDriver()
+    const colsMeta = this.__meta__.columns
+    const columnNames: string[] = []
+    const params: any[] = []
+
+    for (const [key] of Object.entries(colsMeta)) {
+      const col = (this as any)[key]
+      if (!col || col.__meta__.insertType === 'virtual') continue
+
+      const value = (fullData as any)[key]
+      if (value === undefined) continue
+      const encoded = col.__meta__.encode ? col.__meta__.encode(value) : value
+      columnNames.push(col.__meta__.dbName)
+      params.push(encoded)
+    }
+
+    const placeholders = params.map(() => '?').join(', ')
+    const query = `INSERT INTO ${this.__meta__.dbName} (${columnNames.join(', ')}) VALUES (${placeholders})`
+
+    await driver.run({ query, params })
+
+    // Create mutation with undo
+    const mutation: DbMutation = {
+      table: this.__meta__.name,
+      type: 'insert',
+      data: [fullData],
+      undo: {
+        type: 'delete',
+        ids: [(fullData as any).id],
+      },
+    }
+
+    // Enqueue mutation for sync
+    await this.onMutation(mutation)
+
+    return fullData
   }
 
   async updateWithUndo(_options: any): Promise<void> {

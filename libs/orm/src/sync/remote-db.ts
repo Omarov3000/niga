@@ -11,7 +11,23 @@ export interface RemoteDbConfig {
 
 export type PullResumeState = Map<string, number> // tableName -> offset
 
-export class TestRemoteDb {
+/**
+ * RemoteDb interface - client-side operations for syncing with remote database
+ */
+export interface RemoteDb {
+  send(batch: DbMutationBatch[]): Promise<{ succeeded: { id: string; server_timestamp_ms: number }[]; failed: string[] }>
+  get(maxServerTimestampLocally: number): Promise<Array<{ batch: DbMutationBatch; serverTimestampMs: number }>>
+  pull(resumeState?: PullResumeState): AsyncGenerator<Uint8Array, void, unknown>
+}
+
+/**
+ * RemoteDbServer interface - server-side operations for accepting mutations
+ */
+export interface RemoteDbServer {
+  acceptSyncBatch(batch: DbMutationBatch[]): Promise<{ succeeded: { id: string; server_timestamp_ms: number }[]; failed: string[] }>
+}
+
+export class TestRemoteDb implements RemoteDb, RemoteDbServer {
   private maxMemoryBytes: number
 
   constructor(
@@ -94,11 +110,65 @@ export class TestRemoteDb {
     }
   }
 
-  async send(_batch: DbMutationBatch[]): Promise<{ succeeded: { id: string; server_timestamp_ms: number }[]; failed: string[] }> {
-    throw new Error('send not implemented')
+  async send(batch: DbMutationBatch[]): Promise<{ succeeded: { id: string; server_timestamp_ms: number }[]; failed: string[] }> {
+    return this.acceptSyncBatch(batch)
   }
 
-  async get(_maxServerTimestampLocally: number): Promise<DbMutationBatch[]> {
-    throw new Error('get not implemented')
+  async get(maxServerTimestampLocally: number): Promise<Array<{ batch: DbMutationBatch; serverTimestampMs: number }>> {
+    try {
+      const rows = await this.driver.run({
+        query: 'SELECT id, value, server_timestamp_ms FROM _db_mutations_queue WHERE server_timestamp_ms > ? ORDER BY server_timestamp_ms, id',
+        params: [maxServerTimestampLocally],
+      })
+
+      return rows.map((row: any) => ({
+        batch: JSON.parse(row.value) as DbMutationBatch,
+        serverTimestampMs: row.server_timestamp_ms,
+      }))
+    } catch {
+      // Table doesn't exist (server is not a SyncedDb) - return empty array
+      return []
+    }
+  }
+
+  async acceptSyncBatch(batch: DbMutationBatch[]): Promise<{ succeeded: { id: string; server_timestamp_ms: number }[]; failed: string[] }> {
+    const succeeded: { id: string; server_timestamp_ms: number }[] = []
+    const failed: string[] = []
+
+    for (const mutationBatch of batch) {
+      try {
+        const serverTimestampMs = Date.now()
+
+        // Apply mutations to server db in a transaction
+        await this.db.batch(async (tx) => {
+          for (const mutation of mutationBatch.mutation) {
+            if (mutation.type === 'insert') {
+              for (const row of mutation.data) {
+                await (tx as any)[mutation.table].insert(row)
+              }
+            } else if (mutation.type === 'update') {
+              await (tx as any)[mutation.table].update(mutation.data)
+            } else if (mutation.type === 'delete') {
+              for (const id of mutation.ids) {
+                await (tx as any)[mutation.table].delete({ id })
+              }
+            }
+          }
+
+          // Store mutation in server's queue with timestamp
+          await (tx as any)._db_mutations_queue.insert({
+            id: mutationBatch.id,
+            value: JSON.stringify(mutationBatch),
+            serverTimestampMs,
+          })
+        })
+
+        succeeded.push({ id: mutationBatch.id, server_timestamp_ms: serverTimestampMs })
+      } catch (error) {
+        failed.push(mutationBatch.id)
+      }
+    }
+
+    return { succeeded, failed }
   }
 }

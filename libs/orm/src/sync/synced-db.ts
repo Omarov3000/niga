@@ -1,24 +1,27 @@
 import { Db } from '../schema/db'
 import type { Table } from '../schema/table'
 import type { OrmDriver } from '../schema/types'
-import type { TestRemoteDb, PullResumeState } from './remote-db'
+import type { RemoteDb, PullResumeState } from './remote-db'
 import { internalTables } from './internal-tables'
 import { SyncedTable } from './synced-table'
-import type { DbMutation } from './types'
+import type { DbMutation, DbMutationBatch } from './types'
 import { BinaryStreamParser } from './stream'
 import { tableFromIPC } from 'apache-arrow'
+import { ulid } from 'ulidx'
 
 export interface SyncedDbOptions {
   schema: Record<string, Table<any, any>>
   driver: OrmDriver
-  remoteDb: TestRemoteDb
+  remoteDb: RemoteDb
   name?: string
+  skipPull?: boolean // For tests: skip pull phase, only sync mutations
 }
 
 export class SyncedDb extends Db {
-  private remoteDb: TestRemoteDb
+  private remoteDb: RemoteDb
   private userSchema: Record<string, Table<any, any>>
   private localDriver: OrmDriver
+  private skipPull: boolean
 
   constructor(opts: SyncedDbOptions) {
     // Merge user schema with internal tables
@@ -33,6 +36,7 @@ export class SyncedDb extends Db {
     this.userSchema = opts.schema
     this.remoteDb = opts.remoteDb
     this.localDriver = opts.driver
+    this.skipPull = opts.skipPull ?? false
 
     // Connect driver
     this._connectDriver(opts.driver)
@@ -52,17 +56,93 @@ export class SyncedDb extends Db {
       }
     }
 
-    // Check if pull is completed
-    const pullCompleted = await this.isPullCompleted()
+    if (this.skipPull) {
+      // Mark all tables as complete without pulling
+      await this.markAllTablesComplete()
+    } else {
+      // Check if pull is completed
+      const pullCompleted = await this.isPullCompleted()
 
-    if (!pullCompleted) {
-      // Pull not complete - either first time or interrupted
-      await this.pullAll()
+      if (!pullCompleted) {
+        // Pull not complete - either first time or interrupted
+        await this.pullAll()
+      }
     }
-    // else: Pull already complete, skip for now (future: call remoteDb.get())
+
+    // Sync mutations from server
+    await this.syncMutationsFromServer()
 
     // Wrap user tables as SyncedTable instances
     this.wrapTablesAsSynced()
+  }
+
+  private async markAllTablesComplete(): Promise<void> {
+    for (const tableName of Object.keys(this.userSchema)) {
+      await this.setPullProgress(tableName, 'all')
+    }
+  }
+
+  private async syncMutationsFromServer(): Promise<void> {
+    // Get max server timestamp from local queue
+    const maxTimestamp = await this.getMaxServerTimestamp()
+
+    // Fetch new mutations from server
+    const mutations = await this.remoteDb.get(maxTimestamp)
+
+    // Apply each mutation batch with its server timestamp
+    for (const { batch, serverTimestampMs } of mutations) {
+      await this.applyMutationBatch(batch, serverTimestampMs)
+    }
+  }
+
+  private async getMaxServerTimestamp(): Promise<number> {
+    try {
+      const result = await this.localDriver.run({
+        query: 'SELECT MAX(server_timestamp_ms) as max_ts FROM _db_mutations_queue',
+        params: [],
+      })
+
+      return result[0]?.max_ts ?? 0
+    } catch {
+      return 0
+    }
+  }
+
+  private async applyMutationBatch(batch: DbMutationBatch, serverTimestampMs: number): Promise<void> {
+    // Check if already applied
+    const existing = await this.localDriver.run({
+      query: 'SELECT id FROM _db_mutations_queue WHERE id = ?',
+      params: [batch.id],
+    })
+
+    if (existing.length > 0) {
+      // Already applied, skip
+      return
+    }
+
+    // Apply mutations in transaction
+    await this.batch(async (tx) => {
+      for (const mutation of batch.mutation) {
+        if (mutation.type === 'insert') {
+          for (const row of mutation.data) {
+            await (tx as any)[mutation.table].insert(row)
+          }
+        } else if (mutation.type === 'update') {
+          await (tx as any)[mutation.table].update(mutation.data)
+        } else if (mutation.type === 'delete') {
+          for (const id of mutation.ids) {
+            await (tx as any)[mutation.table].delete({ id })
+          }
+        }
+      }
+
+      // Store mutation in local queue with server timestamp
+      await (tx as any)._db_mutations_queue.insert({
+        id: batch.id,
+        value: JSON.stringify(batch),
+        serverTimestampMs,
+      })
+    })
   }
 
   private async isPullCompleted(): Promise<boolean> {
@@ -264,8 +344,44 @@ export class SyncedDb extends Db {
   }
 
   private async enqueueMutation(mutation: DbMutation): Promise<void> {
-    // Will implement later when we add mutation support
-    throw new Error('enqueueMutation not implemented yet')
+    const batch: DbMutationBatch = {
+      id: ulid(),
+      dbName: (this as any).options.name ?? 'synced',
+      mutation: [mutation],
+      node: {
+        id: ulid(),
+        name: 'client', // TODO: get from system
+      },
+    }
+
+    // Store in local queue and send to remote
+    await this.localDriver.run({
+      query: `
+        INSERT INTO _db_mutations_queue (id, value, server_timestamp_ms)
+        VALUES (?, ?, 0)
+      `,
+      params: [batch.id, JSON.stringify(batch)],
+    })
+
+    // Send to remote server
+    const result = await this.remoteDb.send([batch])
+
+    // Update local queue with server timestamp for succeeded mutations
+    for (const succeeded of result.succeeded) {
+      await this.localDriver.run({
+        query: `
+          UPDATE _db_mutations_queue
+          SET server_timestamp_ms = ?
+          WHERE id = ?
+        `,
+        params: [succeeded.server_timestamp_ms, succeeded.id],
+      })
+    }
+
+    // Handle failures (future: move to dead queue)
+    if (result.failed.length > 0) {
+      console.error('Failed to sync mutations:', result.failed)
+    }
   }
 }
 

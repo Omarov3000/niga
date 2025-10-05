@@ -12,6 +12,8 @@ Before running tests after you implemented a feature it's a good idea to run `ts
 
 Never add `.js` in the file imports.
 
+Never use dynamic imports.
+
 Never use multiple assertion calls if they can be replace with a single `toMatchObject` call.
 
 ```ts
