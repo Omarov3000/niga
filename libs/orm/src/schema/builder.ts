@@ -6,6 +6,7 @@ import { toSnakeCase } from '../utils/casing';
 import { OrmDriver, type ConstraintDefinition, type ConstraintType } from './types';
 import { Column } from './column';
 import { Db } from './db';
+import { syncedDb } from '../sync/synced-db';
 
 const text = () => new Column<'text', string, 'optional'>({ kind: 'public', name: 'text', type: 'text' });
 const integer = () => new Column<'integer', number, 'optional'>({ kind: 'public', name: 'integer', type: 'integer' });
@@ -309,6 +310,7 @@ export const o = {
   index,
   db,
   testDb,
+  syncedDb,
   primaryKey: primaryKeyConstraint,
   unique: uniqueConstraint,
   s: {

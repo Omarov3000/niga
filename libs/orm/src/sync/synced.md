@@ -77,7 +77,7 @@ After applying mutation and storing it in queue table (in tx) it needs to be sen
 interface RemoteDb {
   send: (batch: DbMutationBatch[]) => Promise<{ succeeded: { id: string; server_timestamp_ms: number }[]; failed: string[] }>
   get: (maxServerTimestampLocally: number) => Promise<DbMutationBatch[]>
-  pull: (opts: { required: { table: string; offset?: number }[] }): Promise<Blob> // tableName:(rowsNumber or -1 if all table was read) + apache-arrow representation of the rows data. Let's assume that this will be streamed from server but for now we can assume that it's a single blob.
+  pull: (opts: { required: { table: string; offset?: number }[] }): Promise<Blob> // tableName:(rowsNumber or '' if all table was read) + apache-arrow representation of the rows data. Let's assume that this will be streamed from server but for now we can assume that it's a single blob.
 }
 ```
 

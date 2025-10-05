@@ -19,10 +19,11 @@
     "lint1": "biome lint --write --unsafe --error-on-warnings src"
   },
   "dependencies": {
+    "@tursodatabase/database": "^0.1.4",
     "@w/schema": "workspace:*",
+    "apache-arrow": "^21.0.0",
     "nanoid": "^5.1.5",
-    "sql-parser-cst": "^0.33.1",
-    "@tursodatabase/database": "^0.1.4"
+    "sql-parser-cst": "^0.33.1"
   },
   "devDependencies": {
     "dedent": "^1.5.3",

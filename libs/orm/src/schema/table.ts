@@ -1,7 +1,7 @@
 import { Column, ColumnUpdateExpression } from './column';
 import { FilterObject, OrderObject, sql } from '../utils/sql';
 import type { RawSql } from '../utils/sql';
-import { toSnakeCase } from '../utils/casing';
+import { toSnakeCase, camelCaseKeys } from '../utils/casing';
 import { normalizeQueryAnalysisToRuntime } from '../true-sql/normalize-analysis';
 import { analyze } from '../true-sql/analyze';
 import { rawQueryToAst } from '../true-sql/raw-query-to-ast';
@@ -72,7 +72,104 @@ export interface TableConstructorOptions<Name extends string, TCols extends Reco
   constrains?: ConstraintDefinition[];
 }
 
-export class Table<Name extends string, TCols extends Record<string, Column<any, any, any>>> {
+export abstract class BaseTable<Name extends string, TCols extends Record<string, Column<any, any, any>>> {
+  readonly __meta__: TableMetadata;
+  readonly __columns__: TCols;
+  readonly __db__!: { getDriver: () => OrmDriver; getCurrentUser: () => any; getSchema: () => Record<string, Table<any, any>>; isProd: () => boolean };
+  // type helpers exposed on instance for precise typing
+  readonly __selectionType__!: SelectableForCols<TCols>;
+  readonly __insertionType__!: InsertableForCols<TCols>;
+  // schema properties for instant type extraction
+  readonly __insertSchema__!: ObjectSchema<any>;
+  readonly __updateSchema__!: ObjectSchema<any>;
+  readonly __selectSchema__!: ObjectSchema<any>;
+  protected _securityRules: SecurityRule[] = [];
+
+  constructor(options: TableConstructorOptions<Name, TCols>) {
+    const tableDbName = toSnakeCase(options.name);
+    const columnMetadata: Record<string, ColumnMetadata> = {};
+    Object.entries(options.columns).forEach(([key, col]) => {
+      const columnDbName = toSnakeCase(key);
+      col.__table__ = { getName: () => options.name, getDbName: () => tableDbName };
+      col.__meta__.name = key as any;
+      col.__meta__.dbName = columnDbName;
+      (this as any)[key] = col;
+      columnMetadata[key] = { ...col.__meta__, name: key, dbName: columnDbName } as ColumnMetadata;
+    });
+
+    this.__meta__ = {
+      name: options.name,
+      dbName: tableDbName,
+      columns: columnMetadata,
+      indexes: options.indexes ?? [],
+      constrains: options.constrains ?? [],
+    } as TableMetadata;
+
+    this.__columns__ = options.columns;
+
+    // Build schemas for type extraction
+    const insertSchemaFields: Record<string, Schema> = {};
+    const updateSchemaFields: Record<string, Schema> = {};
+    const selectSchemaFields: Record<string, Schema> = {};
+
+    Object.entries(options.columns).forEach(([key, col]) => {
+      const meta = col.__meta__;
+
+      // Skip virtual columns for insert/update
+      if (meta.insertType === 'virtual') {
+        return;
+      }
+
+      // Build the base schema for this column
+      let columnSchema: Schema;
+
+      if (meta.jsonSchema) {
+        columnSchema = meta.jsonSchema;
+      } else if (meta.appType === 'date') {
+        columnSchema = s.date();
+      } else if (meta.appType === 'boolean') {
+        columnSchema = s.boolean();
+      } else if (meta.appType === 'enum' && meta.enumValues) {
+        columnSchema = s.enum(meta.enumValues as any);
+      } else {
+        // Use SQL type as fallback
+        switch (meta.type) {
+          case 'text':
+            columnSchema = s.string();
+            break;
+          case 'integer':
+          case 'real':
+            columnSchema = s.number();
+            break;
+          default:
+            columnSchema = s.string();
+        }
+      }
+
+      // Handle insert schema (required/optional based on insertType)
+      if (meta.insertType === 'required') {
+        insertSchemaFields[key] = columnSchema;
+      } else {
+        // optional or withDefault
+        insertSchemaFields[key] = s.optional(columnSchema);
+      }
+
+      // Update schema - all non-virtual columns are optional
+      updateSchemaFields[key] = s.optional(columnSchema);
+
+      // Select schema - handle nullable/optional
+      if (meta.insertType === 'optional') {
+        selectSchemaFields[key] = s.optional(columnSchema);
+      } else {
+        selectSchemaFields[key] = columnSchema;
+      }
+    });
+
+    (this as any).__insertSchema__ = s.object(insertSchemaFields);
+    (this as any).__updateSchema__ = s.object(updateSchemaFields);
+    (this as any).__selectSchema__ = s.object(selectSchemaFields);
+  }
+
   as<Alias extends string>(alias: Alias): Table<Alias, TCols> & TCols {
     const clonedColumns = Object.fromEntries(
       Object.entries(this.__meta__.columns).map(([key, meta]) => {
@@ -147,6 +244,49 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     return result as any;
   }
 
+  secure<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf>, TUser = any>(rule: SecurityRule<TUser, Partial<InsertableForCols<TSelfCols>>>): this {
+    this._securityRules.push(rule as SecurityRule);
+    return this;
+  }
+
+  renamedFrom(previousName: string): this {
+    this.__meta__.renamedFrom = previousName;
+    return this;
+  }
+
+  async enforceSecurityRules<TUser = any>(queryContext: QueryContext, user: TUser): Promise<void> {
+    for (const rule of this._securityRules) {
+      try {
+        const allowed = await rule(queryContext, user);
+        if (allowed === false) {
+          throw new Error(`Security rule returned false for ${queryContext.type} operation on table ${this.__meta__.name}`);
+        }
+      } catch (error) {
+        if (error instanceof Error) {
+          throw error;
+        }
+        throw new Error(String(error));
+      }
+    }
+  }
+
+  protected async checkSecurity<TUser = any>(rawSql: RawSql, data?: any): Promise<void> {
+    const user = this.__db__.getCurrentUser();
+    const analysis = normalizeQueryAnalysisToRuntime(analyze(rawSql), this.__db__.getSchema());
+    const accessedTables = Array.from(new Set(analysis.accessedTables.map((table) => table.name)));
+
+    const queryContext: QueryContext = {
+      type: analysis.type,
+      accessedTables,
+      data,
+      analysis
+    };
+
+    await this.enforceSecurityRules(queryContext, user);
+  }
+}
+
+export class Table<Name extends string, TCols extends Record<string, Column<any, any, any>>> extends BaseTable<Name, TCols> {
   //#region MUTATIONS
 
   async insert<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf>>(
@@ -353,180 +493,46 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
   }
 
   //#endregion
-
-  secure<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf>, TUser = any>(rule: SecurityRule<TUser, Partial<InsertableForCols<TSelfCols>>>): this {
-    this._securityRules.push(rule as SecurityRule);
-    return this;
-  }
-
-  renamedFrom(previousName: string): this {
-    this.__meta__.renamedFrom = previousName;
-    return this;
-  }
-
-  async enforceSecurityRules<TUser = any>(queryContext: QueryContext, user: TUser): Promise<void> {
-    for (const rule of this._securityRules) {
-      try {
-        const allowed = await rule(queryContext, user);
-        if (allowed === false) {
-          throw new Error(`Security rule returned false for ${queryContext.type} operation on table ${this.__meta__.name}`);
-        }
-      } catch (error) {
-        if (error instanceof Error) {
-          throw error;
-        }
-        throw new Error(String(error));
-      }
-    }
-  }
-
-  private async checkSecurity<TUser = any>(rawSql: RawSql, data?: any): Promise<void> {
-    const user = this.__db__.getCurrentUser();
-    const analysis = normalizeQueryAnalysisToRuntime(analyze(rawSql), this.__db__.getSchema());
-    const accessedTables = Array.from(new Set(analysis.accessedTables.map((table) => table.name)));
-
-    const queryContext: QueryContext = {
-      type: analysis.type,
-      accessedTables,
-      data,
-      analysis
-    };
-
-    await this.enforceSecurityRules(queryContext, user);
-  }
-
-  readonly __meta__: TableMetadata;
-  readonly __columns__: TCols;
-  readonly __db__!: { getDriver: () => OrmDriver; getCurrentUser: () => any; getSchema: () => Record<string, Table<any, any>>; isProd: () => boolean };
-  // type helpers exposed on instance for precise typing
-  readonly __selectionType__!: SelectableForCols<TCols>;
-  readonly __insertionType__!: InsertableForCols<TCols>;
-  // schema properties for instant type extraction
-  readonly __insertSchema__!: ObjectSchema<any>;
-  readonly __updateSchema__!: ObjectSchema<any>;
-  readonly __selectSchema__!: ObjectSchema<any>;
-  private _securityRules: SecurityRule[] = [];
-
-  constructor(options: TableConstructorOptions<Name, TCols>) {
-    const tableDbName = toSnakeCase(options.name);
-    const columnMetadata: Record<string, ColumnMetadata> = {};
-    Object.entries(options.columns).forEach(([key, col]) => {
-      const columnDbName = toSnakeCase(key);
-      col.__table__ = { getName: () => options.name, getDbName: () => tableDbName };
-      col.__meta__.name = key as any;
-      col.__meta__.dbName = columnDbName;
-      (this as any)[key] = col;
-      columnMetadata[key] = { ...col.__meta__, name: key, dbName: columnDbName } as ColumnMetadata;
-    });
-
-    this.__meta__ = {
-      name: options.name,
-      dbName: tableDbName,
-      columns: columnMetadata,
-      indexes: options.indexes ?? [],
-      constrains: options.constrains ?? [],
-    } as TableMetadata;
-
-    this.__columns__ = options.columns;
-
-    // Build schemas for type extraction
-    const insertSchemaFields: Record<string, Schema> = {};
-    const updateSchemaFields: Record<string, Schema> = {};
-    const selectSchemaFields: Record<string, Schema> = {};
-
-    Object.entries(options.columns).forEach(([key, col]) => {
-      const meta = col.__meta__;
-
-      // Skip virtual columns for insert/update
-      if (meta.insertType === 'virtual') {
-        return;
-      }
-
-      // Build the base schema for this column
-      let columnSchema: Schema;
-
-      if (meta.jsonSchema) {
-        columnSchema = meta.jsonSchema;
-      } else if (meta.appType === 'date') {
-        columnSchema = s.date();
-      } else if (meta.appType === 'boolean') {
-        columnSchema = s.boolean();
-      } else if (meta.appType === 'enum' && meta.enumValues) {
-        columnSchema = s.enum(meta.enumValues as any);
-      } else {
-        // Use SQL type as fallback
-        switch (meta.type) {
-          case 'text':
-            columnSchema = s.string();
-            break;
-          case 'integer':
-          case 'real':
-            columnSchema = s.number();
-            break;
-          default:
-            columnSchema = s.string();
-        }
-      }
-
-      // Handle insert schema (required/optional based on insertType)
-      if (meta.insertType === 'required') {
-        insertSchemaFields[key] = columnSchema;
-      } else {
-        // optional or withDefault
-        insertSchemaFields[key] = s.optional(columnSchema);
-      }
-
-      // Update schema - all non-virtual columns are optional
-      updateSchemaFields[key] = s.optional(columnSchema);
-
-      // Select schema - handle nullable/optional
-      if (meta.insertType === 'optional') {
-        selectSchemaFields[key] = s.optional(columnSchema);
-      } else {
-        selectSchemaFields[key] = columnSchema;
-      }
-    });
-
-    (this as any).__insertSchema__ = s.object(insertSchemaFields);
-    (this as any).__updateSchema__ = s.object(updateSchemaFields);
-    (this as any).__selectSchema__ = s.object(selectSchemaFields);
-  }
 }
 
 type JoinedTables<
-  Tables extends Record<string, Table<any, any>>
+  Tables extends Record<string, BaseTable<any, any>>
 > = {
   __tables__: Tables;
 };
 
 type JoinResult<
-  T1 extends Table<any, any> | JoinedTables<any>,
-  T2 extends Table<any, any> | JoinedTables<any>
+  T1 extends BaseTable<any, any> | JoinedTables<any>,
+  T2 extends BaseTable<any, any> | JoinedTables<any>
 > =
-  // Table × Table
-  T1 extends Table<infer N1 extends string, infer C1>
-    ? T2 extends Table<infer N2 extends string, infer C2>
-      ? JoinedTables<{
-          [K in N1]: Table<N1, C1>;
-        } & {
-          [K in N2]: Table<N2, C2>;
-        }>
+  // Preserve actual table types using conditional inference
+  T1 extends infer T1Actual extends BaseTable<any, any>
+    ? T2 extends infer T2Actual extends BaseTable<any, any>
+      ? T1Actual extends BaseTable<infer N1 extends string, any>
+        ? T2Actual extends BaseTable<infer N2 extends string, any>
+          ? JoinedTables<{
+              [K in N1]: T1Actual;
+            } & {
+              [K in N2]: T2Actual;
+            }>
+          : never
+        : never
+      : T1Actual extends BaseTable<infer N1 extends string, any>
+      ? T2 extends JoinedTables<infer Ts>
+        ? JoinedTables<{ [K in N1]: T1Actual } & Ts>
+        : never
       : never
-    // JoinedTables × Table
     : T1 extends JoinedTables<infer Ts>
-    ? T2 extends Table<infer N2 extends string, infer C2>
-      ? JoinedTables<Ts & { [K in N2]: Table<N2, C2> }>
-      : never
-    // Table × JoinedTables
-    : T1 extends Table<infer N1 extends string, infer C1>
-    ? T2 extends JoinedTables<infer Ts>
-      ? JoinedTables<{ [K in N1]: Table<N1, C1> } & Ts>
+    ? T2 extends infer T2Actual extends BaseTable<any, any>
+      ? T2Actual extends BaseTable<infer N2 extends string, any>
+        ? JoinedTables<Ts & { [K in N2]: T2Actual }>
+        : never
       : never
     : never;
 
 type JoinedSelection<JTs extends JoinedTables<any>> = {
   [K in keyof JTs['__tables__']]:
-    JTs['__tables__'][K] extends Table<any, infer Cols>
+    JTs['__tables__'][K] extends BaseTable<any, infer Cols>
       ? ColumnsSelectionResult<Cols>
       : never;
 };
@@ -542,12 +548,12 @@ type SelectResult<
 type SelectionMode = 'columns' | 'tables';
 
 export class SelectQueryBuilder<
-  TSource extends Table<any, any>,
+  TSource extends BaseTable<any, any>,
   TColMapOrDefault extends SelectColumnMap | undefined,
   TJoined extends JoinedTables<any>,
   TMode extends SelectionMode
 > {
-  private joinClauses: Array<{ type: 'INNER' | 'LEFT'; table: Table<any, any>; on: RawSql }> = [];
+  private joinClauses: Array<{ type: 'INNER' | 'LEFT'; table: BaseTable<any, any>; on: RawSql }> = [];
 
   constructor(
     private source: TSource,
@@ -555,7 +561,7 @@ export class SelectQueryBuilder<
     private selectArgs?: SelectArgs<TColMapOrDefault>
   ) {}
 
-  join<TJoin extends Table<any, any>>(other: TJoin, on: FilterObject): SelectQueryBuilder<
+  join<TJoin extends BaseTable<any, any>>(other: TJoin, on: FilterObject): SelectQueryBuilder<
     TSource,
     TColMapOrDefault,
     JoinResult<TJoined, TJoin>,
@@ -566,7 +572,7 @@ export class SelectQueryBuilder<
     return builder;
   };
 
-  leftJoin<TJoin extends Table<any, any>>(other: TJoin, on: FilterObject): SelectQueryBuilder<
+  leftJoin<TJoin extends BaseTable<any, any>>(other: TJoin, on: FilterObject): SelectQueryBuilder<
     TSource,
     TColMapOrDefault,
     JoinResult<TJoined, TJoin>,
@@ -577,7 +583,9 @@ export class SelectQueryBuilder<
     return builder;
   };
 
-  async execute(): Promise<SelectResult<TColMapOrDefault extends undefined ? TSource['__columns__'] : TColMapOrDefault, TJoined, TMode>[]> {
+  async execute(): Promise<SelectResult<TColMapOrDefault extends undefined ? TSource['__columns__'] : TColMapOrDefault, TJoined, TMode>[]>;
+  async execute<T extends Schema>(schema: T): Promise<s.infer<ReturnType<typeof s.array<T>>>>;
+  async execute<T extends Schema>(schema?: T): Promise<any> {
     const driver = this.source.__db__.getDriver();
     const query = this.buildQuery();
 
@@ -595,6 +603,14 @@ export class SelectQueryBuilder<
     await this.source.enforceSecurityRules(queryContext, user);
 
     const rawResults = await driver.run(query);
+
+    if (schema) {
+      // Runtime validation with schema
+      const normalized = rawResults.map((row: Record<string, unknown>) => camelCaseKeys(row));
+      const arraySchema = s.array(schema);
+      return (arraySchema as any).parse(normalized) as s.infer<typeof arraySchema>;
+    }
+
     return this.processResults(rawResults);
   }
 
