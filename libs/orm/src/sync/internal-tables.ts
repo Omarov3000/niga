@@ -12,16 +12,25 @@ function integer() {
 
 function makeTable<Name extends string, TCols extends Record<string, Column<any, any, any>>>(
   name: Name,
-  columns: TCols
+  columns: TCols,
+  constrains?: [string, ...string[]][]
 ): Table<Name, TCols> & TCols {
   Object.entries(columns).forEach(([colName, col]) => {
     (col as any).__meta__.name = colName as any
     (col as any).__meta__.dbName = toSnakeCase(colName)
   })
 
+  // Convert camelCase column names in constrains to snake_case
+  const normalizedConstrains = constrains?.map(constraint => {
+    const [type, ...colNames] = constraint
+    const snakeCaseNames = colNames.map(name => toSnakeCase(name))
+    return [type, ...snakeCaseNames]
+  })
+
   const instance = new Table<Name, TCols>({
     name,
     columns: columns as any,
+    constrains: normalizedConstrains as any,
   }) as any
 
   Object.entries(columns).forEach(([colName, col]) => {
@@ -65,9 +74,19 @@ const _syncNodeColumns = {
 
 export const _syncNode = makeTable('_sync_node', _syncNodeColumns)
 
+// _latest_server_timestamp table
+const _latestServerTimestampColumns = {
+  tableName: text().notNull(),
+  rowId: text().notNull(),
+  serverTimestampMs: integer().notNull(),
+}
+
+export const _latestServerTimestamp = makeTable('_latest_server_timestamp', _latestServerTimestampColumns, [['primaryKey', 'tableName', 'rowId']])
+
 export const internalSyncTables = {
   _db_mutations_queue: _dbMutationsQueue,
   _db_mutations_queue_dead: _dbMutationsQueueDead,
   _sync_pull_progress: _syncPullProgress,
   _sync_node: _syncNode,
+  _latest_server_timestamp: _latestServerTimestamp,
 }

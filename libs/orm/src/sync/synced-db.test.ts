@@ -267,11 +267,79 @@ it('syncs mutations between clients', async () => {
 })
 
 describe('conflict resolution', () => {
-  // Case 2.1: update vs update (different fields)
-  // - Client1 updates `name`, Client2 updates `email` with same row
-  // - Both mutations sent to server with different timestamps
-  // - Later mutation merges with earlier
-  // - Verify final row has both updates applied
+  it('merges concurrent updates to different fields (case 2.1)', async () => {
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+      email: o.text(),
+    })
+
+    // Create server DB with internal tables
+    const serverDriver = new OrmNodeDriver()
+    const serverDb = await o.testDb(
+      {
+        schema: {
+          users,
+          ...internalSyncTables,
+        },
+        origin: 'server',
+      },
+      serverDriver
+    )
+
+    const remoteDb = new TestRemoteDb(serverDb, serverDriver, { users })
+
+    // Client1: insert user
+    const client1Driver = new OrmNodeDriver()
+    const client1 = await o.syncedDb({
+      schema: { users },
+      driver: client1Driver,
+      remoteDb,
+      skipPull: true,
+    })
+
+    const inserted = await client1.users.insertWithUndo({ name: 'Original', email: 'original@example.com' })
+    const userId = inserted.id
+
+    // Client2: connect
+    const client2Driver = new OrmNodeDriver()
+    const client2 = await o.syncedDb({
+      schema: { users },
+      driver: client2Driver,
+      remoteDb,
+      skipPull: true,
+    })
+    await client2.waitForSync()
+
+    // Client1 updates name (lower timestamp - sent first)
+    await new Promise(resolve => setTimeout(resolve, 5))
+    await client1.users.updateWithUndo({
+      data: { name: 'Alice' },
+      where: { id: userId }
+    })
+
+    // Client2 updates email (higher timestamp - sent second)
+    await new Promise(resolve => setTimeout(resolve, 5))
+    await client2.users.updateWithUndo({
+      data: { email: 'alice@new.com' },
+      where: { id: userId }
+    })
+
+    // Client3: initialize and should receive merged result
+    const client3Driver = new OrmNodeDriver()
+    const client3 = await o.syncedDb({
+      schema: { users },
+      driver: client3Driver,
+      remoteDb,
+      skipPull: true,
+    })
+    await client3.waitForSync()
+
+    const result = await client3.users.select().execute()
+    expect(result).toMatchObject([
+      { name: 'Alice', email: 'alice@new.com' }
+    ])
+  })
 
   // Case 2.1b: update vs update (same field - LWW)
   // - Client1 updates `email="v1"`, Client2 updates `email="v2"`

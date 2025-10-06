@@ -135,19 +135,77 @@ export class TestRemoteDb implements RemoteDb {
             if (mutation.type === 'insert') {
               for (const row of mutation.data) {
                 await (tx as any)[mutation.table].insert(row)
+                // Track server timestamp for this row
+                await (tx as any)._latest_server_timestamp.insert({
+                  tableName: mutation.table,
+                  rowId: row.id,
+                  serverTimestampMs,
+                })
               }
             } else if (mutation.type === 'update') {
               const { id, ...data } = mutation.data
               const table = (tx as any)[mutation.table]
               const idCol = table.id
               const encodedId = idCol?.__meta__.encode ? idCol.__meta__.encode(id) : id
-              await table.update({ data, where: sql`id = ${encodedId}` })
+
+              // Check for existing timestamp (conflict detection)
+              const latestRow = await this.driver.run({
+                query: 'SELECT server_timestamp_ms FROM _latest_server_timestamp WHERE table_name = ? AND row_id = ?',
+                params: [mutation.table, id],
+              })
+
+              if (latestRow.length > 0 && latestRow[0].server_timestamp_ms > serverTimestampMs) {
+                // Current mutation is older than what's on server - need to merge
+                // Read current row state
+                const currentRows = await this.driver.run({
+                  query: `SELECT * FROM ${mutation.table} WHERE id = ?`,
+                  params: [encodedId],
+                })
+
+                if (currentRows.length > 0) {
+                  // Merge: incoming mutation fields override current fields
+                  const currentRow = currentRows[0]
+                  const mergedData = { ...currentRow, ...data }
+
+                  // Convert snake_case keys to camelCase for merge
+                  const camelMerged: Record<string, any> = {}
+                  for (const [key, value] of Object.entries(mergedData)) {
+                    const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
+                    camelMerged[camelKey] = value
+                  }
+
+                  await table.update({ data: camelMerged, where: sql`id = ${encodedId}` })
+                }
+              } else {
+                // Normal update - no conflict
+                await table.update({ data, where: sql`id = ${encodedId}` })
+              }
+
+              // Update server timestamp for this row
+              await this.driver.run({
+                query: `
+                  INSERT INTO _latest_server_timestamp (table_name, row_id, server_timestamp_ms)
+                  VALUES (?, ?, ?)
+                  ON CONFLICT(table_name, row_id) DO UPDATE SET server_timestamp_ms = ?
+                `,
+                params: [mutation.table, id, serverTimestampMs, serverTimestampMs],
+              })
             } else if (mutation.type === 'delete') {
               const table = (tx as any)[mutation.table]
               const idCol = table.id
               for (const id of mutation.ids) {
                 const encodedId = idCol?.__meta__.encode ? idCol.__meta__.encode(id) : id
                 await table.delete({ where: sql`id = ${encodedId}` })
+
+                // Update server timestamp for this row
+                await this.driver.run({
+                  query: `
+                    INSERT INTO _latest_server_timestamp (table_name, row_id, server_timestamp_ms)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(table_name, row_id) DO UPDATE SET server_timestamp_ms = ?
+                  `,
+                  params: [mutation.table, id, serverTimestampMs, serverTimestampMs],
+                })
               }
             }
           }
