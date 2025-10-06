@@ -7,7 +7,7 @@ import { SyncedTable } from './synced-table'
 import type { DbMutation, DbMutationBatch } from './types'
 import { BinaryStreamParser } from './stream'
 import { tableFromIPC } from 'apache-arrow'
-import { ulid } from 'ulidx'
+import { ulid, monotonicFactory } from 'ulidx'
 import { sql } from '../utils/sql'
 
 export interface SyncedDbOptions {
@@ -23,6 +23,7 @@ type SyncedDbBatch = Record<string, Table<any, any>> & {
   _db_mutations_queue: typeof internalSyncTables._db_mutations_queue
   _db_mutations_queue_dead: typeof internalSyncTables._db_mutations_queue_dead
   _sync_pull_progress: typeof internalSyncTables._sync_pull_progress
+  _sync_node: typeof internalSyncTables._sync_node
 }
 
 export type SyncState = 'pulling' | 'gettingLatest' | 'synced'
@@ -33,6 +34,8 @@ export class SyncedDb extends Db {
   private localDriver: OrmDriver
   private skipPull: boolean
   public syncState: SyncState = 'pulling'
+  private nodeInfo: { id: string; name: string }
+  private ulid: ReturnType<typeof monotonicFactory>
 
   constructor(opts: SyncedDbOptions) {
     // Merge user schema with internal tables
@@ -48,6 +51,8 @@ export class SyncedDb extends Db {
     this.remoteDb = opts.remoteDb
     this.localDriver = opts.driver
     this.skipPull = opts.skipPull ?? false
+    this.ulid = monotonicFactory()
+    this.nodeInfo = { id: ulid(), name: '' }
 
     // Connect driver
     this._connectDriver(opts.driver)
@@ -66,6 +71,9 @@ export class SyncedDb extends Db {
         // This is expected when creating multiple SyncedDb instances with the same driver
       }
     }
+
+    // Initialize node info (load from DB or create new)
+    await this.initializeNodeInfo()
 
     if (this.skipPull) {
       // Mark all tables as complete without pulling
@@ -88,6 +96,32 @@ export class SyncedDb extends Db {
 
     // Sync mutations from server in background (non-blocking)
     this.syncMutationsFromServerInBackground()
+  }
+
+  private async initializeNodeInfo(): Promise<void> {
+    try {
+      const existing = await this.localDriver.run({
+        query: 'SELECT id, name FROM _sync_node LIMIT 1',
+        params: [],
+      })
+
+      if (existing.length > 0) {
+        // Load existing node info
+        this.nodeInfo = {
+          id: existing[0].id,
+          name: existing[0].name,
+        }
+      } else {
+        // Create new node record
+        await this.localDriver.run({
+          query: 'INSERT INTO _sync_node (id, name) VALUES (?, ?)',
+          params: [this.nodeInfo.id, this.nodeInfo.name],
+        })
+      }
+    } catch (error) {
+      // Table doesn't exist or error - keep in-memory nodeInfo
+      console.error('Failed to initialize node info:', error)
+    }
   }
 
   private syncPromise?: Promise<void>
@@ -400,13 +434,10 @@ export class SyncedDb extends Db {
 
   private async enqueueMutation(mutation: DbMutation): Promise<void> {
     const batch: DbMutationBatch = {
-      id: ulid(),
+      id: this.ulid(Date.now()),
       dbName: this.options.name ?? 'synced',
       mutation: [mutation],
-      node: {
-        id: ulid(),
-        name: 'client', // TODO: get from system
-      },
+      node: this.nodeInfo,
     }
 
     // Store in local queue and send to remote

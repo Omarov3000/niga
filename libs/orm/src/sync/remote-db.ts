@@ -21,14 +21,7 @@ export interface RemoteDb {
   pull(resumeState?: PullResumeState): AsyncGenerator<Uint8Array, void, unknown>
 }
 
-/**
- * RemoteDbServer interface - server-side operations for accepting mutations
- */
-export interface RemoteDbServer {
-  acceptSyncBatch(batch: DbMutationBatch[]): Promise<{ succeeded: { id: string; server_timestamp_ms: number }[]; failed: string[] }>
-}
-
-export class TestRemoteDb implements RemoteDb, RemoteDbServer {
+export class TestRemoteDb implements RemoteDb {
   private maxMemoryBytes: number
 
   constructor(
@@ -111,10 +104,6 @@ export class TestRemoteDb implements RemoteDb, RemoteDbServer {
     }
   }
 
-  async send(batch: DbMutationBatch[]): Promise<{ succeeded: { id: string; server_timestamp_ms: number }[]; failed: string[] }> {
-    return this.acceptSyncBatch(batch)
-  }
-
   async get(maxServerTimestampLocally: number): Promise<Array<{ batch: DbMutationBatch; serverTimestampMs: number }>> {
     try {
       const rows = await this.driver.run({
@@ -132,7 +121,7 @@ export class TestRemoteDb implements RemoteDb, RemoteDbServer {
     }
   }
 
-  async acceptSyncBatch(batch: DbMutationBatch[]): Promise<{ succeeded: { id: string; server_timestamp_ms: number }[]; failed: string[] }> {
+  async send(batch: DbMutationBatch[]): Promise<{ succeeded: { id: string; server_timestamp_ms: number }[]; failed: string[] }> {
     const succeeded: { id: string; server_timestamp_ms: number }[] = []
     const failed: string[] = []
 

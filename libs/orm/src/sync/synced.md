@@ -98,6 +98,15 @@ If one mutation in the batch is rejected (eg due to conflict) all batch is rejec
 
 Client might re-try to send the batch. Before handling we should ignore if already applied.
 
+We need to use:
+```ts
+const ulid = monotonicFactory(); // from ulidx
+// Strict ordering for the same timestamp, by incrementing the least-significant random bit by 1
+ulid(150000); // 000XAL6S41ACTAV9WEVGEMMVR8
+```
+
+to ensure that our mutations are strictly ordered.
+
 ## 1. Uniqueness constraints
 - **Conflict**: insert or update can lead to uniqueness violation.
 - **Solution**: use **ULIDs** as IDs → uniqueness guaranteed → ignore.

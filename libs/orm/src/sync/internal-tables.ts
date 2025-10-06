@@ -57,8 +57,17 @@ const _syncPullProgressColumns = {
 
 export const _syncPullProgress = makeTable('_sync_pull_progress', _syncPullProgressColumns)
 
+// _sync_node table
+const _syncNodeColumns = {
+  id: text().primaryKey(),
+  name: text().notNull(),
+}
+
+export const _syncNode = makeTable('_sync_node', _syncNodeColumns)
+
 export const internalSyncTables = {
   _db_mutations_queue: _dbMutationsQueue,
   _db_mutations_queue_dead: _dbMutationsQueueDead,
   _sync_pull_progress: _syncPullProgress,
+  _sync_node: _syncNode,
 }

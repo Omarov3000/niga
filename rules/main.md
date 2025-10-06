@@ -6,10 +6,6 @@ globs: **/*.ts, **/*.tsx
 When working on frontend tasks you cannot run dev commands because an engineer needs to run them and give you feedback.
 Never use `tsx` or `tsc` or `node`. Always use `pnpm exec vite-node scriptName.ts`.
 
-When you need to run type test you need to run `pnpm tsc`. You should never pass arguments to this command.
-
-Before running tests after you implemented a feature it's a good idea to run `tsc`. Use `pnpm check` to run tsc and then tests. However, when a test fails you can run `pnpm test path/to/spec.ts` without tsc.
-
 Never add `.js` in the file imports.
 
 Never use dynamic imports.
