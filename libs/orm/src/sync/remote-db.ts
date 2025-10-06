@@ -148,6 +148,17 @@ export class TestRemoteDb implements RemoteDb {
               const idCol = table.id
               const encodedId = idCol?.__meta__.encode ? idCol.__meta__.encode(id) : id
 
+              // Check if row exists (might have been deleted)
+              const existingRows = await this.driver.run({
+                query: `SELECT * FROM ${mutation.table} WHERE id = ?`,
+                params: [encodedId],
+              })
+
+              if (existingRows.length === 0) {
+                // Row doesn't exist - was deleted. Reject this update mutation.
+                throw new Error(`Cannot update deleted row: ${id}`)
+              }
+
               // Check for existing timestamp (conflict detection)
               const latestRow = await this.driver.run({
                 query: 'SELECT server_timestamp_ms FROM _latest_server_timestamp WHERE table_name = ? AND row_id = ?',
@@ -156,26 +167,17 @@ export class TestRemoteDb implements RemoteDb {
 
               if (latestRow.length > 0 && latestRow[0].server_timestamp_ms > serverTimestampMs) {
                 // Current mutation is older than what's on server - need to merge
-                // Read current row state
-                const currentRows = await this.driver.run({
-                  query: `SELECT * FROM ${mutation.table} WHERE id = ?`,
-                  params: [encodedId],
-                })
+                const currentRow = existingRows[0]
+                const mergedData = { ...currentRow, ...data }
 
-                if (currentRows.length > 0) {
-                  // Merge: incoming mutation fields override current fields
-                  const currentRow = currentRows[0]
-                  const mergedData = { ...currentRow, ...data }
-
-                  // Convert snake_case keys to camelCase for merge
-                  const camelMerged: Record<string, any> = {}
-                  for (const [key, value] of Object.entries(mergedData)) {
-                    const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
-                    camelMerged[camelKey] = value
-                  }
-
-                  await table.update({ data: camelMerged, where: sql`id = ${encodedId}` })
+                // Convert snake_case keys to camelCase for merge
+                const camelMerged: Record<string, any> = {}
+                for (const [key, value] of Object.entries(mergedData)) {
+                  const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
+                  camelMerged[camelKey] = value
                 }
+
+                await table.update({ data: camelMerged, where: sql`id = ${encodedId}` })
               } else {
                 // Normal update - no conflict
                 await table.update({ data, where: sql`id = ${encodedId}` })

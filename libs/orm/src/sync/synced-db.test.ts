@@ -415,11 +415,81 @@ describe('conflict resolution', () => {
     ])
   })
 
-  // Case 2.2a: update vs delete (update comes later)
-  // - Client1 deletes row
-  // - Client2 updates same row (higher timestamp)
-  // - Server rejects later update mutation
-  // - Verify row stays deleted, mutation in failed queue
+  it('rejects update when delete came first (case 2.2a)', async () => {
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+      email: o.text(),
+    })
+
+    // Create server DB with internal tables
+    const serverDriver = new OrmNodeDriver()
+    const serverDb = await o.testDb(
+      {
+        schema: {
+          users,
+          ...internalSyncTables,
+        },
+        origin: 'server',
+      },
+      serverDriver
+    )
+
+    const remoteDb = new TestRemoteDb(serverDb, serverDriver, { users })
+
+    // Client1: insert user
+    const client1Driver = new OrmNodeDriver()
+    const client1 = await o.syncedDb({
+      schema: { users },
+      driver: client1Driver,
+      remoteDb,
+      skipPull: true,
+    })
+
+    const inserted = await client1.users.insertWithUndo({ name: 'Alice', email: 'alice@example.com' })
+    const userId = inserted.id
+
+    // Client2: connect
+    const client2Driver = new OrmNodeDriver()
+    const client2 = await o.syncedDb({
+      schema: { users },
+      driver: client2Driver,
+      remoteDb,
+      skipPull: true,
+    })
+    await client2.waitForSync()
+
+    // Client1 deletes row (lower timestamp)
+    await new Promise(resolve => setTimeout(resolve, 5))
+    await client1.users.deleteWithUndo({ where: { id: userId } })
+
+    // Client2 updates same row (higher timestamp - should be rejected)
+    await new Promise(resolve => setTimeout(resolve, 5))
+    await client2.users.updateWithUndo({
+      data: { email: 'updated@example.com' },
+      where: { id: userId }
+    })
+
+    // Check that client2's update mutation failed
+    const failedMutations = await client2Driver.run({
+      query: 'SELECT id FROM _db_mutations_queue WHERE server_timestamp_ms = 0',
+      params: [],
+    })
+    expect(failedMutations.length).toBeGreaterThan(0)
+
+    // Client3: initialize and should see row is deleted
+    const client3Driver = new OrmNodeDriver()
+    const client3 = await o.syncedDb({
+      schema: { users },
+      driver: client3Driver,
+      remoteDb,
+      skipPull: true,
+    })
+    await client3.waitForSync()
+
+    const result = await client3.users.select().execute()
+    expect(result).toHaveLength(0)
+  })
 
   // Case 2.2b: delete vs update (delete comes later)
   // - Client1 updates row
