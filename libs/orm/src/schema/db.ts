@@ -131,11 +131,11 @@ export class Db {
     };
   }
 
-  getSchemaDefinition(): string {
+  getSchemaDefinition(mode: 'full' | 'minimal' = 'full'): string {
     const parts: string[] = [];
     Object.values(this.options.schema).forEach(({ __meta__ }) => {
       const tableSnapshot = tableMetaToSnapshot(__meta__);
-      parts.push(serializeCreateTable(tableSnapshot));
+      parts.push(serializeCreateTable(tableSnapshot, mode));
       const indexStatements = createIndexStatements(tableSnapshot);
       if (indexStatements.length > 0) parts.push(indexStatements.join('\n'));
     });
@@ -262,9 +262,9 @@ function quoteIdentifier(name: string): string {
   return `"${name.replaceAll('"', '""')}"`;
 }
 
-function serializeCreateTable(table: SerializableTableMetadata): string {
-  const columnSql = Object.values(table.columns).map((column) => serializeColumnDefinition(column, true));
-  const constraintSql = serializeTableConstraints(table.constrains);
+function serializeCreateTable(table: SerializableTableMetadata, mode: 'full' | 'minimal' = 'full'): string {
+  const columnSql = Object.values(table.columns).map((column) => serializeColumnDefinition(column, true, mode));
+  const constraintSql = mode === 'full' ? serializeTableConstraints(table.constrains) : [];
 
   const allDefinitions = [...columnSql, ...constraintSql];
   return `CREATE TABLE ${table.dbName} (\n${allDefinitions.join(',\n')}\n);`;
@@ -457,19 +457,21 @@ function diffConstraints(previous: TableSnapshot, current: TableSnapshot): strin
   return [];
 }
 
-function serializeColumnDefinition(column: SerializableColumnMetadata, indent = false): string {
+function serializeColumnDefinition(column: SerializableColumnMetadata, indent = false, mode: 'full' | 'minimal' = 'full'): string {
   const parts: string[] = [column.dbName, column.type.toUpperCase()];
 
   if (column.generatedAlwaysAs) {
     parts.push(`GENERATED ALWAYS AS (${column.generatedAlwaysAs}) VIRTUAL`);
   } else {
-    if (column.notNull) parts.push('NOT NULL');
     if (column.primaryKey) parts.push('PRIMARY KEY');
-    if (column.unique) parts.push('UNIQUE');
-    if (column.default !== undefined) parts.push(`DEFAULT ${formatDefaultValue(column.default)}`);
-    if (column.foreignKey) {
-      const [tableName, columnName] = column.foreignKey.split('.');
-      parts.push(`REFERENCES ${tableName}(${columnName})`);
+    if (column.notNull) parts.push('NOT NULL');
+    if (mode === 'full') {
+      if (column.unique) parts.push('UNIQUE');
+      if (column.default !== undefined) parts.push(`DEFAULT ${formatDefaultValue(column.default)}`);
+      if (column.foreignKey) {
+        const [tableName, columnName] = column.foreignKey.split('.');
+        parts.push(`REFERENCES ${tableName}(${columnName})`);
+      }
     }
   }
 

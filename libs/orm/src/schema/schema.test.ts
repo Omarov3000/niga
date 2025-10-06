@@ -333,4 +333,85 @@ describe('schema generation', () => {
     expect(() => o.primaryKey(users.id, users.id)).toThrow('primaryKey constraint columns must be unique');
     expect(() => o.unique(users.name, users.name)).toThrow('unique constraint columns must be unique');
   });
+
+  it('getSchemaDefinition with minimal mode excludes constraints except PK and NOT NULL', () => {
+    const users = o.table('users', {
+      id: o.id(),
+      email: o.text().unique().default('test@example.com'),
+      name: o.text().notNull(),
+    });
+    const posts = o.table('posts', {
+      id: o.id(),
+      authorId: o.text().references(() => users.id),
+      title: o.text().default('Untitled'),
+    });
+
+    const db = o.db({ schema: { users, posts } });
+
+    expect(db.getSchemaDefinition('minimal')).toBe(dedent`
+      CREATE TABLE users (
+        id BLOB PRIMARY KEY,
+        email TEXT,
+        name TEXT NOT NULL
+      );
+
+      CREATE TABLE posts (
+        id BLOB PRIMARY KEY,
+        author_id TEXT,
+        title TEXT
+      );
+    `);
+  });
+
+  it('getSchemaDefinition with full mode includes all constraints', () => {
+    const users = o.table('users', {
+      id: o.id(),
+      email: o.text().unique().default('test@example.com'),
+      name: o.text().notNull(),
+    });
+    const posts = o.table('posts', {
+      id: o.id(),
+      authorId: o.text().references(() => users.id),
+      title: o.text().default('Untitled'),
+    });
+
+    const db = o.db({ schema: { users, posts } });
+
+    expect(db.getSchemaDefinition('full')).toBe(dedent`
+      CREATE TABLE users (
+        id BLOB PRIMARY KEY,
+        email TEXT UNIQUE DEFAULT 'test@example.com',
+        name TEXT NOT NULL
+      );
+
+      CREATE TABLE posts (
+        id BLOB PRIMARY KEY,
+        author_id TEXT REFERENCES users(id),
+        title TEXT DEFAULT 'Untitled'
+      );
+    `);
+  });
+
+  it('getSchemaDefinition with minimal mode excludes table-level constraints', () => {
+    const userRoles = o.table(
+      'user_roles',
+      {
+        userId: o.text(),
+        roleId: o.text(),
+        assignedAt: o.date(),
+      },
+      undefined,
+      (t) => [o.primaryKey(t.userId, t.roleId), o.unique(t.userId)]
+    );
+
+    const db = o.db({ schema: { userRoles } });
+
+    expect(db.getSchemaDefinition('minimal')).toBe(dedent`
+      CREATE TABLE user_roles (
+        user_id TEXT,
+        role_id TEXT,
+        assigned_at INTEGER
+      );
+    `);
+  });
 });

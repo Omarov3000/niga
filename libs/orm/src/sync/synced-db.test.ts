@@ -265,3 +265,68 @@ it('syncs mutations between clients', async () => {
   result = await client4.users.select().execute()
   expect(result).toHaveLength(0)
 })
+
+describe('conflict resolution', () => {
+  // Case 2.1: update vs update (different fields)
+  // - Client1 updates `name`, Client2 updates `email` with same row
+  // - Both mutations sent to server with different timestamps
+  // - Later mutation merges with earlier
+  // - Verify final row has both updates applied
+
+  // Case 2.1b: update vs update (same field - LWW)
+  // - Client1 updates `email="v1"`, Client2 updates `email="v2"`
+  // - Mutations have different ulid/timestamps
+  // - Server applies both in order
+  // - Verify later timestamp wins (email="v2")
+
+  // Case 2.2a: update vs delete (update comes later)
+  // - Client1 deletes row
+  // - Client2 updates same row (higher timestamp)
+  // - Server rejects later update mutation
+  // - Verify row stays deleted, mutation in failed queue
+
+  // Case 2.2b: delete vs update (delete comes later)
+  // - Client1 updates row
+  // - Client2 deletes same row (higher timestamp)
+  // - Server rejects later delete mutation
+  // - Verify row exists with update applied, mutation in failed queue
+
+  // Case 2.3: delete vs delete
+  // - Client1 deletes row
+  // - Client2 deletes same row (higher timestamp)
+  // - First delete succeeds, second rejected
+  // - Verify row deleted, second mutation rejected
+
+  // Case 2.4: insert vs insert (impossible - unique ids)
+  // - Client1 inserts row with id=X
+  // - Client2 inserts different row with same id=X (shouldn't happen with ulid)
+  // - Second insert rejected
+  // - Verify only first insert exists
+
+  // Case 3: out-of-order mutations (update before insert)
+  // - Client1 inserts row at t=100
+  // - Client1 updates row at t=200
+  // - Server receives update first (network reordering)
+  // - Server detects out-of-order by ulid
+  // - Server undoes update, waits for insert, re-applies both
+  // - Verify final state has both insert+update applied correctly
+
+  // Case 4: cross-device FK violation
+  // - Client1 inserts user X
+  // - Client2 (not synced) inserts post Y referencing user X
+  // - Post mutation arrives at server before user mutation
+  // - Server rejects post mutation (FK violation)
+  // - Verify post mutation in failed queue, user inserted successfully
+
+  // Batch rejection test
+  // - Create batch with [insert valid, update invalid (non-existent row), delete valid]
+  // - Send batch to server
+  // - Verify entire batch rejected (transaction atomicity)
+  // - Verify none of the mutations applied
+
+  // Idempotency test
+  // - Client sends mutation batch
+  // - Network retries same batch
+  // - Server detects duplicate by batch.id
+  // - Verify mutation applied only once, no errors on retry
+})
