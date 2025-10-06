@@ -88,6 +88,7 @@ export interface TableMetadata {
 
 export interface OrmDriver {
   logging: boolean;
+  debugName: string;
   exec: (sql: string) => Promise<any>;
   run: (sql: RawSql) => Promise<any>;
   beginTransaction: () => Promise<TxDriver>;
@@ -96,6 +97,7 @@ export interface OrmDriver {
 
 export const fakeOrmDriver: OrmDriver = {
   logging: false,
+  debugName: '',
   exec: async () => { throw new Error('not implemented') },
   run: async () => { throw new Error('not implemented') },
   beginTransaction: async () => { throw new Error('not implemented') },

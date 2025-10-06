@@ -15,6 +15,7 @@ interface WorkerResponse {
 
 export class WorkerDriverAdapter implements OrmDriver {
   logging: boolean = false
+  debugName: string = ''
   private messageId = 0
   private pendingMessages = new Map<string, { resolve: (value: any) => void; reject: (error: Error) => void }>()
 

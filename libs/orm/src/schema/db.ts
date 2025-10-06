@@ -26,24 +26,32 @@ import type { UseQueryOptions } from '../../../query-fe/src/use-query-types'
 export interface DbConstructorOptions {
   schema: Record<string, Table<any, any>>;
   name?: string;
+  debugName?: string;
   origin?: 'client' | 'server';
   isProd?: () => boolean;
+  logging?: boolean;
 }
 
 export class Db {
   private driver?: OrmDriver;
   protected currentUser?: any;
   readonly name: string;
+  readonly debugName: string;
   readonly origin?: 'client' | 'server';
+  readonly logging: boolean;
 
   constructor(protected options: DbConstructorOptions) {
     this.name = options.name ?? 'orm';
+    this.debugName = options.debugName ?? this.name;
     this.origin = options.origin;
-    // expose tables on the db instance and wire driver access for table methods
+    this.logging = options.logging ?? false;
+
+    // Clone each table to avoid shared state between db instances
     Object.entries(this.options.schema).forEach(([name, table]) => {
-      (this as any)[name] = table;
-      // attach driver getter and user getter to table for methods like insert()
-      (table as any).__db__ = {
+      const clonedTable = table.clone();
+
+      // Assign __db__ context to the cloned table
+      (clonedTable as any).__db__ = {
         getDriver: () => {
           if (!this.driver) throw new Error('No driver connected. Call _connectDriver first.');
           return this.driver;
@@ -52,11 +60,15 @@ export class Db {
         getSchema: () => this.options.schema,
         isProd: () => this.options.isProd ? this.options.isProd() : false,
       };
+
+      (this as any)[name] = clonedTable;
     });
   }
 
   async _connectDriver(driver: OrmDriver): Promise<void> {
     this.driver = driver;
+    driver.logging = this.logging;
+    driver.debugName = this.debugName;
   }
 
   connectUser<TUser = any>(user: TUser): void {

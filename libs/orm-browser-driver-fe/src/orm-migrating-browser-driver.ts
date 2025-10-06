@@ -10,6 +10,7 @@ import { migrateDB, sortedJSONStringify } from './migrate-db'
 
 export class OrmMigratingBrowserDriver implements OrmDriver {
   logging: boolean = false
+  debugName: string = ''
   private connectingPromise?: Promise<void>
   private connectionError?: Error
   private _driver?: OrmDriver

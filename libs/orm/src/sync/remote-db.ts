@@ -107,7 +107,7 @@ export class TestRemoteDb implements RemoteDb {
   async get(maxServerTimestampLocally: number): Promise<Array<{ batch: DbMutationBatch; serverTimestampMs: number }>> {
     try {
       const rows = await this.driver.run({
-        query: 'SELECT id, value, server_timestamp_ms FROM _db_mutations_queue WHERE server_timestamp_ms > ? ORDER BY server_timestamp_ms, id',
+        query: 'SELECT id, value, server_timestamp_ms FROM _db_mutations_queue WHERE server_timestamp_ms > ? ORDER BY id',
         params: [maxServerTimestampLocally],
       })
 
@@ -140,6 +140,7 @@ export class TestRemoteDb implements RemoteDb {
                   tableName: mutation.table,
                   rowId: row.id,
                   serverTimestampMs,
+                  operationType: 'insert',
                 })
               }
             } else if (mutation.type === 'update') {
@@ -159,25 +160,64 @@ export class TestRemoteDb implements RemoteDb {
                 throw new Error(`Cannot update deleted row: ${id}`)
               }
 
-              // Check for existing timestamp (conflict detection)
-              const latestRow = await this.driver.run({
-                query: 'SELECT server_timestamp_ms FROM _latest_server_timestamp WHERE table_name = ? AND row_id = ?',
-                params: [mutation.table, id],
+              // Check if this mutation is out-of-order by comparing batch ULIDs
+              // Get all mutations for this specific row
+              const allMutationsForRow = await this.driver.run({
+                query: 'SELECT id, value FROM _db_mutations_queue ORDER BY id ASC',
+                params: [],
               })
 
-              if (latestRow.length > 0 && latestRow[0].server_timestamp_ms > serverTimestampMs) {
-                // Current mutation is older than what's on server - need to merge
-                const currentRow = existingRows[0]
-                const mergedData = { ...currentRow, ...data }
+              // Filter to mutations affecting this specific row
+              const rowMutations = allMutationsForRow.filter((m: any) => {
+                try {
+                  const batch = JSON.parse(m.value)
+                  return batch.mutation.some((mut: any) =>
+                    mut.table === mutation.table &&
+                    (mut.type === 'update' && mut.data.id === id || mut.type === 'delete' && mut.ids?.includes(id) || mut.type === 'insert' && mut.data.some((d: any) => d.id === id))
+                  )
+                } catch {
+                  return false
+                }
+              })
 
-                // Convert snake_case keys to camelCase for merge
-                const camelMerged: Record<string, any> = {}
-                for (const [key, value] of Object.entries(mergedData)) {
-                  const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
-                  camelMerged[camelKey] = value
+              // Check if incoming batch is older than any existing batch for this row
+              const newerMutations = rowMutations.filter((m: any) => m.id > mutationBatch.id)
+
+              if (newerMutations.length > 0) {
+                // Incoming mutation is OLDER (by ULID) than mutations already applied
+                // Need to undo newer mutation(s), apply this one, then reapply newer ones
+
+                // Undo all newer mutations in reverse order
+                for (let i = newerMutations.length - 1; i >= 0; i--) {
+                  const newerBatch = JSON.parse(newerMutations[i].value) as any
+                  for (const newerMut of newerBatch.mutation) {
+                    if (newerMut.type === 'update' && newerMut.undo) {
+                      // Apply undo - restore original values
+                      for (const undoData of newerMut.undo.data) {
+                        const { id: undoId, ...undoFields } = undoData
+                        const undoEncodedId = idCol?.__meta__.encode ? idCol.__meta__.encode(undoId) : undoId
+                        await table.update({ data: undoFields, where: sql`id = ${undoEncodedId}` })
+                      }
+                    }
+                  }
                 }
 
-                await table.update({ data: camelMerged, where: sql`id = ${encodedId}` })
+                // Apply this older mutation
+                await table.update({ data, where: sql`id = ${encodedId}` })
+
+                // Reapply newer mutations in chronological order
+                for (const newerMutation of newerMutations) {
+                  const newerBatch = JSON.parse(newerMutation.value) as any
+                  for (const newerMut of newerBatch.mutation) {
+                    if (newerMut.type === 'update') {
+                      const { id: mutId, ...mutFields } = newerMut.data
+                      const mutEncodedId = idCol?.__meta__.encode ? idCol.__meta__.encode(mutId) : mutId
+                      await table.update({ data: mutFields, where: sql`id = ${mutEncodedId}` })
+                    }
+                  }
+                }
+
+                // Don't apply the incoming mutation again - we already applied it in the sequence above
               } else {
                 // Normal update - no conflict
                 await table.update({ data, where: sql`id = ${encodedId}` })
@@ -186,27 +226,77 @@ export class TestRemoteDb implements RemoteDb {
               // Update server timestamp for this row
               await this.driver.run({
                 query: `
-                  INSERT INTO _latest_server_timestamp (table_name, row_id, server_timestamp_ms)
-                  VALUES (?, ?, ?)
-                  ON CONFLICT(table_name, row_id) DO UPDATE SET server_timestamp_ms = ?
+                  INSERT INTO _latest_server_timestamp (table_name, row_id, server_timestamp_ms, operation_type)
+                  VALUES (?, ?, ?, ?)
+                  ON CONFLICT(table_name, row_id) DO UPDATE SET server_timestamp_ms = ?, operation_type = ?
                 `,
-                params: [mutation.table, id, serverTimestampMs, serverTimestampMs],
+                params: [mutation.table, id, serverTimestampMs, 'update', serverTimestampMs, 'update'],
               })
             } else if (mutation.type === 'delete') {
               const table = (tx as any)[mutation.table]
               const idCol = table.id
               for (const id of mutation.ids) {
                 const encodedId = idCol?.__meta__.encode ? idCol.__meta__.encode(id) : id
+
+                // Check if row exists
+                const existingRows = await this.driver.run({
+                  query: `SELECT * FROM ${mutation.table} WHERE id = ?`,
+                  params: [encodedId],
+                })
+
+                if (existingRows.length === 0) {
+                  // Row already deleted - reject this delete (case 2.3)
+                  throw new Error(`Cannot delete row ${id}: already deleted`)
+                }
+
+                // Check for conflict with update operations (case 2.2)
+                // Reject delete if there was an UPDATE from a DIFFERENT node
+                const latestRow = await this.driver.run({
+                  query: 'SELECT server_timestamp_ms, operation_type FROM _latest_server_timestamp WHERE table_name = ? AND row_id = ?',
+                  params: [mutation.table, id],
+                })
+
+                if (latestRow.length > 0 && latestRow[0].operation_type === 'update') {
+                  // Find the batch that did the update for THIS specific row
+                  const allBatches = await this.driver.run({
+                    query: 'SELECT id, value FROM _db_mutations_queue ORDER BY id ASC',
+                    params: [],
+                  })
+
+                  let updateNodeId: string | null = null
+                  for (const batchRow of allBatches) {
+                    try {
+                      const batch = JSON.parse(batchRow.value)
+                      // Check if this batch has an update for our specific row
+                      const hasUpdateForRow = batch.mutation.some((m: any) =>
+                        m.type === 'update' &&
+                        m.table === mutation.table &&
+                        m.data?.id === id
+                      )
+                      if (hasUpdateForRow) {
+                        updateNodeId = batch.node?.id
+                        // Keep searching - we want the LATEST update (last in order)
+                      }
+                    } catch {}
+                  }
+
+                  // If we found an update and it's from a different node, reject the delete
+                  if (updateNodeId && updateNodeId !== mutationBatch.node?.id) {
+                    throw new Error(`Cannot delete row ${id}: conflicts with update operation`)
+                  }
+                  // Same node or no node info → allow sequential operations
+                }
+
                 await table.delete({ where: sql`id = ${encodedId}` })
 
                 // Update server timestamp for this row
                 await this.driver.run({
                   query: `
-                    INSERT INTO _latest_server_timestamp (table_name, row_id, server_timestamp_ms)
-                    VALUES (?, ?, ?)
-                    ON CONFLICT(table_name, row_id) DO UPDATE SET server_timestamp_ms = ?
+                    INSERT INTO _latest_server_timestamp (table_name, row_id, server_timestamp_ms, operation_type)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(table_name, row_id) DO UPDATE SET server_timestamp_ms = ?, operation_type = ?
                   `,
-                  params: [mutation.table, id, serverTimestampMs, serverTimestampMs],
+                  params: [mutation.table, id, serverTimestampMs, 'delete', serverTimestampMs, 'delete'],
                 })
               }
             }

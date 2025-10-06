@@ -36,7 +36,7 @@ describe('insert', () => {
 
     const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
-    await users.insert({
+    await db.users.insert({
       id: 'test-123',
       name: 'John Doe',
       email: 'john@example.com',
@@ -64,7 +64,7 @@ describe('insert', () => {
     // Check if table exists
     const tables = await driver.run({ query: "SELECT name FROM sqlite_master WHERE type='table' AND name='posts'", params: [] });
 
-    await posts.insert({
+    await db.posts.insert({
       id: 'post-123',
       title: 'Test Post',
       published: true,
@@ -89,7 +89,7 @@ describe('insert', () => {
 
     const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
-    const returned = await users.insert({ id: 'user-123', name: 'Alice' });
+    const returned = await db.users.insert({ id: 'user-123', name: 'Alice' });
 
     expect(returned).toMatchObject({ id: 'user-123', name: 'Alice' });
 
@@ -107,7 +107,7 @@ describe('insert', () => {
 
     const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
-    const model = await users.insert({
+    const model = await db.users.insert({
       id: 'type-safe-test',
       name: 'Type Safe User',
       age: 30,
@@ -129,7 +129,7 @@ describe('insert', () => {
 
     const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
-    const models = await users.insertMany([
+    const models = await db.users.insertMany([
       { id: 'u1', name: 'Alice', age: 30 },
       { id: 'u2', name: 'Bob', age: 25 },
     ]);
@@ -250,7 +250,7 @@ describe('query', () => {
     const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     // Insert test data in random order
-    await users.insertMany([
+    await db.users.insertMany([
       { id: 'u3', name: 'Charlie', age: 35 },
       { id: 'u1', name: 'Alice', age: 25 },
       { id: 'u4', name: 'David', age: 20 },
@@ -305,7 +305,7 @@ describe('query', () => {
     const db = await o.testDb({ schema: { products } }, driver, clearRef);
 
     // Insert test data
-    await products.insertMany([
+    await db.products.insertMany([
       { id: 'p1', category: 'electronics', name: 'Phone', price: 800 },
       { id: 'p2', category: 'electronics', name: 'Laptop', price: 1200 },
       { id: 'p3', category: 'books', name: 'Novel', price: 15 },
@@ -342,7 +342,7 @@ describe('query', () => {
 
     const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
-    await users.insertMany([
+    await db.users.insertMany([
       { id: 'u1', name: 'Alice', age: 25, status: 'active' },
       { id: 'u2', name: 'Bob', age: 35, status: 'active' },
       { id: 'u3', name: 'Charlie', age: 20, status: 'inactive' },
@@ -373,7 +373,7 @@ describe('aggregate functions', () => {
 
     const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
-    await users.insertMany([
+    await db.users.insertMany([
       { id: 'u1', name: 'Alice', age: 25, status: 'active' },
       { id: 'u2', name: 'Bob', age: 35, status: 'active' },
       { id: 'u3', name: 'Charlie', age: 20, status: 'inactive' },
@@ -405,7 +405,7 @@ describe('aggregate functions', () => {
 
     const db = await o.testDb({ schema: { products } }, driver, clearRef);
 
-    await products.insertMany([
+    await db.products.insertMany([
       { id: 'p1', name: 'Phone', price: 800, category: 'electronics' },
       { id: 'p2', name: 'Laptop', price: 1200, category: 'electronics' },
       { id: 'p3', name: 'Book', price: 25, category: 'books' },
@@ -443,7 +443,7 @@ describe('aggregate functions', () => {
 
     const db = await o.testDb({ schema: { accounts } }, driver, clearRef);
 
-    await accounts.insertMany([
+    await db.accounts.insertMany([
       { id: 'acc1', balance: 100, bonus: 10 },
       { id: 'acc2', balance: 250, bonus: 25 },
       { id: 'acc3', balance: 500, bonus: 50 },
@@ -481,7 +481,7 @@ describe('aggregate functions', () => {
 
     const db = await o.testDb({ schema: { sales } }, driver, clearRef);
 
-    await sales.insertMany([
+    await db.sales.insertMany([
       { id: 's1', product: 'Widget A', amount: 100, region: 'North' },
       { id: 's2', product: 'Widget B', amount: 200, region: 'North' },
       { id: 's3', product: 'Widget A', amount: 150, region: 'South' },
@@ -822,14 +822,14 @@ describe('update', () => {
     const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     // Insert test data
-    await users.insert({
+    await db.users.insert({
       id: 'user-1',
       name: 'John Doe',
       email: 'john@example.com',
       age: 25,
     });
 
-    await users.insert({
+    await db.users.insert({
       id: 'user-2',
       name: 'Jane Smith',
       email: 'jane@example.com',
@@ -837,7 +837,7 @@ describe('update', () => {
     });
 
     // Update user-1's age and name
-    await users.update({
+    await db.users.update({
       data: { name: 'Johnny Doe', age: 26 },
       where: users.id.eq('user-1'),
     });
@@ -864,7 +864,7 @@ describe('update', () => {
     const db = await o.testDb({ schema: { posts } }, driver , clearRef);
 
     // Insert test data
-    await posts.insert({
+    await db.posts.insert({
       id: 'post-1',
       title: 'Draft Post',
       published: false,
@@ -872,7 +872,7 @@ describe('update', () => {
     });
 
     // Update to publish the post
-    await posts.update({
+    await db.posts.update({
       data: { title: 'Published Post', published: true, views: 100 },
       where: posts.id.eq('post-1'),
     });
@@ -902,14 +902,14 @@ describe('update', () => {
     const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     // Insert test data
-    await users.insert({
+    await db.users.insert({
       id: 'user-1',
       name: 'John Doe',
       updatedAt: new Date(1600000000000), // Earlier timestamp
     });
 
     // Update user
-    await users.update({
+    await db.users.update({
       data: { name: 'Johnny Doe' },
       where: users.id.eq('user-1'),
     });
@@ -936,13 +936,13 @@ describe('update', () => {
 
     const db = await o.testDb({ schema: { accounts } }, driver, clearRef);
 
-    await accounts.insert({
+    await db.accounts.insert({
       id: 'acc-1',
       userId: 'user-1',
       balance: 200,
     });
 
-    await accounts.update({
+    await db.accounts.update({
       data: { balance: accounts.balance.set`+ ${50}` },
       where: accounts.userId.eq('user-1'),
     });
@@ -963,14 +963,14 @@ describe('update', () => {
     const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     // Insert test data
-    await users.insertMany([
+    await db.users.insertMany([
       { id: 'user-1', name: 'John', age: 25, status: 'active' },
       { id: 'user-2', name: 'Jane', age: 30, status: 'active' },
       { id: 'user-3', name: 'Bob', age: 35, status: 'inactive' },
     ]);
 
     // Update all active users older than 28
-    await users.update({
+    await db.users.update({
       data: { status: 'senior' },
       where: sql`${users.age.gte(28)} AND ${users.status.eq('active')}`,
     });
@@ -992,13 +992,13 @@ describe('update', () => {
 
     const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
-    await users.insert({
+    await db.users.insert({
       id: 'user-1',
       name: 'John',
     });
 
     // Try to update with no data
-    await expect(users.update({
+    await expect(db.users.update({
       data: {},
       where: sql`${users.id.eq('user-1')}`,
     })).rejects.toThrow('No columns to update');
@@ -1013,14 +1013,14 @@ describe('update', () => {
 
     const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
-    await users.insert({
+    await db.users.insert({
       id: 'user-1',
       name: 'John',
       age: 25,
     });
 
     // This should not throw - security parsing should succeed for valid UPDATE
-    await expect(users.update({
+    await expect(db.users.update({
       data: { name: 'Johnny', age: 26 },
       where: sql`${users.id.eq('user-1')}`,
     })).resolves.not.toThrow();
@@ -1064,14 +1064,14 @@ describe('delete', () => {
     const db = await o.testDb({ schema: { users } }, driver   , clearRef);
 
     // Insert test data
-    await users.insertMany([
+    await db.users.insertMany([
       { id: 'user-1', name: 'John Doe', age: 25 },
       { id: 'user-2', name: 'Jane Smith', age: 30 },
       { id: 'user-3', name: 'Bob Johnson', age: 35 },
     ]);
 
     // Delete user-2
-    await users.delete({
+    await db.users.delete({
       where: sql`${users.id.eq('user-2')}`,
     });
 
@@ -1094,7 +1094,7 @@ describe('delete', () => {
     const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     // Insert test data
-    await users.insertMany([
+    await db.users.insertMany([
       { id: 'user-1', name: 'John', age: 25, status: 'active' },
       { id: 'user-2', name: 'Jane', age: 30, status: 'inactive' },
       { id: 'user-3', name: 'Bob', age: 35, status: 'inactive' },
@@ -1102,7 +1102,7 @@ describe('delete', () => {
     ]);
 
     // Delete all inactive users
-    await users.delete({
+    await db.users.delete({
       where: sql`${users.status.eq('inactive')}`,
     });
 
@@ -1125,7 +1125,7 @@ describe('delete', () => {
     const db = await o.testDb({ schema: { posts } }, driver, clearRef);
 
     // Insert test data
-    await posts.insertMany([
+    await db.posts.insertMany([
       { id: 'post-1', title: 'Draft 1', views: 5, published: false },
       { id: 'post-2', title: 'Published 1', views: 100, published: true },
       { id: 'post-3', title: 'Draft 2', views: 2, published: false },
@@ -1133,7 +1133,7 @@ describe('delete', () => {
     ]);
 
     // Delete unpublished posts with low views
-    await posts.delete({
+    await db.posts.delete({
       where: sql`${posts.published.eq(false)} AND ${posts.views.lt(10)}`,
     });
 
@@ -1154,7 +1154,7 @@ describe('delete', () => {
     const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
     // Insert test data
-    await users.insertMany([
+    await db.users.insertMany([
       { id: 'user-1', name: 'John' },
       { id: 'user-2', name: 'Jane' },
       { id: 'user-3', name: 'Bob' },
@@ -1162,7 +1162,7 @@ describe('delete', () => {
     ]);
 
     // Delete specific users by ID
-    await users.delete({
+    await db.users.delete({
       where: sql`${users.id.inArray(['user-1', 'user-3'])}`,
     });
 
@@ -1182,13 +1182,13 @@ describe('delete', () => {
 
     const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
-    await users.insert({
+    await db.users.insert({
       id: 'user-1',
       name: 'John',
     });
 
     // This should not throw - security parsing should succeed for valid DELETE
-    await expect(users.delete({
+    await expect(db.users.delete({
       where: sql`${users.id.eq('user-1')}`,
     })).resolves.not.toThrow();
 
@@ -1225,13 +1225,13 @@ describe('delete', () => {
 
     const db = await o.testDb({ schema: { users } }, driver, clearRef);
 
-    await users.insertMany([
+    await db.users.insertMany([
       { id: 'user-1', name: 'John' },
       { id: 'user-2', name: 'Jane' },
     ]);
 
     // Delete non-existent user
-    await users.delete({
+    await db.users.delete({
       where: sql`${users.id.eq('user-999')}`,
     });
 

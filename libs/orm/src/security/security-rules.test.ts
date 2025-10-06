@@ -29,7 +29,8 @@ const mockOrmDriver: OrmDriver = {
     commit: async () => {},
     rollback: async () => {}
   }),
-  logging: false
+  logging: false,
+  debugName: ''
 };
 
 describe('security rules end-to-end', () => {
@@ -53,7 +54,7 @@ describe('security rules end-to-end', () => {
       const admin = { id: 'admin123', role: 'admin' };
       db._connectUser(admin);
 
-      await expect(posts.delete({
+      await expect(db.posts.delete({
         where: sql`id = 'post123'`
       })).resolves.not.toThrow();
 
@@ -61,20 +62,20 @@ describe('security rules end-to-end', () => {
       const user = { id: 'user123', role: 'user' };
       db._connectUser(user);
 
-      await expect(posts.delete({
+      await expect(db.posts.delete({
         where: sql`id = 'post123'`
       })).rejects.toThrow('RBAC: delete requires admin role');
 
       // But regular user should be able to insert and update
-      await expect(posts.insert({
+      await expect(db.posts.insert({
         title: 'My Post',
         content: 'Hello world',
         userId: 'user123'
       })).resolves.not.toThrow();
 
-      await expect(posts.update({
+      await expect(db.posts.update({
         data: { title: 'Updated Post' },
-        where: posts.userId.eq('user123')
+        where: db.posts.userId.eq('user123')
       })).resolves.not.toThrow();
     });
 
@@ -112,7 +113,7 @@ describe('security rules end-to-end', () => {
       db._connectUser(user);
 
       // Should allow creating documents for self
-      await expect(documents.insert({
+      await expect(db.documents.insert({
         title: 'My Document',
         content: 'Private content',
         ownerId: 'user123',
@@ -120,7 +121,7 @@ describe('security rules end-to-end', () => {
       })).resolves.not.toThrow();
 
       // Should reject creating documents for others
-      await expect(documents.insert({
+      await expect(db.documents.insert({
         title: 'Other Document',
         content: 'Content',
         ownerId: 'other_user',
@@ -128,30 +129,30 @@ describe('security rules end-to-end', () => {
       })).rejects.toThrow('ABAC: ownerId must match current user');
 
       // Should allow update when WHERE clause keeps ownership restriction
-      await expect(documents.update({
+      await expect(db.documents.update({
         data: { title: 'Updated Title' },
-        where: documents.ownerId.eq(user.id)
+        where: db.documents.ownerId.eq(user.id)
       })).resolves.not.toThrow();
 
       // Should reject update if WHERE clause is missing ownership filter
-      await expect(documents.update({
+      await expect(db.documents.update({
         data: { title: 'No ownership filter' },
         where: sql`title = 'My Document'`
       })).rejects.toThrow('ABAC: only owner can update document (table: documents)');
 
       // Should reject update if attempting to change ownerId
-      await expect(documents.update({
+      await expect(db.documents.update({
         data: { ownerId: 'hacker' },
-        where: documents.ownerId.eq(user.id)
+        where: db.documents.ownerId.eq(user.id)
       })).rejects.toThrow('Column ownerId is immutable');
 
       // Should allow delete when WHERE clause keeps ownership restriction
-      await expect(documents.delete({
-        where: documents.ownerId.eq(user.id)
+      await expect(db.documents.delete({
+        where: db.documents.ownerId.eq(user.id)
       })).resolves.not.toThrow();
 
       // Should reject delete without ownership filter
-      await expect(documents.delete({
+      await expect(db.documents.delete({
         where: sql`title = 'My Document'`
       })).rejects.toThrow('ABAC: only owner can delete document (table: documents)');
     });

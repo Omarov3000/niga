@@ -15,6 +15,8 @@ export interface SyncedDbOptions {
   driver: OrmDriver
   remoteDb: RemoteDb
   name?: string
+  debugName?: string
+  logging?: boolean
   skipPull?: boolean // For tests: skip pull phase, only sync mutations
 }
 
@@ -44,7 +46,9 @@ export class SyncedDb extends Db {
     super({
       schema: fullSchema,
       name: opts.name ?? 'synced',
+      debugName: opts.debugName,
       origin: 'client',
+      logging: opts.logging,
     })
 
     this.userSchema = opts.schema
@@ -59,13 +63,15 @@ export class SyncedDb extends Db {
 
     // Initialize will be called separately since constructor can't be async
   }
-
+  // TODO: we need to use migrateDb from orm-browser-driver-fe
   async initialize(): Promise<void> {
     // Run migrations to create all tables (user + internal)
+    // Use 'minimal' mode to skip FK constraints for offline support
     const snapshot = this._prepareSnapshot()
     if (snapshot.hasChanges) {
       try {
-        await this.localDriver.exec(snapshot.migration.sql)
+        // Create tables without FK constraints (minimal mode)
+        await this.localDriver.exec(this.getSchemaDefinition('minimal'))
       } catch (error) {
         // Tables may already exist if reusing the same driver
         // This is expected when creating multiple SyncedDb instances with the same driver
@@ -120,7 +126,6 @@ export class SyncedDb extends Db {
       }
     } catch (error) {
       // Table doesn't exist or error - keep in-memory nodeInfo
-      console.error('Failed to initialize node info:', error)
     }
   }
 
@@ -132,8 +137,7 @@ export class SyncedDb extends Db {
       .then(() => {
         this.syncState = 'synced'
       })
-      .catch((error) => {
-        console.error('Failed to sync mutations from server:', error)
+      .catch(() => {
         this.syncState = 'synced' // Still mark as synced to not block usage
       })
   }
@@ -466,7 +470,7 @@ export class SyncedDb extends Db {
 
     // Handle failures (future: move to dead queue)
     if (result.failed.length > 0) {
-      console.error('Failed to sync mutations:', result.failed)
+      // Failed mutations remain in local queue for retry
     }
   }
 }

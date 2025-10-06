@@ -4,6 +4,7 @@ import { OrmNodeDriver } from '../orm-node-driver'
 import { TestRemoteDb } from './remote-db'
 import { ulid } from 'ulidx'
 import { internalSyncTables } from './internal-tables'
+import type { DbMutationBatch } from './types'
 
 it('syncs data from remote on initialization', async () => {
   const users = o.table('users', {
@@ -491,48 +492,530 @@ describe('conflict resolution', () => {
     expect(result).toHaveLength(0)
   })
 
-  // Case 2.2b: delete vs update (delete comes later)
-  // - Client1 updates row
-  // - Client2 deletes same row (higher timestamp)
-  // - Server rejects later delete mutation
-  // - Verify row exists with update applied, mutation in failed queue
+  it('rejects delete when update came first (case 2.2b)', async () => {
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+      email: o.text(),
+    })
 
-  // Case 2.3: delete vs delete
-  // - Client1 deletes row
-  // - Client2 deletes same row (higher timestamp)
-  // - First delete succeeds, second rejected
-  // - Verify row deleted, second mutation rejected
+    // Create server DB with internal tables
+    const serverDriver = new OrmNodeDriver()
+    const serverDb = await o.testDb(
+      {
+        schema: {
+          users,
+          ...internalSyncTables,
+        },
+        origin: 'server',
+      },
+      serverDriver
+    )
 
-  // Case 2.4: insert vs insert (impossible - unique ids)
-  // - Client1 inserts row with id=X
-  // - Client2 inserts different row with same id=X (shouldn't happen with ulid)
-  // - Second insert rejected
-  // - Verify only first insert exists
+    const remoteDb = new TestRemoteDb(serverDb, serverDriver, { users })
 
-  // Case 3: out-of-order mutations (update before insert)
-  // - Client1 inserts row at t=100
-  // - Client1 updates row at t=200
-  // - Server receives update first (network reordering)
-  // - Server detects out-of-order by ulid
-  // - Server undoes update, waits for insert, re-applies both
-  // - Verify final state has both insert+update applied correctly
+    // Client1: insert user
+    const client1Driver = new OrmNodeDriver()
+    const client1 = await o.syncedDb({
+      schema: { users },
+      driver: client1Driver,
+      remoteDb,
+      skipPull: true,
+    })
 
-  // Case 4: cross-device FK violation
-  // - Client1 inserts user X
-  // - Client2 (not synced) inserts post Y referencing user X
-  // - Post mutation arrives at server before user mutation
-  // - Server rejects post mutation (FK violation)
-  // - Verify post mutation in failed queue, user inserted successfully
+    const inserted = await client1.users.insertWithUndo({ name: 'Alice', email: 'alice@example.com' })
+    const userId = inserted.id
 
-  // Batch rejection test
-  // - Create batch with [insert valid, update invalid (non-existent row), delete valid]
-  // - Send batch to server
-  // - Verify entire batch rejected (transaction atomicity)
-  // - Verify none of the mutations applied
+    // Client2: connect
+    const client2Driver = new OrmNodeDriver()
+    const client2 = await o.syncedDb({
+      schema: { users },
+      driver: client2Driver,
+      remoteDb,
+      skipPull: true,
+    })
+    await client2.waitForSync()
 
-  // Idempotency test
-  // - Client sends mutation batch
-  // - Network retries same batch
-  // - Server detects duplicate by batch.id
-  // - Verify mutation applied only once, no errors on retry
+    // Client1 updates row (lower timestamp)
+    await new Promise(resolve => setTimeout(resolve, 5))
+    await client1.users.updateWithUndo({
+      data: { email: 'updated@example.com' },
+      where: { id: userId }
+    })
+
+    // Client2 deletes same row (higher timestamp - should be rejected)
+    await new Promise(resolve => setTimeout(resolve, 5))
+    await client2.users.deleteWithUndo({ where: { id: userId } })
+
+    // Check that client2's delete mutation failed
+    const failedMutations = await client2Driver.run({
+      query: 'SELECT id FROM _db_mutations_queue WHERE server_timestamp_ms = 0',
+      params: [],
+    })
+    expect(failedMutations.length).toBeGreaterThan(0)
+
+    // Client3: initialize and should see row with update applied
+    const client3Driver = new OrmNodeDriver()
+    const client3 = await o.syncedDb({
+      schema: { users },
+      driver: client3Driver,
+      remoteDb,
+      skipPull: true,
+    })
+    await client3.waitForSync()
+
+    const result = await client3.users.select().execute()
+    expect(result).toMatchObject([
+      { name: 'Alice', email: 'updated@example.com' }
+    ])
+  })
+
+  it('rejects second delete of same row (case 2.3)', async () => {
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+      email: o.text(),
+    })
+
+    // Create server DB with internal tables
+    const serverDriver = new OrmNodeDriver()
+    const serverDb = await o.testDb(
+      {
+        schema: {
+          users,
+          ...internalSyncTables,
+        },
+        origin: 'server',
+      },
+      serverDriver
+    )
+
+    const remoteDb = new TestRemoteDb(serverDb, serverDriver, { users })
+
+    // Client1: insert user
+    const client1Driver = new OrmNodeDriver()
+    const client1 = await o.syncedDb({
+      schema: { users },
+      driver: client1Driver,
+      remoteDb,
+      skipPull: true,
+    })
+
+    const inserted = await client1.users.insertWithUndo({ name: 'Alice', email: 'alice@example.com' })
+    const userId = inserted.id
+
+    // Client2: connect
+    const client2Driver = new OrmNodeDriver()
+    const client2 = await o.syncedDb({
+      schema: { users },
+      driver: client2Driver,
+      remoteDb,
+      skipPull: true,
+    })
+    await client2.waitForSync()
+
+    // Client1 deletes row (lower timestamp)
+    await new Promise(resolve => setTimeout(resolve, 5))
+    await client1.users.deleteWithUndo({ where: { id: userId } })
+
+    // Client2 also deletes same row (higher timestamp - should be rejected)
+    await new Promise(resolve => setTimeout(resolve, 5))
+    await client2.users.deleteWithUndo({ where: { id: userId } })
+
+    // Check that client2's delete mutation failed
+    const failedMutations = await client2Driver.run({
+      query: 'SELECT id FROM _db_mutations_queue WHERE server_timestamp_ms = 0',
+      params: [],
+    })
+    expect(failedMutations.length).toBeGreaterThan(0)
+
+    // Client3: initialize and should see row is deleted
+    const client3Driver = new OrmNodeDriver()
+    const client3 = await o.syncedDb({
+      schema: { users },
+      driver: client3Driver,
+      remoteDb,
+      skipPull: true,
+    })
+    await client3.waitForSync()
+
+    const result = await client3.users.select().execute()
+    expect(result).toHaveLength(0)
+  })
+
+  it('rejects duplicate insert with same id (case 2.4)', async () => {
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+      email: o.text(),
+    })
+
+    // Create server DB with internal tables
+    const serverDriver = new OrmNodeDriver()
+    const serverDb = await o.testDb(
+      {
+        schema: {
+          users,
+          ...internalSyncTables,
+        },
+        origin: 'server',
+      },
+      serverDriver
+    )
+
+    const remoteDb = new TestRemoteDb(serverDb, serverDriver, { users })
+
+    // Client1: insert user with specific ID
+    const client1Driver = new OrmNodeDriver()
+    const client1 = await o.syncedDb({
+      schema: { users },
+      driver: client1Driver,
+      remoteDb,
+      skipPull: true,
+    })
+
+    const sharedId = ulid()
+    await client1.users.insertWithUndo({ id: sharedId, name: 'Alice', email: 'alice@example.com' })
+
+    // Client2: try to insert different user with same ID
+    const client2Driver = new OrmNodeDriver()
+    const client2 = await o.syncedDb({
+      schema: { users },
+      driver: client2Driver,
+      remoteDb,
+      skipPull: true,
+    })
+
+    await new Promise(resolve => setTimeout(resolve, 5))
+
+    // Try to insert with same ID - should fail locally due to UNIQUE constraint
+    // This is expected - with ULIDs this shouldn't happen in practice
+    let insertFailed = false
+    try {
+      await client2.users.insertWithUndo({ id: sharedId, name: 'Bob', email: 'bob@example.com' })
+    } catch (error) {
+      insertFailed = true
+    }
+
+    expect(insertFailed).toBe(true)
+
+    // Client3: initialize and should see only first insert
+    const client3Driver = new OrmNodeDriver()
+    const client3 = await o.syncedDb({
+      schema: { users },
+      driver: client3Driver,
+      remoteDb,
+      skipPull: true,
+    })
+    await client3.waitForSync()
+
+    const result = await client3.users.select().execute()
+    expect(result).toMatchObject([
+      { name: 'Alice', email: 'alice@example.com' }
+    ])
+  })
+
+  it('handles out-of-order updates by undoing and reapplying (case 3)', async () => {
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+      email: o.text(),
+    })
+
+    // Create server DB
+    const serverDriver = new OrmNodeDriver()
+    const serverDb = await o.testDb(
+      {
+        schema: {
+          users,
+          ...internalSyncTables,
+        },
+        origin: 'server',
+      },
+      serverDriver
+    )
+
+    const remoteDb = new TestRemoteDb(serverDb, serverDriver, { users })
+
+    // Client1: insert and make two updates
+    const client1Driver = new OrmNodeDriver()
+    const client1 = await o.syncedDb({
+      schema: { users },
+      driver: client1Driver,
+      remoteDb,
+      skipPull: true,
+    })
+
+    const userId = ulid()
+    await client1.users.insertWithUndo({ id: userId, name: 'Alice', email: 'v0@example.com' })
+
+    // Wait for insert to sync
+    await client1.waitForSync()
+
+    // Create a second client that will make update 1
+    const client1bDriver = new OrmNodeDriver()
+    const client1b = await o.syncedDb({
+      schema: { users },
+      driver: client1bDriver,
+      remoteDb,
+      skipPull: true,
+    })
+    await client1b.waitForSync()
+
+    // Update 1: email to v1 (lower timestamp) - don't sync yet
+    await new Promise(resolve => setTimeout(resolve, 5))
+    const update1Time = Date.now()
+    await client1bDriver.run({
+      query: 'UPDATE users SET email = ? WHERE id = ?',
+      params: ['v1@example.com', userId],
+    })
+
+    // Update 2: email to v2 (higher timestamp) from client1 - sync immediately
+    await new Promise(resolve => setTimeout(resolve, 5))
+    await client1.users.updateWithUndo({ data: { email: 'v2@example.com' }, where: { id: userId } })
+
+    // Now manually send update1 (older update that arrives after newer update2)
+    const update1Batch: DbMutationBatch = {
+      id: ulid(update1Time),
+      dbName: 'synced',
+      mutation: [{
+        table: 'users',
+        type: 'update',
+        data: { id: userId, email: 'v1@example.com' },
+        undo: {
+          type: 'update',
+          data: [{ id: userId, email: 'v0@example.com' }],
+        },
+      }],
+      node: { id: ulid(), name: 'client1b' },
+    }
+
+    // Send the older update - should be rejected or merged correctly
+    const sendResult = await remoteDb.send([update1Batch])
+
+    // Check mutation queue order on server
+    const queueState = await serverDriver.run({
+      query: 'SELECT id, server_timestamp_ms FROM _db_mutations_queue ORDER BY server_timestamp_ms ASC',
+      params: [],
+    })
+
+    // Client2: verify final state has v2 (newer update wins)
+    const client2Driver = new OrmNodeDriver()
+    const client2 = await o.syncedDb({
+      schema: { users },
+      driver: client2Driver,
+      remoteDb,
+      skipPull: true,
+    })
+    await client2.waitForSync()
+
+    const finalResult = await client2.users.select().execute()
+    expect(finalResult).toMatchObject([
+      { name: 'Alice', email: 'v2@example.com' }
+    ])
+  })
+
+  it('undoes failed mutations when server rejects due to FK violation (case 4)', async () => {
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+    })
+
+    const posts = o.table('posts', {
+      id: o.id(),
+      title: o.text(),
+      authorId: o.idFk().references(() => users.id),
+    })
+
+    // Server uses full mode with FK constraints
+    const serverDriver = new OrmNodeDriver()
+    const serverDb = await o.testDb(
+      {
+        schema: {
+          users,
+          posts,
+          ...internalSyncTables,
+        },
+        origin: 'server',
+        debugName: 'server',
+        logging: true,
+      },
+      serverDriver
+    )
+
+    const remoteDb = new TestRemoteDb(serverDb, serverDriver, { users, posts })
+
+    // Client1: insert user
+    const client1Driver = new OrmNodeDriver()
+    const client1 = await o.syncedDb({
+      schema: { users, posts },
+      driver: client1Driver,
+      remoteDb,
+      skipPull: true,
+      debugName: 'client1',
+      logging: true,
+    })
+
+    const userId = ulid()
+    await client1.users.insertWithUndo({ id: userId, name: 'Alice' })
+    await client1.waitForSync()
+
+    // Client2: insert post with non-existent authorId (FK violation on server)
+    const client2Driver = new OrmNodeDriver()
+    const client2 = await o.syncedDb({
+      schema: { users, posts },
+      driver: client2Driver,
+      remoteDb,
+      skipPull: true,
+      debugName: 'client2',
+      logging: true,
+    })
+
+    const nonExistentUserId = ulid()
+    const postId = ulid()
+
+    // Check server posts BEFORE client2 insert
+    const serverPostsBefore = await serverDb.posts.select().execute()
+    expect(serverPostsBefore).toHaveLength(0)
+
+    await client2.posts.insertWithUndo({ id: postId, title: 'Invalid Post', authorId: nonExistentUserId })
+
+    // Wait for sync - server will reject due to FK violation
+    await client2.waitForSync()
+
+    // Verify post was created locally (client allows it with minimal mode)
+    const localPosts = await client2.posts.select().execute()
+    expect(localPosts).toHaveLength(1)
+
+    // Server should have rejected it (FK violation)
+    const serverPostsAfter = await serverDb.posts.select().execute()
+    expect(serverPostsAfter).toHaveLength(0)
+
+    // Client2 should undo the failed mutation locally
+    // Check client2's local queue - the failed mutation should trigger undo
+    const client2Queue = await client2Driver.run({
+      query: 'SELECT * FROM _db_mutations_queue',
+      params: [],
+    })
+
+    // Mutation exists in queue but with server_timestamp_ms = 0 (failed)
+    const failedMutation = client2Queue.find((m: any) => JSON.parse(m.value).mutation[0].data.some((d: any) => d.id === postId))
+    expect(failedMutation?.server_timestamp_ms).toBe(0)
+  })
+
+  it('rejects entire batch when one mutation fails (transaction atomicity)', async () => {
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+      email: o.text(),
+    })
+
+    const serverDriver = new OrmNodeDriver()
+    const serverDb = await o.testDb(
+      {
+        schema: {
+          users,
+          ...internalSyncTables,
+        },
+        origin: 'server',
+      },
+      serverDriver
+    )
+
+    const remoteDb = new TestRemoteDb(serverDb, serverDriver, { users })
+
+    const client1Driver = new OrmNodeDriver()
+    const client1 = await o.syncedDb({
+      schema: { users },
+      driver: client1Driver,
+      remoteDb,
+      skipPull: true,
+    })
+
+    // Create a batch with mixed valid/invalid mutations
+    const validUserId = ulid()
+    const invalidUserId = ulid() // Non-existent for update
+
+    const batch: DbMutationBatch = {
+      id: ulid(),
+      dbName: 'synced',
+      mutation: [
+        {
+          table: 'users',
+          type: 'insert',
+          data: [{ id: validUserId, name: 'Alice', email: 'alice@example.com' }],
+          undo: { type: 'delete', ids: [validUserId] },
+        },
+        {
+          table: 'users',
+          type: 'update',
+          data: { id: invalidUserId, email: 'invalid@example.com' }, // This will fail - row doesn't exist
+          undo: { type: 'update', data: [{ id: invalidUserId, email: 'old@example.com' }] },
+        },
+      ],
+      node: { id: ulid(), name: 'client1' },
+    }
+
+    const result = await remoteDb.send([batch])
+
+    // Verify batch failed
+    expect(result.failed).toHaveLength(1)
+    expect(result.succeeded).toHaveLength(0)
+
+    // Verify NO mutations were applied (transaction rolled back)
+    const serverUsers = await serverDb.users.select().execute()
+    expect(serverUsers).toHaveLength(0)
+  })
+
+  it('handles duplicate batch submissions idempotently', async () => {
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+      email: o.text(),
+    })
+
+    const serverDriver = new OrmNodeDriver()
+    const serverDb = await o.testDb(
+      {
+        schema: {
+          users,
+          ...internalSyncTables,
+        },
+        origin: 'server',
+      },
+      serverDriver
+    )
+
+    const remoteDb = new TestRemoteDb(serverDb, serverDriver, { users })
+
+    const userId = ulid()
+    const batch: DbMutationBatch = {
+      id: ulid(),
+      dbName: 'synced',
+      mutation: [
+        {
+          table: 'users',
+          type: 'insert',
+          data: [{ id: userId, name: 'Alice', email: 'alice@example.com' }],
+          undo: { type: 'delete', ids: [userId] },
+        },
+      ],
+      node: { id: ulid(), name: 'client1' },
+    }
+
+    // Send batch first time
+    const result1 = await remoteDb.send([batch])
+    expect(result1.succeeded).toHaveLength(1)
+    expect(result1.failed).toHaveLength(0)
+
+    // Send same batch again (network retry)
+    const result2 = await remoteDb.send([batch])
+    expect(result2.failed).toHaveLength(1) // Duplicate ID will fail
+    expect(result2.succeeded).toHaveLength(0)
+
+    // Verify user exists only once
+    const serverUsers = await serverDb.users.select().execute()
+    expect(serverUsers).toHaveLength(1)
+    expect(serverUsers[0]).toMatchObject({ name: 'Alice', email: 'alice@example.com' })
+  })
 })

@@ -7,7 +7,7 @@
   "scripts": {
     "tsc": "tsc",
     "tsc:watch": "tsc -w",
-    "test": "timeout 3s vitest run --browser.headless",
+    "test": "tsc && timeout 3s vitest run --browser.headless",
     "test:watch": "vitest",
     "check": "pnpm tsc && pnpm test",
     "lint1": "biome lint --write --unsafe --error-on-warnings src",

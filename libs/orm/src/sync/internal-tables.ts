@@ -79,6 +79,7 @@ const _latestServerTimestampColumns = {
   tableName: text().notNull(),
   rowId: text().notNull(),
   serverTimestampMs: integer().notNull(),
+  operationType: text().notNull(), // 'insert', 'update', or 'delete'
 }
 
 export const _latestServerTimestamp = makeTable('_latest_server_timestamp', _latestServerTimestampColumns, [['primaryKey', 'tableName', 'rowId']])

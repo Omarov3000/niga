@@ -84,8 +84,29 @@ export abstract class BaseTable<Name extends string, TCols extends Record<string
   readonly __updateSchema__!: ObjectSchema<any>;
   readonly __selectSchema__!: ObjectSchema<any>;
   protected _securityRules: SecurityRule[] = [];
+  protected _constructorOptions?: TableConstructorOptions<Name, TCols>;
+
+  clone(): this {
+    // Create a new instance using Object.create to maintain prototype chain
+    const cloned = Object.create(Object.getPrototypeOf(this));
+
+    // Copy all own properties except __db__
+    for (const key of Object.keys(this)) {
+      if (key !== '__db__') {
+        cloned[key] = (this as any)[key];
+      }
+    }
+
+    // Copy symbol properties
+    for (const sym of Object.getOwnPropertySymbols(this)) {
+      cloned[sym] = (this as any)[sym];
+    }
+
+    return cloned;
+  }
 
   constructor(options: TableConstructorOptions<Name, TCols>) {
+    this._constructorOptions = options;
     const tableDbName = toSnakeCase(options.name);
     const columnMetadata: Record<string, ColumnMetadata> = {};
     Object.entries(options.columns).forEach(([key, col]) => {

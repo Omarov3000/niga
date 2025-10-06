@@ -10,6 +10,7 @@ function safeSplit(sql: string, delimiter: string): string[] {
 export class OrmNodeDriver implements OrmDriver {
   db: DatabaseSync;
   logging: boolean = false;
+  debugName: string = '';
 
   constructor(public path = ':memory:') {
     this.db = new DatabaseSync(path);
@@ -21,7 +22,7 @@ export class OrmNodeDriver implements OrmDriver {
   };
 
   run = async ({ query, params }: RawSql) => {
-    if (this.logging) console.info('OrmNodeDriver.run:', inlineParams({ query, params }));
+    if (this.logging) console.info(`OrmNodeDriver[${this.debugName || this.path}].run:`, inlineParams({ query, params }));
     const stmt = this.db.prepare(query);
     if (query.trim().toUpperCase().startsWith('SELECT')) {
       const result = stmt.all(...params);
@@ -39,7 +40,7 @@ export class OrmNodeDriver implements OrmDriver {
   };
 
   batch = async (statements: RawSql[]) => {
-    if (this.logging) console.info('OrmNodeDriver.batch:', statements.map(s => inlineParams(s)).join('; '));
+    if (this.logging) console.info(`OrmNodeDriver[${this.debugName || this.path}].batch:`, statements.map(s => inlineParams(s)).join('; '));
     if (statements.length === 0) return [];
 
     const results: any[] = [];

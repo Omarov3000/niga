@@ -8,6 +8,7 @@ const MAX_STATEMENTS_PER_BATCH = 50
 
 export class OrmD1Driver implements OrmDriver {
   logging: boolean = false;
+  debugName: string = '';
 
   constructor(private readonly db: D1Database) {}
 

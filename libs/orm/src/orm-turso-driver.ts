@@ -12,6 +12,7 @@ export class OrmTursoDriver implements OrmDriver {
   dbPromise: Promise<any>;
   private _db: any | undefined;
   logging: boolean = false;
+  debugName: string = '';
 
   constructor(public url = ':memory:') {
     this.dbPromise = (connect as any)(url);

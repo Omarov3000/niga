@@ -25,6 +25,7 @@ function safeSplit(sql: string, delimiter: string): string[] {
 
 export class OrmBrowserDriver implements OrmDriver {
   logging: boolean = false;
+  debugName: string = '';
 
   constructor(
     private db: Database,

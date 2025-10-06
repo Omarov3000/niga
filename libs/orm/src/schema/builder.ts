@@ -177,11 +177,9 @@ function table<Name extends string, TCols extends Record<string, Column<any, any
 
 const index = () => new IndexBuilder();
 
-function db<TSchema extends Record<string, Table<any, any>>>(opts: { schema: TSchema; name?: string; origin?: 'client' | 'server'; isProd?: () => boolean }): Db & TSchema {
-  const instance = new Db({ schema: opts.schema as any, name: opts.name, origin: opts.origin, isProd: opts.isProd });
-  Object.entries(opts.schema).forEach(([key, table]) => {
-    (instance as any)[key] = table;
-  });
+function db<TSchema extends Record<string, Table<any, any>>>(opts: { schema: TSchema; name?: string; debugName?: string; origin?: 'client' | 'server'; isProd?: () => boolean; logging?: boolean }): Db & TSchema {
+  const instance = new Db({ schema: opts.schema as any, name: opts.name, debugName: opts.debugName, origin: opts.origin, isProd: opts.isProd, logging: opts.logging });
+  // Don't overwrite tables - the Db constructor already assigns wrapped tables with proper __db__ context
   return instance as Db & TSchema;
 }
 
@@ -190,7 +188,7 @@ const quoteIdentifier = (name: string) => `"${name.replaceAll('"', '""')}"`;
 type ClearRef = { current?: Array<() => Promise<void>> } | undefined;
 
 async function testDb<TSchema extends Record<string, Table<any, any>>>(
-  opts: { schema: TSchema; name?: string; origin?: 'client' | 'server'; isProd?: () => boolean },
+  opts: { schema: TSchema; name?: string; debugName?: string; origin?: 'client' | 'server'; isProd?: () => boolean; logging?: boolean },
   driver: OrmDriver,
   clearRef?: ClearRef
 ): Promise<Db & TSchema> {
