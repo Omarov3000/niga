@@ -1,9 +1,7 @@
 import { ulid } from 'ulidx'
 import { describe, it, vi, expect } from 'vitest'
 import { o } from '../../schema/builder'
-import { createFetchWrapper } from '../fetch-wrapper'
-import { RemoteDbClient } from '../remote-db'
-import { _makeHttpRemoteDb, UnstableNetworkFetch, _makeClientDb } from '../test-helpers'
+import { _makeHttpRemoteDb, UnstableNetworkFetch } from '../test-helpers'
 import { AlwaysOnlineDetector } from '../test-online-detector'
 import { DbMutationBatch } from '../types'
 import { OrmNodeDriver } from '../../orm-node-driver'
@@ -28,10 +26,12 @@ describe('network instability', () => {
     })
 
     const detector = new AlwaysOnlineDetector()
-    const wrappedFetch = createFetchWrapper(unstableNetwork.fetch.bind(unstableNetwork), detector)
-    const remoteDb = new RemoteDbClient(wrappedFetch)
+    const driver = new OrmNodeDriver()
 
-    const clientPromise = _makeClientDb({ users }, remoteDb, {
+    const clientPromise = o.syncedDb({
+      schema: { users },
+      driver,
+      fetch: unstableNetwork.fetch.bind(unstableNetwork),
       skipPull: false,
       onlineDetector: detector,
       debugName: 'client1'
@@ -39,7 +39,11 @@ describe('network instability', () => {
 
     await vi.runAllTimersAsync()
 
-    const { db } = await clientPromise
+    const db = await clientPromise
+
+    // Verify network instability occurred: both pull() and get() should have retried
+    // Pattern [0,0,1] means each endpoint fails twice then succeeds = 6 total calls
+    expect(unstableNetwork.getCallCount()).toBe(6)
 
     const result = await db.users.select().execute()
     expect(result).toMatchObject([
@@ -59,29 +63,34 @@ describe('network instability', () => {
     })
 
     // Setup: server with mutations already in the mutations queue
-    const { db: serverDb, server, remoteDb: serverRemoteDb } = await _makeHttpRemoteDb({ users })
+    const { db: serverDb, server } = await _makeHttpRemoteDb({ users }, { includeSyncTables: true })
 
-    // Directly insert data into server (bypassing sync)
-    await serverDb.users.insertMany([
-      { name: 'Alice' },
-      { name: 'Bob' },
-    ])
-
-    // Create a mutation batch on the server side
+    // Create a mutation batch to be synced via get()
+    const aliceId = ulid()
+    const bobId = ulid()
     const batch: DbMutationBatch = {
       id: ulid(),
       dbName: 'synced',
       mutation: [{
         table: 'users',
         type: 'insert',
-        data: [{ name: 'Alice' }, { name: 'Bob' }],
-        undo: { type: 'delete', ids: [] }
+        data: [{ id: aliceId, name: 'Alice' }, { id: bobId, name: 'Bob' }],
+        undo: { type: 'delete', ids: [aliceId, bobId] }
       }],
-      node: { id: ulid(), name: 'server' }
+      node: { id: ulid(), name: 'other-client' }
     }
 
-    // Send mutation to server's queue
-    await serverRemoteDb.send([batch])
+    // Directly insert into server's mutation queue AND apply the data
+    // (simulating a mutation from another client that already synced)
+    await serverDb.users.insertMany([
+      { id: aliceId, name: 'Alice' },
+      { id: bobId, name: 'Bob' }
+    ])
+    await (serverDb as any)._db_mutations_queue.insert({
+      id: batch.id,
+      value: JSON.stringify(batch),
+      serverTimestampMs: Date.now()
+    })
 
     // Now create unstable network for client
     const unstableNetwork = new UnstableNetworkFetch(server, {
@@ -89,23 +98,28 @@ describe('network instability', () => {
     })
 
     const detector = new AlwaysOnlineDetector()
-    const wrappedFetch = createFetchWrapper(unstableNetwork.fetch.bind(unstableNetwork), detector)
-    const remoteDb = new RemoteDbClient(wrappedFetch)
+    const driver = new OrmNodeDriver()
 
-    // Client initializes - pull will fail/retry, then get() will fail/retry
-    const clientPromise = _makeClientDb({ users }, remoteDb, {
-      skipPull: false,
+    // Client initializes - skip pull, only get() will fail/retry
+    const clientPromise = o.syncedDb({
+      schema: { users },
+      driver,
+      fetch: unstableNetwork.fetch.bind(unstableNetwork),
+      skipPull: true,
       onlineDetector: detector,
       debugName: 'client1'
     })
 
     await vi.runAllTimersAsync()
 
-    const { db } = await clientPromise
+    const db = await clientPromise
 
-    // Verify client received the data through retried get()
+    // Verify network instability occurred: only get() should have retried (pull was skipped)
+    // Pattern [0,0,1] means get() fails twice then succeeds = 3 total calls
+    expect(unstableNetwork.getCallCount()).toBe(3)
+
+    // Verify client received the mutations through retried get()
     const result = await db.users.select().execute()
-    expect(result).toHaveLength(2)
     expect(result).toMatchObject([
       { name: 'Alice' },
       { name: 'Bob' },
@@ -124,18 +138,22 @@ describe('network instability', () => {
     const { db: serverDb, server } = await _makeHttpRemoteDb({ users }, { includeSyncTables: true })
     const clientDriver = new OrmNodeDriver()
 
+    // Track send requests to verify mutation is sent after restart
+    let sendCount = 0
+    const trackingFetch = async (url: string, options: RequestInit) => {
+      if (url.includes('/sync/send')) {
+        sendCount++
+      }
+      return server.handleRequest(url, options.method || 'GET', options.body as string | undefined)
+    }
+
     // Phase 1: Create client with stable network, make mutation, it succeeds
     const detector1 = new AlwaysOnlineDetector()
-    const fetch1 = createFetchWrapper(
-      async (url, options) => server.handleRequest(url, options.method || 'GET', options.body as string | undefined),
-      detector1
-    )
-    const remoteDb1 = new RemoteDbClient(fetch1)
 
     const client1 = await o.syncedDb({
       schema: { users },
       driver: clientDriver,
-      remoteDb: remoteDb1,
+      fetch: trackingFetch,
       skipPull: true,
       onlineDetector: detector1,
       debugName: 'client1'
@@ -147,13 +165,14 @@ describe('network instability', () => {
     await insertPromise
     await vi.runAllTimersAsync()
 
-    // Verify it was synced
+    // Verify it was synced and send was called once
     let queued1 = await clientDriver.run({
       query: 'SELECT server_timestamp_ms FROM _db_mutations_queue',
       params: [],
     })
     expect(queued1).toHaveLength(1)
     expect(queued1[0].server_timestamp_ms).toBeGreaterThan(0)
+    expect(sendCount).toBe(1)
 
     // Now manually set it back to 0 to simulate a failed send that needs retry
     await clientDriver.run({
@@ -169,31 +188,28 @@ describe('network instability', () => {
     expect(queued2).toHaveLength(1)
     expect(queued2[0].server_timestamp_ms).toBe(0)
 
-    // Phase 2: Simulate restart with new remoteDb (same server)
+    // Phase 2: Simulate restart (same server)
     const detector2 = new AlwaysOnlineDetector()
-    const fetch2 = createFetchWrapper(
-      async (url, options) => server.handleRequest(url, options.method || 'GET', options.body as string | undefined),
-      detector2
-    )
-    const remoteDb2 = new RemoteDbClient(fetch2)
 
     // Create new synced-db instance - should retry sending the queued mutation
     const client2 = await o.syncedDb({
       schema: { users },
       driver: clientDriver, // Reuse same driver
-      remoteDb: remoteDb2,
+      fetch: trackingFetch, // Use same tracking fetch
       skipPull: true,
       onlineDetector: detector2,
       debugName: 'client1-restarted'
     })
 
-    // Verify mutation is now synced again
+    // Verify mutation is now synced again AND send was called a second time
     const queuedAfterRestart = await clientDriver.run({
       query: 'SELECT server_timestamp_ms FROM _db_mutations_queue',
       params: [],
     })
     expect(queuedAfterRestart).toHaveLength(1)
     expect(queuedAfterRestart[0].server_timestamp_ms).toBeGreaterThan(0)
+    // This is the key assertion: send was called AGAIN after restart
+    expect(sendCount).toBe(2)
 
     // Verify server still has the user (should only have 1, not 2)
     const serverUsers = await serverDb.users.select().execute()

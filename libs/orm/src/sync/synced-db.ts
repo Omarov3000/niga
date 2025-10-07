@@ -2,6 +2,7 @@ import { Db } from '../schema/db'
 import type { Table } from '../schema/table'
 import type { OrmDriver } from '../schema/types'
 import type { RemoteDb, PullResumeState } from './remote-db'
+import { RemoteDbClient } from './remote-db'
 import { internalSyncTables } from './internal-tables'
 import { SyncedTable } from './synced-table'
 import type { DbMutation, DbMutationBatch, OnlineDetector } from './types'
@@ -10,16 +11,18 @@ import { tableFromIPC } from 'apache-arrow'
 import { ulid, monotonicFactory } from 'ulidx'
 import { sql } from '../utils/sql'
 import { OrmMigratingDriver } from '../schema/orm-migrating-driver'
+import { createFetchWrapper } from './fetch-wrapper'
 
 export interface SyncedDbOptions {
   schema: Record<string, Table<any, any>>
   driver: OrmDriver
-  remoteDb: RemoteDb
+  fetch?: (url: string, options: RequestInit) => Promise<Response>
   onlineDetector: OnlineDetector
   name?: string
   debugName?: string
   logging?: boolean
   skipPull?: boolean // For tests: skip pull phase, only sync mutations
+  remoteDb?: RemoteDb // For tests: override the remoteDb creation. If provided, fetch is ignored
 }
 
 // Type for the batch transaction - includes all schema tables plus internal tables
@@ -54,7 +57,17 @@ export class SyncedDb extends Db {
     })
 
     this.userSchema = opts.schema
-    this.remoteDb = opts.remoteDb
+    // Create remoteDb with fetch wrapper, or use provided remoteDb for tests
+    if (opts.remoteDb) {
+      this.remoteDb = opts.remoteDb
+    } else {
+      if (!opts.fetch) {
+        throw new Error('Either fetch or remoteDb must be provided to SyncedDb')
+      }
+      this.remoteDb = new RemoteDbClient(
+        createFetchWrapper(opts.fetch, opts.onlineDetector)
+      )
+    }
     this.skipPull = opts.skipPull ?? false
     this.ulid = monotonicFactory()
     this.nodeInfo = { id: ulid(), name: '' }
