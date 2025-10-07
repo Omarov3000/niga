@@ -19,6 +19,7 @@ export interface RemoteDb {
   send(batch: DbMutationBatch[]): Promise<{ succeeded: { id: string; server_timestamp_ms: number }[]; failed: string[] }>
   get(maxServerTimestampLocally: number): Promise<Array<{ batch: DbMutationBatch; serverTimestampMs: number }>>
   pull(resumeState?: PullResumeState): AsyncGenerator<Uint8Array, void, unknown>
+  query(sql: string, params: any[]): Promise<any[]>
 }
 
 export class RemoteDbClient implements RemoteDb {
@@ -80,6 +81,20 @@ export class RemoteDbClient implements RemoteDb {
       reader.releaseLock()
     }
   }
+
+  async query(sql: string, params: any[]): Promise<any[]> {
+    const response = await this.fetch('/sync/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql, params }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to execute query: ${response.statusText}`)
+    }
+
+    return await response.json() as any[]
+  }
 }
 
 export class RemoteDbServer {
@@ -139,6 +154,15 @@ export class RemoteDbServer {
       return new Response(stream, {
         status: 200,
         headers: { 'Content-Type': 'application/octet-stream' },
+      })
+    }
+
+    if (pathname === '/sync/query' && method === 'POST') {
+      const { sql, params } = JSON.parse(body || '{}') as { sql: string; params: any[] }
+      const result = await this.remoteDb.query(sql, params)
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
       })
     }
 
@@ -442,5 +466,9 @@ export class TestRemoteDb implements RemoteDb {
     }
 
     return { succeeded, failed }
+  }
+
+  async query(sql: string, params: any[]): Promise<any[]> {
+    return await this.driver.run({ query: sql, params })
   }
 }

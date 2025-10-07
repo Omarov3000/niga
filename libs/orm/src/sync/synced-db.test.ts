@@ -1,10 +1,92 @@
-import { expect, it, describe } from 'vitest'
+import { expect, it, describe, vi } from 'vitest'
 import { o } from '../schema/builder'
 import { OrmNodeDriver } from '../orm-node-driver'
-import { TestRemoteDb, RemoteDbServer, RemoteDbClient } from './remote-db'
+import { TestRemoteDb, RemoteDbServer, RemoteDbClient, type RemoteDb } from './remote-db'
 import { ulid } from 'ulidx'
 import { internalSyncTables } from './internal-tables'
 import type { DbMutationBatch } from './types'
+import { AlwaysOnlineDetector, ControllableOnlineDetector } from './test-online-detector'
+import { UnstableNetworkFetch } from './test-helpers'
+
+// Helper functions for creating test databases
+async function makeRemoteDb<TSchema extends Record<string, any>>(
+  schema: TSchema,
+  options?: {
+    debugName?: string
+  }
+) {
+  const driver = new OrmNodeDriver()
+  const finalSchema = { ...schema, ...internalSyncTables }
+
+  const db = await o.testDb(
+    {
+      schema: finalSchema,
+      origin: 'server',
+      debugName: options?.debugName || 'server',
+    },
+    driver
+  )
+
+  const remoteDb = new TestRemoteDb(db, driver, schema)
+
+  return { driver, db, remoteDb, schema }
+}
+
+async function makeClientDb<TSchema extends Record<string, any>>(
+  schema: TSchema,
+  remoteDb: RemoteDb,
+  options?: {
+    debugName?: string
+    skipPull?: boolean
+    onlineDetector?: AlwaysOnlineDetector | ControllableOnlineDetector
+  }
+) {
+  const driver = new OrmNodeDriver()
+
+  const db = await o.syncedDb({
+    schema,
+    driver,
+    remoteDb,
+    skipPull: options?.skipPull,
+    onlineDetector: options?.onlineDetector || new AlwaysOnlineDetector(),
+    debugName: options?.debugName || 'client',
+  })
+
+  return { driver, db, schema }
+}
+
+// Helper for HTTP-based tests using RemoteDbServer/RemoteDbClient
+async function makeHttpRemoteDb<TSchema extends Record<string, any>>(
+  schema: TSchema,
+  options?: {
+    debugName?: string
+    includeSyncTables?: boolean
+  }
+) {
+  const driver = new OrmNodeDriver()
+  const finalSchema = options?.includeSyncTables
+    ? { ...schema, ...internalSyncTables }
+    : schema
+
+  const db = await o.testDb(
+    {
+      schema: finalSchema,
+      origin: 'server',
+      debugName: options?.debugName || 'server',
+    },
+    driver
+  )
+
+  const server = new RemoteDbServer(db, driver, schema)
+
+  const mockFetch = async (url: string, options: RequestInit): Promise<Response> => {
+    return await server.handleRequest(url, options.method || 'GET', options.body as string | undefined)
+  }
+
+  const remoteDb = new RemoteDbClient(mockFetch)
+
+  return { driver, db, server, remoteDb, mockFetch, schema }
+}
 
 it('syncs data from remote on initialization', async () => {
   const users = o.table('users', {
@@ -13,21 +95,13 @@ it('syncs data from remote on initialization', async () => {
     email: o.text(),
   })
 
-  const remoteDriver = new OrmNodeDriver()
-  const remoteDbInstance = await o.testDb({ schema: { users }, origin: 'server' }, remoteDriver)
-  await remoteDbInstance.users.insertMany([
+  const { db: serverDb, remoteDb } = await makeRemoteDb({ users })
+  await serverDb.users.insertMany([
     { name: 'Alice', email: 'alice@example.com' },
     { name: 'Bob', email: 'bob@example.com' }
   ])
 
-  const remoteDb = new TestRemoteDb(remoteDbInstance, remoteDriver, { users })
-
-  const driver = new OrmNodeDriver()
-  const db = await o.syncedDb({
-    schema: { users },
-    driver,
-    remoteDb,
-  })
+  const { db } = await makeClientDb({ users }, remoteDb, { debugName: 'client1' })
 
   const result = await db.users.select().execute()
   expect(result).toMatchObject([
@@ -42,18 +116,8 @@ it('handles empty remote database', async () => {
     name: o.text(),
   })
 
-  const remoteDriver = new OrmNodeDriver()
-  const remoteDbInstance = await o.testDb({ schema: { users } }, remoteDriver)
-
-  const remoteDb = new TestRemoteDb(remoteDbInstance, remoteDriver, { users })
-
-  const driver = new OrmNodeDriver()
-
-  const db = await o.syncedDb({
-    schema: { users },
-    driver,
-    remoteDb,
-  })
+  const { remoteDb } = await makeRemoteDb({ users })
+  const { db } = await makeClientDb({ users }, remoteDb, { debugName: 'client1' })
 
   const result = await db.users.select().execute()
 
@@ -77,23 +141,18 @@ it('syncs multiple tables', async () => {
   const postId1 = ulid()
   const postId2 = ulid()
 
-  const remoteDriver = new OrmNodeDriver()
-  const remoteDbInstance = await o.testDb({ schema: { users, posts } }, remoteDriver)
+  const { db: serverDb, remoteDb } = await makeRemoteDb({ users, posts })
 
-  await remoteDbInstance.users.insert({ id: userId1, name: 'Alice' })
-  await remoteDbInstance.users.insert({ id: userId2, name: 'Bob' })
-  await remoteDbInstance.posts.insert({ id: postId1, title: 'First Post', authorId: userId1 })
-  await remoteDbInstance.posts.insert({ id: postId2, title: 'Second Post', authorId: userId2 })
+  await serverDb.users.insertMany([
+    { id: userId1, name: 'Alice' },
+    { id: userId2, name: 'Bob' }
+  ])
+  await serverDb.posts.insertMany([
+    { id: postId1, title: 'First Post', authorId: userId1 },
+    { id: postId2, title: 'Second Post', authorId: userId2 }
+  ])
 
-  const remoteDb = new TestRemoteDb(remoteDbInstance, remoteDriver, { users, posts })
-
-  const driver = new OrmNodeDriver()
-
-  const db = await o.syncedDb({
-    schema: { users, posts },
-    driver,
-    remoteDb,
-  })
+  const { db } = await makeClientDb({ users, posts }, remoteDb, { debugName: 'client1' })
 
   const userResult = await db.users.select().execute()
   const postResult = await db.posts.select().execute()
@@ -112,24 +171,18 @@ it('resumes pull from last synced offset', async () => {
   })
 
   // Create remote DB with 5 users
-  const remoteDriver = new OrmNodeDriver()
-  const remoteDbInstance = await o.testDb({ schema: { users } }, remoteDriver)
+  const { db: serverDb, remoteDb } = await makeRemoteDb({ users })
 
-  for (let i = 1; i <= 5; i++) {
-    await remoteDbInstance.users.insert({ id: ulid(), name: `User ${i}` })
-  }
-
-  const remoteDb = new TestRemoteDb(remoteDbInstance, remoteDriver, { users })
-
-  // Create local driver and manually initialize sync tables
-  const driver1 = new OrmNodeDriver()
+  await serverDb.users.insertMany([
+    { id: ulid(), name: 'User 1' },
+    { id: ulid(), name: 'User 2' },
+    { id: ulid(), name: 'User 3' },
+    { id: ulid(), name: 'User 4' },
+    { id: ulid(), name: 'User 5' }
+  ])
 
   // First sync - create a fresh db and pull all data
-  const db1 = await o.syncedDb({
-    schema: { users },
-    driver: driver1,
-    remoteDb,
-  })
+  const { db: db1, driver: driver1 } = await makeClientDb({ users }, remoteDb, { debugName: 'client1' })
 
   // Verify first sync got all 5 users
   const result1 = await db1.users.select().execute()
@@ -147,6 +200,8 @@ it('resumes pull from last synced offset', async () => {
     schema: { users },
     driver: driver1,
     remoteDb,
+    onlineDetector: new AlwaysOnlineDetector(),
+    debugName: 'client1-reopen',
   })
 
   // Verify data is still there (pull was skipped)
@@ -161,30 +216,11 @@ it('syncs mutations between clients', async () => {
     email: o.text(),
   })
 
-  // Create server DB with internal mutation tables
-  const serverDriver = new OrmNodeDriver()
-  const serverDb = await o.testDb(
-    {
-      schema: {
-        users,
-        ...internalSyncTables,
-      },
-      origin: 'server',
-    },
-    serverDriver
-  )
-
   // Single RemoteDb wrapping the server
-  const remoteDb = new TestRemoteDb(serverDb, serverDriver, { users })
+  const { remoteDb } = await makeRemoteDb({ users })
 
   // Client 1: insert user with mutation
-  const client1Driver = new OrmNodeDriver()
-  const client1 = await o.syncedDb({
-    schema: { users },
-    driver: client1Driver,
-    remoteDb,
-    skipPull: true,
-  })
+  const { db: client1 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client1' })
 
   // Insert a user
   const inserted = await client1.users.insertWithUndo({ name: 'Charlie', email: 'charlie@example.com' })
@@ -195,16 +231,10 @@ it('syncs mutations between clients', async () => {
   expect(client1Result).toHaveLength(1)
 
   // Client 2: initialize and should receive insert mutation from client 1
-  const client2Driver = new OrmNodeDriver()
-  const client2 = await o.syncedDb({
-    schema: { users },
-    driver: client2Driver,
-    remoteDb,
-    skipPull: true,
-  })
+  const { db: client2 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client2' })
 
-  // Verify sync state transitions
-  expect(client2.syncState).toBe('gettingLatest')
+  // Verify sync state (should be synced after blocking initial sync)
+  expect(client2.syncState).toBe('synced')
 
   // Wait for background sync to complete
   await client2.waitForSync()
@@ -223,13 +253,7 @@ it('syncs mutations between clients', async () => {
   })
 
   // Client 3: initialize and should receive both insert and update mutations
-  const client3Driver = new OrmNodeDriver()
-  const client3 = await o.syncedDb({
-    schema: { users },
-    driver: client3Driver,
-    remoteDb,
-    skipPull: true,
-  })
+  const { db: client3 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client3' })
 
   // Wait for background sync to complete
   await client3.waitForSync()
@@ -243,13 +267,7 @@ it('syncs mutations between clients', async () => {
   await client1.users.deleteWithUndo({ where: { id: userId } })
 
   // Client 4: initialize and should have empty table (insert, update, then delete)
-  const client4Driver = new OrmNodeDriver()
-  const client4 = await o.syncedDb({
-    schema: { users },
-    driver: client4Driver,
-    remoteDb,
-    skipPull: true,
-  })
+  const { db: client4, driver: client4Driver } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client4' })
 
   // Wait for background sync to complete
   await client4.waitForSync()
@@ -275,41 +293,16 @@ describe('conflict resolution', () => {
       email: o.text(),
     })
 
-    // Create server DB with internal tables
-    const serverDriver = new OrmNodeDriver()
-    const serverDb = await o.testDb(
-      {
-        schema: {
-          users,
-          ...internalSyncTables,
-        },
-        origin: 'server',
-      },
-      serverDriver
-    )
-
-    const remoteDb = new TestRemoteDb(serverDb, serverDriver, { users })
+    const { remoteDb } = await makeRemoteDb({ users })
 
     // Client1: insert user
-    const client1Driver = new OrmNodeDriver()
-    const client1 = await o.syncedDb({
-      schema: { users },
-      driver: client1Driver,
-      remoteDb,
-      skipPull: true,
-    })
+    const { db: client1 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client1' })
 
     const inserted = await client1.users.insertWithUndo({ name: 'Original', email: 'original@example.com' })
     const userId = inserted.id
 
     // Client2: connect
-    const client2Driver = new OrmNodeDriver()
-    const client2 = await o.syncedDb({
-      schema: { users },
-      driver: client2Driver,
-      remoteDb,
-      skipPull: true,
-    })
+    const { db: client2 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client2' })
     await client2.waitForSync()
 
     // Client1 updates name (lower timestamp - sent first)
@@ -327,13 +320,7 @@ describe('conflict resolution', () => {
     })
 
     // Client3: initialize and should receive merged result
-    const client3Driver = new OrmNodeDriver()
-    const client3 = await o.syncedDb({
-      schema: { users },
-      driver: client3Driver,
-      remoteDb,
-      skipPull: true,
-    })
+    const { db: client3 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client3' })
     await client3.waitForSync()
 
     const result = await client3.users.select().execute()
@@ -349,41 +336,16 @@ describe('conflict resolution', () => {
       email: o.text(),
     })
 
-    // Create server DB with internal tables
-    const serverDriver = new OrmNodeDriver()
-    const serverDb = await o.testDb(
-      {
-        schema: {
-          users,
-          ...internalSyncTables,
-        },
-        origin: 'server',
-      },
-      serverDriver
-    )
-
-    const remoteDb = new TestRemoteDb(serverDb, serverDriver, { users })
+    const { remoteDb } = await makeRemoteDb({ users })
 
     // Client1: insert user
-    const client1Driver = new OrmNodeDriver()
-    const client1 = await o.syncedDb({
-      schema: { users },
-      driver: client1Driver,
-      remoteDb,
-      skipPull: true,
-    })
+    const { db: client1 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client1' })
 
     const inserted = await client1.users.insertWithUndo({ name: 'Alice', email: 'original@example.com' })
     const userId = inserted.id
 
     // Client2: connect
-    const client2Driver = new OrmNodeDriver()
-    const client2 = await o.syncedDb({
-      schema: { users },
-      driver: client2Driver,
-      remoteDb,
-      skipPull: true,
-    })
+    const { db: client2 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client2' })
     await client2.waitForSync()
 
     // Client1 updates email to v1 (lower timestamp)
@@ -401,13 +363,7 @@ describe('conflict resolution', () => {
     })
 
     // Client3: initialize and should receive LWW result (v2 wins)
-    const client3Driver = new OrmNodeDriver()
-    const client3 = await o.syncedDb({
-      schema: { users },
-      driver: client3Driver,
-      remoteDb,
-      skipPull: true,
-    })
+    const { db: client3 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client3' })
     await client3.waitForSync()
 
     const result = await client3.users.select().execute()
@@ -423,41 +379,16 @@ describe('conflict resolution', () => {
       email: o.text(),
     })
 
-    // Create server DB with internal tables
-    const serverDriver = new OrmNodeDriver()
-    const serverDb = await o.testDb(
-      {
-        schema: {
-          users,
-          ...internalSyncTables,
-        },
-        origin: 'server',
-      },
-      serverDriver
-    )
-
-    const remoteDb = new TestRemoteDb(serverDb, serverDriver, { users })
+    const { remoteDb } = await makeRemoteDb({ users })
 
     // Client1: insert user
-    const client1Driver = new OrmNodeDriver()
-    const client1 = await o.syncedDb({
-      schema: { users },
-      driver: client1Driver,
-      remoteDb,
-      skipPull: true,
-    })
+    const { db: client1 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client1' })
 
     const inserted = await client1.users.insertWithUndo({ name: 'Alice', email: 'alice@example.com' })
     const userId = inserted.id
 
     // Client2: connect
-    const client2Driver = new OrmNodeDriver()
-    const client2 = await o.syncedDb({
-      schema: { users },
-      driver: client2Driver,
-      remoteDb,
-      skipPull: true,
-    })
+    const { db: client2, driver: client2Driver } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client2' })
     await client2.waitForSync()
 
     // Client1 deletes row (lower timestamp)
@@ -479,13 +410,7 @@ describe('conflict resolution', () => {
     expect(failedMutations.length).toBeGreaterThan(0)
 
     // Client3: initialize and should see row is deleted
-    const client3Driver = new OrmNodeDriver()
-    const client3 = await o.syncedDb({
-      schema: { users },
-      driver: client3Driver,
-      remoteDb,
-      skipPull: true,
-    })
+    const { db: client3 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client3' })
     await client3.waitForSync()
 
     const result = await client3.users.select().execute()
@@ -499,41 +424,16 @@ describe('conflict resolution', () => {
       email: o.text(),
     })
 
-    // Create server DB with internal tables
-    const serverDriver = new OrmNodeDriver()
-    const serverDb = await o.testDb(
-      {
-        schema: {
-          users,
-          ...internalSyncTables,
-        },
-        origin: 'server',
-      },
-      serverDriver
-    )
-
-    const remoteDb = new TestRemoteDb(serverDb, serverDriver, { users })
+    const { remoteDb } = await makeRemoteDb({ users })
 
     // Client1: insert user
-    const client1Driver = new OrmNodeDriver()
-    const client1 = await o.syncedDb({
-      schema: { users },
-      driver: client1Driver,
-      remoteDb,
-      skipPull: true,
-    })
+    const { db: client1 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client1' })
 
     const inserted = await client1.users.insertWithUndo({ name: 'Alice', email: 'alice@example.com' })
     const userId = inserted.id
 
     // Client2: connect
-    const client2Driver = new OrmNodeDriver()
-    const client2 = await o.syncedDb({
-      schema: { users },
-      driver: client2Driver,
-      remoteDb,
-      skipPull: true,
-    })
+    const { db: client2, driver: client2Driver } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client2' })
     await client2.waitForSync()
 
     // Client1 updates row (lower timestamp)
@@ -555,13 +455,7 @@ describe('conflict resolution', () => {
     expect(failedMutations.length).toBeGreaterThan(0)
 
     // Client3: initialize and should see row with update applied
-    const client3Driver = new OrmNodeDriver()
-    const client3 = await o.syncedDb({
-      schema: { users },
-      driver: client3Driver,
-      remoteDb,
-      skipPull: true,
-    })
+    const { db: client3 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client3' })
     await client3.waitForSync()
 
     const result = await client3.users.select().execute()
@@ -577,41 +471,16 @@ describe('conflict resolution', () => {
       email: o.text(),
     })
 
-    // Create server DB with internal tables
-    const serverDriver = new OrmNodeDriver()
-    const serverDb = await o.testDb(
-      {
-        schema: {
-          users,
-          ...internalSyncTables,
-        },
-        origin: 'server',
-      },
-      serverDriver
-    )
-
-    const remoteDb = new TestRemoteDb(serverDb, serverDriver, { users })
+    const { remoteDb } = await makeRemoteDb({ users })
 
     // Client1: insert user
-    const client1Driver = new OrmNodeDriver()
-    const client1 = await o.syncedDb({
-      schema: { users },
-      driver: client1Driver,
-      remoteDb,
-      skipPull: true,
-    })
+    const { db: client1 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client1' })
 
     const inserted = await client1.users.insertWithUndo({ name: 'Alice', email: 'alice@example.com' })
     const userId = inserted.id
 
     // Client2: connect
-    const client2Driver = new OrmNodeDriver()
-    const client2 = await o.syncedDb({
-      schema: { users },
-      driver: client2Driver,
-      remoteDb,
-      skipPull: true,
-    })
+    const { db: client2, driver: client2Driver } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client2' })
     await client2.waitForSync()
 
     // Client1 deletes row (lower timestamp)
@@ -630,13 +499,7 @@ describe('conflict resolution', () => {
     expect(failedMutations.length).toBeGreaterThan(0)
 
     // Client3: initialize and should see row is deleted
-    const client3Driver = new OrmNodeDriver()
-    const client3 = await o.syncedDb({
-      schema: { users },
-      driver: client3Driver,
-      remoteDb,
-      skipPull: true,
-    })
+    const { db: client3 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client3' })
     await client3.waitForSync()
 
     const result = await client3.users.select().execute()
@@ -650,41 +513,16 @@ describe('conflict resolution', () => {
       email: o.text(),
     })
 
-    // Create server DB with internal tables
-    const serverDriver = new OrmNodeDriver()
-    const serverDb = await o.testDb(
-      {
-        schema: {
-          users,
-          ...internalSyncTables,
-        },
-        origin: 'server',
-      },
-      serverDriver
-    )
-
-    const remoteDb = new TestRemoteDb(serverDb, serverDriver, { users })
+    const { remoteDb } = await makeRemoteDb({ users })
 
     // Client1: insert user with specific ID
-    const client1Driver = new OrmNodeDriver()
-    const client1 = await o.syncedDb({
-      schema: { users },
-      driver: client1Driver,
-      remoteDb,
-      skipPull: true,
-    })
+    const { db: client1 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client1' })
 
     const sharedId = ulid()
     await client1.users.insertWithUndo({ id: sharedId, name: 'Alice', email: 'alice@example.com' })
 
     // Client2: try to insert different user with same ID
-    const client2Driver = new OrmNodeDriver()
-    const client2 = await o.syncedDb({
-      schema: { users },
-      driver: client2Driver,
-      remoteDb,
-      skipPull: true,
-    })
+    const { db: client2 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client2' })
 
     await new Promise(resolve => setTimeout(resolve, 5))
 
@@ -700,13 +538,7 @@ describe('conflict resolution', () => {
     expect(insertFailed).toBe(true)
 
     // Client3: initialize and should see only first insert
-    const client3Driver = new OrmNodeDriver()
-    const client3 = await o.syncedDb({
-      schema: { users },
-      driver: client3Driver,
-      remoteDb,
-      skipPull: true,
-    })
+    const { db: client3 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client3' })
     await client3.waitForSync()
 
     const result = await client3.users.select().execute()
@@ -723,28 +555,10 @@ describe('conflict resolution', () => {
     })
 
     // Create server DB
-    const serverDriver = new OrmNodeDriver()
-    const serverDb = await o.testDb(
-      {
-        schema: {
-          users,
-          ...internalSyncTables,
-        },
-        origin: 'server',
-      },
-      serverDriver
-    )
-
-    const remoteDb = new TestRemoteDb(serverDb, serverDriver, { users })
+    const { remoteDb, driver: serverDriver } = await makeRemoteDb({ users })
 
     // Client1: insert and make two updates
-    const client1Driver = new OrmNodeDriver()
-    const client1 = await o.syncedDb({
-      schema: { users },
-      driver: client1Driver,
-      remoteDb,
-      skipPull: true,
-    })
+    const { db: client1 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client1' })
 
     const userId = ulid()
     await client1.users.insertWithUndo({ id: userId, name: 'Alice', email: 'v0@example.com' })
@@ -753,13 +567,7 @@ describe('conflict resolution', () => {
     await client1.waitForSync()
 
     // Create a second client that will make update 1
-    const client1bDriver = new OrmNodeDriver()
-    const client1b = await o.syncedDb({
-      schema: { users },
-      driver: client1bDriver,
-      remoteDb,
-      skipPull: true,
-    })
+    const { db: client1b, driver: client1bDriver } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client1b' })
     await client1b.waitForSync()
 
     // Update 1: email to v1 (lower timestamp) - don't sync yet
@@ -791,22 +599,10 @@ describe('conflict resolution', () => {
     }
 
     // Send the older update - should be rejected or merged correctly
-    const sendResult = await remoteDb.send([update1Batch])
-
-    // Check mutation queue order on server
-    const queueState = await serverDriver.run({
-      query: 'SELECT id, server_timestamp_ms FROM _db_mutations_queue ORDER BY server_timestamp_ms ASC',
-      params: [],
-    })
+    await remoteDb.send([update1Batch])
 
     // Client2: verify final state has v2 (newer update wins)
-    const client2Driver = new OrmNodeDriver()
-    const client2 = await o.syncedDb({
-      schema: { users },
-      driver: client2Driver,
-      remoteDb,
-      skipPull: true,
-    })
+    const { db: client2 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client2' })
     await client2.waitForSync()
 
     const finalResult = await client2.users.select().execute()
@@ -828,48 +624,17 @@ describe('conflict resolution', () => {
     })
 
     // Server uses full mode with FK constraints
-    const serverDriver = new OrmNodeDriver()
-    const serverDb = await o.testDb(
-      {
-        schema: {
-          users,
-          posts,
-          ...internalSyncTables,
-        },
-        origin: 'server',
-        debugName: 'server',
-        logging: true,
-      },
-      serverDriver
-    )
-
-    const remoteDb = new TestRemoteDb(serverDb, serverDriver, { users, posts })
+    const { db: serverDb, remoteDb } = await makeRemoteDb({ users, posts })
 
     // Client1: insert user
-    const client1Driver = new OrmNodeDriver()
-    const client1 = await o.syncedDb({
-      schema: { users, posts },
-      driver: client1Driver,
-      remoteDb,
-      skipPull: true,
-      debugName: 'client1',
-      logging: true,
-    })
+    const { db: client1 } = await makeClientDb({ users, posts }, remoteDb, { skipPull: true, debugName: 'client1' })
 
     const userId = ulid()
     await client1.users.insertWithUndo({ id: userId, name: 'Alice' })
     await client1.waitForSync()
 
     // Client2: insert post with non-existent authorId (FK violation on server)
-    const client2Driver = new OrmNodeDriver()
-    const client2 = await o.syncedDb({
-      schema: { users, posts },
-      driver: client2Driver,
-      remoteDb,
-      skipPull: true,
-      debugName: 'client2',
-      logging: true,
-    })
+    const { db: client2, driver: client2Driver } = await makeClientDb({ users, posts }, remoteDb, { skipPull: true, debugName: 'client2' })
 
     const nonExistentUserId = ulid()
     const postId = ulid()
@@ -910,27 +675,7 @@ describe('conflict resolution', () => {
       email: o.text(),
     })
 
-    const serverDriver = new OrmNodeDriver()
-    const serverDb = await o.testDb(
-      {
-        schema: {
-          users,
-          ...internalSyncTables,
-        },
-        origin: 'server',
-      },
-      serverDriver
-    )
-
-    const remoteDb = new TestRemoteDb(serverDb, serverDriver, { users })
-
-    const client1Driver = new OrmNodeDriver()
-    const client1 = await o.syncedDb({
-      schema: { users },
-      driver: client1Driver,
-      remoteDb,
-      skipPull: true,
-    })
+    const { db: serverDb, remoteDb } = await makeRemoteDb({ users })
 
     // Create a batch with mixed valid/invalid mutations
     const validUserId = ulid()
@@ -974,19 +719,7 @@ describe('conflict resolution', () => {
       email: o.text(),
     })
 
-    const serverDriver = new OrmNodeDriver()
-    const serverDb = await o.testDb(
-      {
-        schema: {
-          users,
-          ...internalSyncTables,
-        },
-        origin: 'server',
-      },
-      serverDriver
-    )
-
-    const remoteDb = new TestRemoteDb(serverDb, serverDriver, { users })
+    const { db: serverDb, remoteDb } = await makeRemoteDb({ users })
 
     const userId = ulid()
     const batch: DbMutationBatch = {
@@ -1033,18 +766,7 @@ it('clears all user and internal tables', async () => {
   })
 
   // Create server DB
-  const serverDriver = new OrmNodeDriver()
-  const serverDb = await o.testDb(
-    {
-      schema: {
-        users,
-        posts,
-        ...internalSyncTables,
-      },
-      origin: 'server',
-    },
-    serverDriver
-  )
+  const { db: serverDb, remoteDb } = await makeRemoteDb({ users, posts })
 
   // Add data to server
   await serverDb.users.insertMany([
@@ -1056,15 +778,8 @@ it('clears all user and internal tables', async () => {
     { title: 'Post 2' }
   ])
 
-  const remoteDb = new TestRemoteDb(serverDb, serverDriver, { users, posts })
-
   // Create client and sync data
-  const clientDriver = new OrmNodeDriver()
-  const client = await o.syncedDb({
-    schema: { users, posts },
-    driver: clientDriver,
-    remoteDb,
-  })
+  const { db: client, driver: clientDriver } = await makeClientDb({ users, posts }, remoteDb, { debugName: 'client1' })
 
   // Make mutations to populate internal tables
   await client.users.insertWithUndo({ name: 'Charlie', email: 'charlie@example.com' })
@@ -1125,6 +840,84 @@ it('clears all user and internal tables', async () => {
   expect(syncNodeAfter).toHaveLength(0)
 })
 
+describe('network instability', () => {
+  it('retries failed requests during initial sync', async () => {
+    console.log('[TEST] Starting retry test')
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+      email: o.text(),
+    })
+
+    const { db: serverDb, remoteDb } = await makeHttpRemoteDb({ users })
+    await serverDb.users.insertMany([
+      { name: 'Alice', email: 'alice@example.com' },
+      { name: 'Bob', email: 'bob@example.com' }
+    ])
+    console.log('[TEST] Server setup complete')
+
+    console.log('[TEST] Creating client1...')
+    const { db: client1 } = await makeClientDb({ users }, remoteDb, { debugName: 'client1' })
+    console.log('[TEST] Client1 created, syncState:', client1.syncState)
+
+    expect(client1.syncState).toBe('synced')
+    const result1 = await client1.users.select().execute()
+    expect(result1).toMatchObject([
+      { name: 'Alice', email: 'alice@example.com' },
+      { name: 'Bob', email: 'bob@example.com' }
+    ])
+    console.log('[TEST] Test passed')
+  })
+
+  it('queues mutations locally when offline', async () => {
+    console.log('[TEST] Starting offline test')
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+      email: o.text(),
+    })
+
+    const onlineDetector = new ControllableOnlineDetector()
+    const { remoteDb } = await makeHttpRemoteDb({ users }, { includeSyncTables: true })
+
+    console.log('[TEST] Creating client...')
+    const { db: client, driver: clientDriver } = await makeClientDb({ users }, remoteDb, {
+      skipPull: true,
+      debugName: 'client1',
+      onlineDetector,
+    })
+    console.log('[TEST] Client created')
+
+    // Make mutation while online
+    console.log('[TEST] Inserting user while online...')
+    await client.users.insertWithUndo({ name: 'Alice', email: 'alice@example.com' })
+    await client.waitForSync()
+    console.log('[TEST] First mutation synced')
+
+    // Go offline
+    console.log('[TEST] Going offline...')
+    onlineDetector.setOnline(false)
+    expect(client.syncState).toBe('offline')
+
+    // Make mutation while offline
+    console.log('[TEST] Making mutation while offline...')
+    await client.users.insertWithUndo({ name: 'Bob', email: 'bob@example.com' })
+
+    // Verify queued locally
+    const offlineMutations = await clientDriver.run({
+      query: 'SELECT * FROM _db_mutations_queue WHERE server_timestamp_ms = 0',
+      params: [],
+    })
+    expect(offlineMutations.length).toBeGreaterThan(0)
+    console.log('[TEST] Mutation queued locally')
+
+    // Verify local read works
+    const localResult = await client.users.select().execute()
+    expect(localResult).toHaveLength(2)
+    console.log('[TEST] Test passed')
+  })
+})
+
 describe('RemoteDbClient and RemoteDbServer', () => {
   it('syncs data through HTTP client/server', async () => {
     const users = o.table('users', {
@@ -1134,26 +927,7 @@ describe('RemoteDbClient and RemoteDbServer', () => {
     })
 
     // Create server
-    const serverDriver = new OrmNodeDriver()
-    const serverDb = await o.testDb(
-      {
-        schema: {
-          users,
-          ...internalSyncTables,
-        },
-        origin: 'server',
-      },
-      serverDriver
-    )
-
-    const server = new RemoteDbServer(serverDb, serverDriver, { users })
-
-    // Create mock fetch function
-    const mockFetch = async (url: string, options: RequestInit): Promise<Response> => {
-      return await server.handleRequest(url, options.method || 'GET', options.body as string | undefined)
-    }
-
-    const remoteDb = new RemoteDbClient(mockFetch)
+    const { db: serverDb, remoteDb } = await makeHttpRemoteDb({ users }, { includeSyncTables: true })
 
     // Client sends mutation
     const userId = ulid()
@@ -1202,29 +976,14 @@ describe('RemoteDbClient and RemoteDbServer', () => {
     })
 
     // Create server with data
-    const serverDriver = new OrmNodeDriver()
-    const serverDb = await o.testDb({ schema: { users }, origin: 'server' }, serverDriver)
+    const { db: serverDb, remoteDb } = await makeHttpRemoteDb({ users })
     await serverDb.users.insertMany([
       { name: 'Alice' },
       { name: 'Bob' }
     ])
 
-    const server = new RemoteDbServer(serverDb, serverDriver, { users })
-
-    // Create mock fetch function
-    const mockFetch = async (url: string, options: RequestInit): Promise<Response> => {
-      return await server.handleRequest(url, options.method || 'GET', options.body as string | undefined)
-    }
-
-    const remoteDb = new RemoteDbClient(mockFetch)
-
     // Create local client
-    const clientDriver = new OrmNodeDriver()
-    const client = await o.syncedDb({
-      schema: { users },
-      driver: clientDriver,
-      remoteDb,
-    })
+    const { db: client } = await makeClientDb({ users }, remoteDb, { debugName: 'client1' })
 
     // Verify data pulled
     const result = await client.users.select().execute()

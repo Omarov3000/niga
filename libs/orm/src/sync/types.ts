@@ -42,3 +42,8 @@ export interface DbMutationBatch {
     name: string // eg macos
   }
 }
+
+export interface OnlineDetector {
+  online: boolean
+  onOnlineChange: (callback: (online: boolean) => void) => void
+}
