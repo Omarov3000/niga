@@ -164,7 +164,11 @@ Example:
 Solution: enforce constrains server side only. Reject mutations that violate them.
 
 
+
 # TODO
+
+@libs/orm/src/sync/synced-db.test.ts you need to remove // authorId is binary data, just verify it exists and properly verify that it is
+
 migrateDb in orm
 .clear in synced-db
 RemoteDbClient + RemoteDbServer

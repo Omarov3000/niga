@@ -1,92 +1,9 @@
 import { expect, it, describe, vi } from 'vitest'
 import { o } from '../schema/builder'
-import { OrmNodeDriver } from '../orm-node-driver'
-import { TestRemoteDb, RemoteDbServer, RemoteDbClient, type RemoteDb } from './remote-db'
 import { ulid } from 'ulidx'
-import { internalSyncTables } from './internal-tables'
 import type { DbMutationBatch } from './types'
 import { AlwaysOnlineDetector, ControllableOnlineDetector } from './test-online-detector'
-import { UnstableNetworkFetch } from './test-helpers'
-
-// Helper functions for creating test databases
-async function makeRemoteDb<TSchema extends Record<string, any>>(
-  schema: TSchema,
-  options?: {
-    debugName?: string
-  }
-) {
-  const driver = new OrmNodeDriver()
-  const finalSchema = { ...schema, ...internalSyncTables }
-
-  const db = await o.testDb(
-    {
-      schema: finalSchema,
-      origin: 'server',
-      debugName: options?.debugName || 'server',
-    },
-    driver
-  )
-
-  const remoteDb = new TestRemoteDb(db, driver, schema)
-
-  return { driver, db, remoteDb, schema }
-}
-
-async function makeClientDb<TSchema extends Record<string, any>>(
-  schema: TSchema,
-  remoteDb: RemoteDb,
-  options?: {
-    debugName?: string
-    skipPull?: boolean
-    onlineDetector?: AlwaysOnlineDetector | ControllableOnlineDetector
-  }
-) {
-  const driver = new OrmNodeDriver()
-
-  const db = await o.syncedDb({
-    schema,
-    driver,
-    remoteDb,
-    skipPull: options?.skipPull,
-    onlineDetector: options?.onlineDetector || new AlwaysOnlineDetector(),
-    debugName: options?.debugName || 'client',
-  })
-
-  return { driver, db, schema }
-}
-
-// Helper for HTTP-based tests using RemoteDbServer/RemoteDbClient
-async function makeHttpRemoteDb<TSchema extends Record<string, any>>(
-  schema: TSchema,
-  options?: {
-    debugName?: string
-    includeSyncTables?: boolean
-  }
-) {
-  const driver = new OrmNodeDriver()
-  const finalSchema = options?.includeSyncTables
-    ? { ...schema, ...internalSyncTables }
-    : schema
-
-  const db = await o.testDb(
-    {
-      schema: finalSchema,
-      origin: 'server',
-      debugName: options?.debugName || 'server',
-    },
-    driver
-  )
-
-  const server = new RemoteDbServer(db, driver, schema)
-
-  const mockFetch = async (url: string, options: RequestInit): Promise<Response> => {
-    return await server.handleRequest(url, options.method || 'GET', options.body as string | undefined)
-  }
-
-  const remoteDb = new RemoteDbClient(mockFetch)
-
-  return { driver, db, server, remoteDb, mockFetch, schema }
-}
+import { _makeClientDb, _makeHttpRemoteDb, _makeRemoteDb, UnstableNetworkFetch } from './test-helpers'
 
 it('syncs data from remote on initialization', async () => {
   const users = o.table('users', {
@@ -95,13 +12,13 @@ it('syncs data from remote on initialization', async () => {
     email: o.text(),
   })
 
-  const { db: serverDb, remoteDb } = await makeRemoteDb({ users })
+  const { db: serverDb, remoteDb } = await _makeRemoteDb({ users })
   await serverDb.users.insertMany([
     { name: 'Alice', email: 'alice@example.com' },
     { name: 'Bob', email: 'bob@example.com' }
   ])
 
-  const { db } = await makeClientDb({ users }, remoteDb, { debugName: 'client1' })
+  const { db } = await _makeClientDb({ users }, remoteDb, { skipPull: false, debugName: 'client1' })
 
   const result = await db.users.select().execute()
   expect(result).toMatchObject([
@@ -116,8 +33,8 @@ it('handles empty remote database', async () => {
     name: o.text(),
   })
 
-  const { remoteDb } = await makeRemoteDb({ users })
-  const { db } = await makeClientDb({ users }, remoteDb, { debugName: 'client1' })
+  const { remoteDb } = await _makeRemoteDb({ users })
+  const { db } = await _makeClientDb({ users }, remoteDb, { skipPull: false, debugName: 'client1' })
 
   const result = await db.users.select().execute()
 
@@ -141,7 +58,7 @@ it('syncs multiple tables', async () => {
   const postId1 = ulid()
   const postId2 = ulid()
 
-  const { db: serverDb, remoteDb } = await makeRemoteDb({ users, posts })
+  const { db: serverDb, remoteDb } = await _makeRemoteDb({ users, posts })
 
   await serverDb.users.insertMany([
     { id: userId1, name: 'Alice' },
@@ -152,7 +69,7 @@ it('syncs multiple tables', async () => {
     { id: postId2, title: 'Second Post', authorId: userId2 }
   ])
 
-  const { db } = await makeClientDb({ users, posts }, remoteDb, { debugName: 'client1' })
+  const { db } = await _makeClientDb({ users, posts }, remoteDb, { skipPull: false, debugName: 'client1' })
 
   const userResult = await db.users.select().execute()
   const postResult = await db.posts.select().execute()
@@ -171,7 +88,7 @@ it('resumes pull from last synced offset', async () => {
   })
 
   // Create remote DB with 5 users
-  const { db: serverDb, remoteDb } = await makeRemoteDb({ users })
+  const { db: serverDb, remoteDb } = await _makeRemoteDb({ users })
 
   await serverDb.users.insertMany([
     { id: ulid(), name: 'User 1' },
@@ -182,7 +99,7 @@ it('resumes pull from last synced offset', async () => {
   ])
 
   // First sync - create a fresh db and pull all data
-  const { db: db1, driver: driver1 } = await makeClientDb({ users }, remoteDb, { debugName: 'client1' })
+  const { db: db1, driver: driver1 } = await _makeClientDb({ users }, remoteDb, { skipPull: false, debugName: 'client1' })
 
   // Verify first sync got all 5 users
   const result1 = await db1.users.select().execute()
@@ -217,10 +134,10 @@ it('syncs mutations between clients', async () => {
   })
 
   // Single RemoteDb wrapping the server
-  const { remoteDb } = await makeRemoteDb({ users })
+  const { remoteDb } = await _makeRemoteDb({ users })
 
   // Client 1: insert user with mutation
-  const { db: client1 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client1' })
+  const { db: client1 } = await _makeClientDb({ users }, remoteDb, { debugName: 'client1' })
 
   // Insert a user
   const inserted = await client1.users.insertWithUndo({ name: 'Charlie', email: 'charlie@example.com' })
@@ -231,7 +148,7 @@ it('syncs mutations between clients', async () => {
   expect(client1Result).toHaveLength(1)
 
   // Client 2: initialize and should receive insert mutation from client 1
-  const { db: client2 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client2' })
+  const { db: client2 } = await _makeClientDb({ users }, remoteDb, { debugName: 'client2' })
 
   // Verify sync state (should be synced after blocking initial sync)
   expect(client2.syncState).toBe('synced')
@@ -253,7 +170,7 @@ it('syncs mutations between clients', async () => {
   })
 
   // Client 3: initialize and should receive both insert and update mutations
-  const { db: client3 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client3' })
+  const { db: client3 } = await _makeClientDb({ users }, remoteDb, { debugName: 'client3' })
 
   // Wait for background sync to complete
   await client3.waitForSync()
@@ -267,7 +184,7 @@ it('syncs mutations between clients', async () => {
   await client1.users.deleteWithUndo({ where: { id: userId } })
 
   // Client 4: initialize and should have empty table (insert, update, then delete)
-  const { db: client4, driver: client4Driver } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client4' })
+  const { db: client4, driver: client4Driver } = await _makeClientDb({ users }, remoteDb, { debugName: 'client4' })
 
   // Wait for background sync to complete
   await client4.waitForSync()
@@ -293,16 +210,16 @@ describe('conflict resolution', () => {
       email: o.text(),
     })
 
-    const { remoteDb } = await makeRemoteDb({ users })
+    const { remoteDb } = await _makeRemoteDb({ users })
 
     // Client1: insert user
-    const { db: client1 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client1' })
+    const { db: client1 } = await _makeClientDb({ users }, remoteDb, { debugName: 'client1' })
 
     const inserted = await client1.users.insertWithUndo({ name: 'Original', email: 'original@example.com' })
     const userId = inserted.id
 
     // Client2: connect
-    const { db: client2 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client2' })
+    const { db: client2 } = await _makeClientDb({ users }, remoteDb, { debugName: 'client2' })
     await client2.waitForSync()
 
     // Client1 updates name (lower timestamp - sent first)
@@ -320,7 +237,7 @@ describe('conflict resolution', () => {
     })
 
     // Client3: initialize and should receive merged result
-    const { db: client3 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client3' })
+    const { db: client3 } = await _makeClientDb({ users }, remoteDb, { debugName: 'client3' })
     await client3.waitForSync()
 
     const result = await client3.users.select().execute()
@@ -336,16 +253,16 @@ describe('conflict resolution', () => {
       email: o.text(),
     })
 
-    const { remoteDb } = await makeRemoteDb({ users })
+    const { remoteDb } = await _makeRemoteDb({ users })
 
     // Client1: insert user
-    const { db: client1 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client1' })
+    const { db: client1 } = await _makeClientDb({ users }, remoteDb, { debugName: 'client1' })
 
     const inserted = await client1.users.insertWithUndo({ name: 'Alice', email: 'original@example.com' })
     const userId = inserted.id
 
     // Client2: connect
-    const { db: client2 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client2' })
+    const { db: client2 } = await _makeClientDb({ users }, remoteDb, { debugName: 'client2' })
     await client2.waitForSync()
 
     // Client1 updates email to v1 (lower timestamp)
@@ -363,7 +280,7 @@ describe('conflict resolution', () => {
     })
 
     // Client3: initialize and should receive LWW result (v2 wins)
-    const { db: client3 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client3' })
+    const { db: client3 } = await _makeClientDb({ users }, remoteDb, { debugName: 'client3' })
     await client3.waitForSync()
 
     const result = await client3.users.select().execute()
@@ -379,16 +296,16 @@ describe('conflict resolution', () => {
       email: o.text(),
     })
 
-    const { remoteDb } = await makeRemoteDb({ users })
+    const { remoteDb } = await _makeRemoteDb({ users })
 
     // Client1: insert user
-    const { db: client1 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client1' })
+    const { db: client1 } = await _makeClientDb({ users }, remoteDb, { debugName: 'client1' })
 
     const inserted = await client1.users.insertWithUndo({ name: 'Alice', email: 'alice@example.com' })
     const userId = inserted.id
 
     // Client2: connect
-    const { db: client2, driver: client2Driver } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client2' })
+    const { db: client2, driver: client2Driver } = await _makeClientDb({ users }, remoteDb, { debugName: 'client2' })
     await client2.waitForSync()
 
     // Client1 deletes row (lower timestamp)
@@ -410,7 +327,7 @@ describe('conflict resolution', () => {
     expect(failedMutations.length).toBeGreaterThan(0)
 
     // Client3: initialize and should see row is deleted
-    const { db: client3 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client3' })
+    const { db: client3 } = await _makeClientDb({ users }, remoteDb, { debugName: 'client3' })
     await client3.waitForSync()
 
     const result = await client3.users.select().execute()
@@ -424,16 +341,16 @@ describe('conflict resolution', () => {
       email: o.text(),
     })
 
-    const { remoteDb } = await makeRemoteDb({ users })
+    const { remoteDb } = await _makeRemoteDb({ users })
 
     // Client1: insert user
-    const { db: client1 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client1' })
+    const { db: client1 } = await _makeClientDb({ users }, remoteDb, { debugName: 'client1' })
 
     const inserted = await client1.users.insertWithUndo({ name: 'Alice', email: 'alice@example.com' })
     const userId = inserted.id
 
     // Client2: connect
-    const { db: client2, driver: client2Driver } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client2' })
+    const { db: client2, driver: client2Driver } = await _makeClientDb({ users }, remoteDb, { debugName: 'client2' })
     await client2.waitForSync()
 
     // Client1 updates row (lower timestamp)
@@ -455,7 +372,7 @@ describe('conflict resolution', () => {
     expect(failedMutations.length).toBeGreaterThan(0)
 
     // Client3: initialize and should see row with update applied
-    const { db: client3 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client3' })
+    const { db: client3 } = await _makeClientDb({ users }, remoteDb, { debugName: 'client3' })
     await client3.waitForSync()
 
     const result = await client3.users.select().execute()
@@ -471,16 +388,16 @@ describe('conflict resolution', () => {
       email: o.text(),
     })
 
-    const { remoteDb } = await makeRemoteDb({ users })
+    const { remoteDb } = await _makeRemoteDb({ users })
 
     // Client1: insert user
-    const { db: client1 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client1' })
+    const { db: client1 } = await _makeClientDb({ users }, remoteDb, { debugName: 'client1' })
 
     const inserted = await client1.users.insertWithUndo({ name: 'Alice', email: 'alice@example.com' })
     const userId = inserted.id
 
     // Client2: connect
-    const { db: client2, driver: client2Driver } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client2' })
+    const { db: client2, driver: client2Driver } = await _makeClientDb({ users }, remoteDb, { debugName: 'client2' })
     await client2.waitForSync()
 
     // Client1 deletes row (lower timestamp)
@@ -499,7 +416,7 @@ describe('conflict resolution', () => {
     expect(failedMutations.length).toBeGreaterThan(0)
 
     // Client3: initialize and should see row is deleted
-    const { db: client3 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client3' })
+    const { db: client3 } = await _makeClientDb({ users }, remoteDb, { debugName: 'client3' })
     await client3.waitForSync()
 
     const result = await client3.users.select().execute()
@@ -513,16 +430,16 @@ describe('conflict resolution', () => {
       email: o.text(),
     })
 
-    const { remoteDb } = await makeRemoteDb({ users })
+    const { remoteDb } = await _makeRemoteDb({ users })
 
     // Client1: insert user with specific ID
-    const { db: client1 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client1' })
+    const { db: client1 } = await _makeClientDb({ users }, remoteDb, { debugName: 'client1' })
 
     const sharedId = ulid()
     await client1.users.insertWithUndo({ id: sharedId, name: 'Alice', email: 'alice@example.com' })
 
     // Client2: try to insert different user with same ID
-    const { db: client2 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client2' })
+    const { db: client2 } = await _makeClientDb({ users }, remoteDb, { debugName: 'client2' })
 
     await new Promise(resolve => setTimeout(resolve, 5))
 
@@ -538,7 +455,7 @@ describe('conflict resolution', () => {
     expect(insertFailed).toBe(true)
 
     // Client3: initialize and should see only first insert
-    const { db: client3 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client3' })
+    const { db: client3 } = await _makeClientDb({ users }, remoteDb, { debugName: 'client3' })
     await client3.waitForSync()
 
     const result = await client3.users.select().execute()
@@ -555,10 +472,10 @@ describe('conflict resolution', () => {
     })
 
     // Create server DB
-    const { remoteDb, driver: serverDriver } = await makeRemoteDb({ users })
+    const { remoteDb, driver: serverDriver } = await _makeRemoteDb({ users })
 
     // Client1: insert and make two updates
-    const { db: client1 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client1' })
+    const { db: client1 } = await _makeClientDb({ users }, remoteDb, { debugName: 'client1' })
 
     const userId = ulid()
     await client1.users.insertWithUndo({ id: userId, name: 'Alice', email: 'v0@example.com' })
@@ -567,7 +484,7 @@ describe('conflict resolution', () => {
     await client1.waitForSync()
 
     // Create a second client that will make update 1
-    const { db: client1b, driver: client1bDriver } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client1b' })
+    const { db: client1b, driver: client1bDriver } = await _makeClientDb({ users }, remoteDb, { debugName: 'client1b' })
     await client1b.waitForSync()
 
     // Update 1: email to v1 (lower timestamp) - don't sync yet
@@ -602,7 +519,7 @@ describe('conflict resolution', () => {
     await remoteDb.send([update1Batch])
 
     // Client2: verify final state has v2 (newer update wins)
-    const { db: client2 } = await makeClientDb({ users }, remoteDb, { skipPull: true, debugName: 'client2' })
+    const { db: client2 } = await _makeClientDb({ users }, remoteDb, { debugName: 'client2' })
     await client2.waitForSync()
 
     const finalResult = await client2.users.select().execute()
@@ -624,17 +541,17 @@ describe('conflict resolution', () => {
     })
 
     // Server uses full mode with FK constraints
-    const { db: serverDb, remoteDb } = await makeRemoteDb({ users, posts })
+    const { db: serverDb, remoteDb } = await _makeRemoteDb({ users, posts })
 
     // Client1: insert user
-    const { db: client1 } = await makeClientDb({ users, posts }, remoteDb, { skipPull: true, debugName: 'client1' })
+    const { db: client1 } = await _makeClientDb({ users, posts }, remoteDb, { debugName: 'client1' })
 
     const userId = ulid()
     await client1.users.insertWithUndo({ id: userId, name: 'Alice' })
     await client1.waitForSync()
 
     // Client2: insert post with non-existent authorId (FK violation on server)
-    const { db: client2, driver: client2Driver } = await makeClientDb({ users, posts }, remoteDb, { skipPull: true, debugName: 'client2' })
+    const { db: client2, driver: client2Driver } = await _makeClientDb({ users, posts }, remoteDb, { debugName: 'client2' })
 
     const nonExistentUserId = ulid()
     const postId = ulid()
@@ -675,7 +592,7 @@ describe('conflict resolution', () => {
       email: o.text(),
     })
 
-    const { db: serverDb, remoteDb } = await makeRemoteDb({ users })
+    const { db: serverDb, remoteDb } = await _makeRemoteDb({ users })
 
     // Create a batch with mixed valid/invalid mutations
     const validUserId = ulid()
@@ -719,7 +636,7 @@ describe('conflict resolution', () => {
       email: o.text(),
     })
 
-    const { db: serverDb, remoteDb } = await makeRemoteDb({ users })
+    const { db: serverDb, remoteDb } = await _makeRemoteDb({ users })
 
     const userId = ulid()
     const batch: DbMutationBatch = {
@@ -766,7 +683,7 @@ it('clears all user and internal tables', async () => {
   })
 
   // Create server DB
-  const { db: serverDb, remoteDb } = await makeRemoteDb({ users, posts })
+  const { db: serverDb, remoteDb } = await _makeRemoteDb({ users, posts })
 
   // Add data to server
   await serverDb.users.insertMany([
@@ -779,7 +696,7 @@ it('clears all user and internal tables', async () => {
   ])
 
   // Create client and sync data
-  const { db: client, driver: clientDriver } = await makeClientDb({ users, posts }, remoteDb, { debugName: 'client1' })
+  const { db: client, driver: clientDriver } = await _makeClientDb({ users, posts }, remoteDb, { skipPull: false, debugName: 'client1' })
 
   // Make mutations to populate internal tables
   await client.users.insertWithUndo({ name: 'Charlie', email: 'charlie@example.com' })
@@ -849,7 +766,7 @@ describe('network instability', () => {
       email: o.text(),
     })
 
-    const { db: serverDb, remoteDb } = await makeHttpRemoteDb({ users })
+    const { db: serverDb, remoteDb } = await _makeHttpRemoteDb({ users })
     await serverDb.users.insertMany([
       { name: 'Alice', email: 'alice@example.com' },
       { name: 'Bob', email: 'bob@example.com' }
@@ -857,7 +774,7 @@ describe('network instability', () => {
     console.log('[TEST] Server setup complete')
 
     console.log('[TEST] Creating client1...')
-    const { db: client1 } = await makeClientDb({ users }, remoteDb, { debugName: 'client1' })
+    const { db: client1 } = await _makeClientDb({ users }, remoteDb, { skipPull: false, debugName: 'client1' })
     console.log('[TEST] Client1 created, syncState:', client1.syncState)
 
     expect(client1.syncState).toBe('synced')
@@ -878,11 +795,10 @@ describe('network instability', () => {
     })
 
     const onlineDetector = new ControllableOnlineDetector()
-    const { remoteDb } = await makeHttpRemoteDb({ users }, { includeSyncTables: true })
+    const { remoteDb } = await _makeHttpRemoteDb({ users }, { includeSyncTables: true })
 
     console.log('[TEST] Creating client...')
-    const { db: client, driver: clientDriver } = await makeClientDb({ users }, remoteDb, {
-      skipPull: true,
+    const { db: client, driver: clientDriver } = await _makeClientDb({ users }, remoteDb, {
       debugName: 'client1',
       onlineDetector,
     })
@@ -927,7 +843,7 @@ describe('RemoteDbClient and RemoteDbServer', () => {
     })
 
     // Create server
-    const { db: serverDb, remoteDb } = await makeHttpRemoteDb({ users }, { includeSyncTables: true })
+    const { db: serverDb, remoteDb } = await _makeHttpRemoteDb({ users }, { includeSyncTables: true })
 
     // Client sends mutation
     const userId = ulid()
@@ -976,14 +892,14 @@ describe('RemoteDbClient and RemoteDbServer', () => {
     })
 
     // Create server with data
-    const { db: serverDb, remoteDb } = await makeHttpRemoteDb({ users })
+    const { db: serverDb, remoteDb } = await _makeHttpRemoteDb({ users })
     await serverDb.users.insertMany([
       { name: 'Alice' },
       { name: 'Bob' }
     ])
 
     // Create local client
-    const { db: client } = await makeClientDb({ users }, remoteDb, { debugName: 'client1' })
+    const { db: client } = await _makeClientDb({ users }, remoteDb, { skipPull: false, debugName: 'client1' })
 
     // Verify data pulled
     const result = await client.users.select().execute()

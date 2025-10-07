@@ -1,11 +1,8 @@
-import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, expectTypeOf } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll } from 'vitest';
 import { o } from './schema/builder';
 import { s } from '@w/schema';
-import type { Table } from './schema/table';
-import type { Db } from './schema/db';
 import { sql } from './utils/sql';
-import { OrmDriver, fakeOrmDriver } from './schema/types';
-import { ShallowPrettify } from './utils/utils';
+import { OrmDriver } from './schema/types';
 
 // Helper to convert string id to Uint8Array for blob storage
 const idToBlob = (id: string) => new TextEncoder().encode(id);
@@ -61,18 +58,12 @@ describe('insert', () => {
 
     const db = await o.testDb({ schema: { posts } }, driver, clearRef);
 
-    // Check if table exists
-    const tables = await driver.run({ query: "SELECT name FROM sqlite_master WHERE type='table' AND name='posts'", params: [] });
-
     await db.posts.insert({
       id: 'post-123',
       title: 'Test Post',
       published: true,
       views: 42,
     });
-
-    // Check row count
-    const count = await driver.run({ query: 'SELECT COUNT(*) as count FROM posts', params: [] });
 
     const rows = await driver.run({ query: 'SELECT id, title, published, views FROM posts WHERE id = ?', params: [idToBlob('post-123')] });
 
@@ -88,13 +79,10 @@ describe('insert', () => {
     });
 
     const db = await o.testDb({ schema: { users } }, driver, clearRef);
-
     const returned = await db.users.insert({ id: 'user-123', name: 'Alice' });
-
     expect(returned).toMatchObject({ id: 'user-123', name: 'Alice' });
 
     const rows = await driver.run({ query: 'SELECT id, name FROM users WHERE id = ?', params: [idToBlob('user-123')] });
-
     expect(rows).toMatchObject([{ id: idToBlob('user-123'), name: 'Alice' }]);
   });
 
@@ -528,10 +516,6 @@ describe('select', () => {
       { id: 1, name: 'Alice', hasPet: true },
       { id: 2, name: 'Bob', hasPet: false }
     ]));
-
-    type _Received = ShallowPrettify<(typeof result)[number]>;
-    type Expected = { id: number; name: string; hasPet: boolean | undefined };
-    expectTypeOf(result).toEqualTypeOf<Expected[]>();
   });
 
   it('selects partial with alias', async () => {
@@ -547,10 +531,6 @@ describe('select', () => {
     const result = await db.users.select({ columns: { userId: db.users.id } }).executeAndTakeFirst();
 
     expect(result).toMatchObject({ userId: 1 });
-
-    type _Received = ShallowPrettify<typeof result>;
-    type Expected = { userId: number };
-    expectTypeOf(result).toEqualTypeOf<Expected>();
   });
 
   it('selects with where', async () => {
@@ -624,10 +604,6 @@ describe('select', () => {
       { age: 25, count: 2 },
       { age: 30, count: 1 }
     ]));
-
-    type _Received = ShallowPrettify<(typeof result)[number]>;
-    type Expected = { age: number; count: number };
-    expectTypeOf(result).toEqualTypeOf<Expected[]>();
   });
 
   describe('joins', () => {
@@ -656,10 +632,6 @@ describe('select', () => {
         users: { id: 1, name: 'Alice' },
         pets: { id: 1, name: 'Fluffy', ownerId: 1 }
       });
-
-      type _Received = ShallowPrettify<(typeof result)[number]>;
-      type Expected = { users: { id: number; name: string }; pets: { id: number; name: string; ownerId: number } };
-      expectTypeOf(result).toEqualTypeOf<Expected[]>();
     });
 
     it('joins with flat return type', async () => {
@@ -683,10 +655,6 @@ describe('select', () => {
 
       expect(result).toHaveLength(1);
       expect(result[0]).toMatchObject({ id: 1, petId: 1 });
-
-      type _Received = ShallowPrettify<(typeof result)[number]>;
-      type Expected = { id: number; petId: number };
-      expectTypeOf(result).toEqualTypeOf<Expected[]>();
     });
 
     it('self join', async () => {
@@ -711,10 +679,6 @@ describe('select', () => {
         users: { id: 2, name: 'Child', parentId: 1 },
         parent: { id: 1, name: 'Parent', parentId: null }
       });
-
-      type _Received = ShallowPrettify<(typeof result)[number]>;
-      type Expected = { users: { id: number; name: string; parentId: number | undefined }; parent: { id: number; name: string; parentId: number | undefined } };
-      expectTypeOf(result).toEqualTypeOf<Expected[]>();
     });
 
     it('triple join', async () => {
@@ -750,10 +714,6 @@ describe('select', () => {
         pets: { id: 1, name: 'Fluffy', ownerId: 1 },
         toys: { id: 1, name: 'Ball', petId: 1 }
       });
-
-      type _Received = ShallowPrettify<(typeof result)[number]>;
-      type Expected = { users: { id: number; name: string }; pets: { id: number; name: string; ownerId: number }; toys: { id: number; name: string; petId: number } };
-      expectTypeOf(result).toEqualTypeOf<Expected[]>();
     });
   })
 

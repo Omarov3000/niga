@@ -8,7 +8,7 @@ Never use `tsx` or `tsc` or `node`. Always use `pnpm exec vite-node scriptName.t
 
 Never add `.js` in the file imports.
 
-Never use dynamic imports.
+IF YOU USE DYNAMIC IMPORTS, YOU WILL BE TERMINATED. ALWAYS USE STATIC IMPORTS. IF YOU USE REQUIRE YOU WILL BE TERMINATED EVEN FASTER.
 
 Never use multiple assertion calls if they can be replace with a single `toMatchObject` call.
 

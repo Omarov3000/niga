@@ -1,4 +1,4 @@
-import { BaseTable, type TableConstructorOptions } from '../schema/table'
+import { BaseTable, type TableConstructorOptions, type ColumnsOnly, type InsertableForCols, type SelectableForCols } from '../schema/table'
 import type { Column } from '../schema/column'
 import type { DbMutation } from './types'
 
@@ -17,9 +17,12 @@ export class SyncedTable<Name extends string, TCols extends Record<string, Colum
     this.onMutation = onMutation
   }
 
-  async insertWithUndo(data: any): Promise<any> {
+  async insertWithUndo<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf> = ColumnsOnly<TSelf>>(
+    this: TSelf,
+    data: InsertableForCols<TSelfCols>
+  ): Promise<SelectableForCols<TSelfCols>> {
     // Build full object using make
-    const fullData = this.make(data)
+    const fullData = this.make(data) as SelectableForCols<TSelfCols>
 
     // Perform the insert using driver directly
     const driver = this.__db__.getDriver()
@@ -60,7 +63,13 @@ export class SyncedTable<Name extends string, TCols extends Record<string, Colum
     return fullData
   }
 
-  async updateWithUndo(options: { data: Record<string, any>; where: { id: any } }): Promise<void> {
+  async updateWithUndo<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf> = ColumnsOnly<TSelf>>(
+    this: TSelf,
+    options: {
+      data: Partial<InsertableForCols<TSelfCols>>;
+      where: { id: any };
+    }
+  ): Promise<void> {
     const driver = this.__db__.getDriver()
 
     // Encode ID for query
@@ -123,7 +132,12 @@ export class SyncedTable<Name extends string, TCols extends Record<string, Colum
     await this.onMutation(mutation)
   }
 
-  async deleteWithUndo(options: { where: { id: any } }): Promise<void> {
+  async deleteWithUndo<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf> = ColumnsOnly<TSelf>>(
+    this: TSelf,
+    options: {
+      where: { id: any };
+    }
+  ): Promise<void> {
     const driver = this.__db__.getDriver()
 
     // Encode ID for query
