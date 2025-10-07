@@ -162,3 +162,12 @@ Example:
 - Before A’s insert reaches B, B’s insert Y arrives at server → FK violation.
 
 Solution: enforce constrains server side only. Reject mutations that violate them.
+
+
+# TODO
+migrateDb in orm
+.clear in synced-db
+RemoteDbClient + RemoteDbServer
+getLatestMutation should be blocking. we should proxy read / write queries to remote db before local db syncs (if there is network) and queue write mutations for local
+integrate synced-db with orm-browser-driver-fe
+derived tables

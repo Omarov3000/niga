@@ -21,6 +21,131 @@ export interface RemoteDb {
   pull(resumeState?: PullResumeState): AsyncGenerator<Uint8Array, void, unknown>
 }
 
+export class RemoteDbClient implements RemoteDb {
+  constructor(private fetch: (url: string, options: RequestInit) => Promise<Response>) {}
+
+  async send(batch: DbMutationBatch[]): Promise<{ succeeded: { id: string; server_timestamp_ms: number }[]; failed: string[] }> {
+    const response = await this.fetch('/sync/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(batch),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to send mutations: ${response.statusText}`)
+    }
+
+    return await response.json() as { succeeded: { id: string; server_timestamp_ms: number }[]; failed: string[] }
+  }
+
+  async get(maxServerTimestampLocally: number): Promise<Array<{ batch: DbMutationBatch; serverTimestampMs: number }>> {
+    const response = await this.fetch(`/sync/get?after=${maxServerTimestampLocally}`, {
+      method: 'GET',
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to get mutations: ${response.statusText}`)
+    }
+
+    return await response.json() as Array<{ batch: DbMutationBatch; serverTimestampMs: number }>
+  }
+
+  async *pull(resumeState?: PullResumeState): AsyncGenerator<Uint8Array, void, unknown> {
+    const resumeStateJson = resumeState ? JSON.stringify(Array.from(resumeState.entries())) : undefined
+    const url = resumeStateJson
+      ? `/sync/pull?resumeState=${encodeURIComponent(resumeStateJson)}`
+      : '/sync/pull'
+
+    const response = await this.fetch(url, {
+      method: 'GET',
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to pull data: ${response.statusText}`)
+    }
+
+    if (!response.body) {
+      throw new Error('Response body is null')
+    }
+
+    const reader = response.body.getReader()
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        yield value
+      }
+    } finally {
+      reader.releaseLock()
+    }
+  }
+}
+
+export class RemoteDbServer {
+  private remoteDb: TestRemoteDb
+
+  constructor(
+    db: Db,
+    driver: OrmDriver,
+    schema: Record<string, any>,
+    config: RemoteDbConfig = {}
+  ) {
+    this.remoteDb = new TestRemoteDb(db, driver, schema, config)
+  }
+
+  async handleRequest(url: string, method: string, body?: string): Promise<Response> {
+    const urlObj = new URL(url, 'http://localhost')
+    const pathname = urlObj.pathname
+
+    if (pathname === '/sync/send' && method === 'POST') {
+      const batch = JSON.parse(body || '[]') as DbMutationBatch[]
+      const result = await this.remoteDb.send(batch)
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    if (pathname === '/sync/get' && method === 'GET') {
+      const after = Number(urlObj.searchParams.get('after') || '0')
+      const result = await this.remoteDb.get(after)
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    if (pathname === '/sync/pull' && method === 'GET') {
+      const resumeStateParam = urlObj.searchParams.get('resumeState')
+      const resumeState = resumeStateParam
+        ? new Map<string, number>(JSON.parse(decodeURIComponent(resumeStateParam)))
+        : undefined
+
+      const remoteDb = this.remoteDb
+      const stream = new ReadableStream({
+        async start(controller) {
+          try {
+            for await (const chunk of remoteDb.pull(resumeState)) {
+              controller.enqueue(chunk)
+            }
+            controller.close()
+          } catch (error) {
+            controller.error(error)
+          }
+        },
+      })
+
+      return new Response(stream, {
+        status: 200,
+        headers: { 'Content-Type': 'application/octet-stream' },
+      })
+    }
+
+    return new Response('Not Found', { status: 404 })
+  }
+}
+
 export class TestRemoteDb implements RemoteDb {
   private maxMemoryBytes: number
 

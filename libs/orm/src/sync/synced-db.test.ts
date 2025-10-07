@@ -1,7 +1,7 @@
 import { expect, it, describe } from 'vitest'
 import { o } from '../schema/builder'
 import { OrmNodeDriver } from '../orm-node-driver'
-import { TestRemoteDb } from './remote-db'
+import { TestRemoteDb, RemoteDbServer, RemoteDbClient } from './remote-db'
 import { ulid } from 'ulidx'
 import { internalSyncTables } from './internal-tables'
 import type { DbMutationBatch } from './types'
@@ -1017,5 +1017,113 @@ describe('conflict resolution', () => {
     const serverUsers = await serverDb.users.select().execute()
     expect(serverUsers).toHaveLength(1)
     expect(serverUsers[0]).toMatchObject({ name: 'Alice', email: 'alice@example.com' })
+  })
+})
+
+describe('RemoteDbClient and RemoteDbServer', () => {
+  it('syncs data through HTTP client/server', async () => {
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+      email: o.text(),
+    })
+
+    // Create server
+    const serverDriver = new OrmNodeDriver()
+    const serverDb = await o.testDb(
+      {
+        schema: {
+          users,
+          ...internalSyncTables,
+        },
+        origin: 'server',
+      },
+      serverDriver
+    )
+
+    const server = new RemoteDbServer(serverDb, serverDriver, { users })
+
+    // Create mock fetch function
+    const mockFetch = async (url: string, options: RequestInit): Promise<Response> => {
+      return await server.handleRequest(url, options.method || 'GET', options.body as string | undefined)
+    }
+
+    const remoteDb = new RemoteDbClient(mockFetch)
+
+    // Client sends mutation
+    const userId = ulid()
+    const batch: DbMutationBatch = {
+      id: ulid(),
+      dbName: 'synced',
+      mutation: [
+        {
+          table: 'users',
+          type: 'insert',
+          data: [{ id: userId, name: 'Charlie', email: 'charlie@example.com' }],
+          undo: { type: 'delete', ids: [userId] },
+        },
+      ],
+      node: { id: ulid(), name: 'client1' },
+    }
+
+    const sendResult = await remoteDb.send([batch])
+    expect(sendResult.succeeded).toHaveLength(1)
+    expect(sendResult.failed).toHaveLength(0)
+
+    // Verify data on server
+    const serverUsers = await serverDb.users.select().execute()
+    expect(serverUsers).toMatchObject([
+      { name: 'Charlie', email: 'charlie@example.com' }
+    ])
+
+    // Client retrieves mutations
+    const mutations = await remoteDb.get(0)
+    expect(mutations).toHaveLength(1)
+    expect(mutations[0].batch).toMatchObject({
+      mutation: [
+        {
+          table: 'users',
+          type: 'insert',
+          data: [{ id: userId, name: 'Charlie', email: 'charlie@example.com' }]
+        }
+      ]
+    })
+  })
+
+  it('pulls initial data through HTTP client/server', async () => {
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+    })
+
+    // Create server with data
+    const serverDriver = new OrmNodeDriver()
+    const serverDb = await o.testDb({ schema: { users }, origin: 'server' }, serverDriver)
+    await serverDb.users.insertMany([
+      { name: 'Alice' },
+      { name: 'Bob' }
+    ])
+
+    const server = new RemoteDbServer(serverDb, serverDriver, { users })
+
+    // Create mock fetch function
+    const mockFetch = async (url: string, options: RequestInit): Promise<Response> => {
+      return await server.handleRequest(url, options.method || 'GET', options.body as string | undefined)
+    }
+
+    const remoteDb = new RemoteDbClient(mockFetch)
+
+    // Create local client
+    const clientDriver = new OrmNodeDriver()
+    const client = await o.syncedDb({
+      schema: { users },
+      driver: clientDriver,
+      remoteDb,
+    })
+
+    // Verify data pulled
+    const result = await client.users.select().execute()
+    expect(result).toHaveLength(2)
+    expect(result.map(u => u.name).sort()).toEqual(['Alice', 'Bob'])
   })
 })
