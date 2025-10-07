@@ -11,7 +11,7 @@ test('creates tables on first use', async () => {
 
   const db = o.db({ schema: { users } })
   const innerDriver = new OrmNodeDriver()
-  const driver = new OrmMigratingDriver(innerDriver, db, true)
+  const driver = new OrmMigratingDriver(innerDriver, db)
 
   const result = await driver.run({ query: 'SELECT COUNT(*) as count FROM users', params: [] })
 

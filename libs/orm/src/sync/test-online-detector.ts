@@ -13,9 +13,13 @@ export class AlwaysOnlineDetector implements OnlineDetector {
 }
 
 export class ControllableOnlineDetector implements OnlineDetector {
-  online = true
+  online: boolean
   private callbacks: Array<(online: boolean) => void> = []
   private onlineResolvers: Array<() => void> = []
+
+  constructor(initialOnline = true) {
+    this.online = initialOnline
+  }
 
   onOnlineChange(callback: (online: boolean) => void): void {
     this.callbacks.push(callback)

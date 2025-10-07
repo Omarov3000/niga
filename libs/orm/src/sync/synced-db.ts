@@ -73,6 +73,10 @@ export class SyncedDb extends Db {
     // Initialize node info (load from DB or create new)
     await this.initializeNodeInfo()
 
+    // Wrap user tables as SyncedTable instances EARLY so writes can be queued
+    // This allows writes to work even during initialization
+    this.wrapTablesAsSynced()
+
     if (this.skipPull) {
       // Mark all tables as complete without pulling
       await this.markAllTablesComplete()
@@ -88,9 +92,6 @@ export class SyncedDb extends Db {
       }
       this.syncState = 'gettingLatest'
     }
-
-    // Wrap user tables as SyncedTable instances
-    this.wrapTablesAsSynced()
 
     // BLOCKING: Sync mutations from server (make initial sync blocking)
     await this.syncMutationsFromServer()
