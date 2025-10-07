@@ -67,7 +67,7 @@ export class SyncedTable<Name extends string, TCols extends Record<string, Colum
     this: TSelf,
     options: {
       data: Partial<InsertableForCols<TSelfCols>>;
-      where: { id: any };
+      where: { id: string };
     }
   ): Promise<void> {
     const driver = this.__db__.getDriver()
