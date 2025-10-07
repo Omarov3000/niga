@@ -169,9 +169,6 @@ Solution: enforce constrains server side only. Reject mutations that violate the
 
 @libs/orm/src/sync/synced-db.test.ts you need to remove // authorId is binary data, just verify it exists and properly verify that it is
 
-migrateDb in orm
-.clear in synced-db
-RemoteDbClient + RemoteDbServer
 getLatestMutation should be blocking. we should proxy read / write queries to remote db before local db syncs (if there is network) and queue write mutations for local
 integrate synced-db with orm-browser-driver-fe
 derived tables

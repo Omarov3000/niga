@@ -797,8 +797,9 @@ describe('conflict resolution', () => {
 
     // Send same batch again (network retry)
     const result2 = await remoteDb.send([batch])
-    expect(result2.failed).toHaveLength(1) // Duplicate ID will fail
-    expect(result2.succeeded).toHaveLength(0)
+    expect(result2.succeeded).toHaveLength(1) // Duplicate returns as succeeded
+    expect(result2.duplicated).toHaveLength(1) // But marked as duplicated
+    expect(result2.failed).toHaveLength(0)
 
     // Verify user exists only once
     const serverUsers = await serverDb.users.select().execute()
@@ -909,6 +910,95 @@ describe('network instability', () => {
       { name: 'Alice' },
       { name: 'Bob' },
     ])
+
+    vi.useRealTimers()
+  })
+
+  it('resumes sending queued mutations after restart', async () => {
+    vi.useFakeTimers()
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+    })
+
+    const { db: serverDb, server } = await _makeHttpRemoteDb({ users }, { includeSyncTables: true })
+    const clientDriver = new (await import('../orm-node-driver')).OrmNodeDriver()
+
+    // Phase 1: Create client with stable network, make mutation, it succeeds
+    const detector1 = new AlwaysOnlineDetector()
+    const fetch1 = createFetchWrapper(
+      async (url, options) => server.handleRequest(url, options.method || 'GET', options.body as string | undefined),
+      detector1
+    )
+    const remoteDb1 = new RemoteDbClient(fetch1)
+
+    const client1 = await o.syncedDb({
+      schema: { users },
+      driver: clientDriver,
+      remoteDb: remoteDb1,
+      skipPull: true,
+      onlineDetector: detector1,
+      debugName: 'client1'
+    })
+
+    // Make a mutation that will be sent successfully
+    const insertPromise = client1.users.insertWithUndo({ name: 'Alice' })
+    await vi.runAllTimersAsync()
+    await insertPromise
+    await vi.runAllTimersAsync()
+
+    // Verify it was synced
+    let queued1 = await clientDriver.run({
+      query: 'SELECT server_timestamp_ms FROM _db_mutations_queue',
+      params: [],
+    })
+    expect(queued1).toHaveLength(1)
+    expect(queued1[0].server_timestamp_ms).toBeGreaterThan(0)
+
+    // Now manually set it back to 0 to simulate a failed send that needs retry
+    await clientDriver.run({
+      query: 'UPDATE _db_mutations_queue SET server_timestamp_ms = 0',
+      params: [],
+    })
+
+    // Verify it's now marked as unsent
+    let queued2 = await clientDriver.run({
+      query: 'SELECT server_timestamp_ms FROM _db_mutations_queue',
+      params: [],
+    })
+    expect(queued2).toHaveLength(1)
+    expect(queued2[0].server_timestamp_ms).toBe(0)
+
+    // Phase 2: Simulate restart with new remoteDb (same server)
+    const detector2 = new AlwaysOnlineDetector()
+    const fetch2 = createFetchWrapper(
+      async (url, options) => server.handleRequest(url, options.method || 'GET', options.body as string | undefined),
+      detector2
+    )
+    const remoteDb2 = new RemoteDbClient(fetch2)
+
+    // Create new synced-db instance - should retry sending the queued mutation
+    const client2 = await o.syncedDb({
+      schema: { users },
+      driver: clientDriver, // Reuse same driver
+      remoteDb: remoteDb2,
+      skipPull: true,
+      onlineDetector: detector2,
+      debugName: 'client1-restarted'
+    })
+
+    // Verify mutation is now synced again
+    const queuedAfterRestart = await clientDriver.run({
+      query: 'SELECT server_timestamp_ms FROM _db_mutations_queue',
+      params: [],
+    })
+    expect(queuedAfterRestart).toHaveLength(1)
+    expect(queuedAfterRestart[0].server_timestamp_ms).toBeGreaterThan(0)
+
+    // Verify server still has the user (should only have 1, not 2)
+    const serverUsers = await serverDb.users.select().execute()
+    expect(serverUsers).toHaveLength(1)
+    expect(serverUsers).toMatchObject([{ name: 'Alice' }])
 
     vi.useRealTimers()
   })

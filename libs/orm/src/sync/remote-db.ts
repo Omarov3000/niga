@@ -16,7 +16,7 @@ export type PullResumeState = Map<string, number> // tableName -> offset
  * RemoteDb interface - client-side operations for syncing with remote database
  */
 export interface RemoteDb {
-  send(batch: DbMutationBatch[]): Promise<{ succeeded: { id: string; server_timestamp_ms: number }[]; failed: string[] }>
+  send(batch: DbMutationBatch[]): Promise<{ succeeded: { id: string; server_timestamp_ms: number }[]; failed: string[]; duplicated: string[] }>
   get(maxServerTimestampLocally: number): Promise<Array<{ batch: DbMutationBatch; serverTimestampMs: number }>>
   pull(resumeState?: PullResumeState): AsyncGenerator<Uint8Array, void, unknown>
   query(sql: string, params: any[]): Promise<any[]>
@@ -25,7 +25,7 @@ export interface RemoteDb {
 export class RemoteDbClient implements RemoteDb {
   constructor(private fetch: (url: string, options: RequestInit) => Promise<Response>) {}
 
-  async send(batch: DbMutationBatch[]): Promise<{ succeeded: { id: string; server_timestamp_ms: number }[]; failed: string[] }> {
+  async send(batch: DbMutationBatch[]): Promise<{ succeeded: { id: string; server_timestamp_ms: number }[]; failed: string[]; duplicated: string[] }> {
     const response = await this.fetch('/sync/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -36,7 +36,7 @@ export class RemoteDbClient implements RemoteDb {
       throw new Error(`Failed to send mutations: ${response.statusText}`)
     }
 
-    return await response.json() as { succeeded: { id: string; server_timestamp_ms: number }[]; failed: string[] }
+    return await response.json() as { succeeded: { id: string; server_timestamp_ms: number }[]; failed: string[]; duplicated: string[] }
   }
 
   async get(maxServerTimestampLocally: number): Promise<Array<{ batch: DbMutationBatch; serverTimestampMs: number }>> {
@@ -270,12 +270,29 @@ export class TestRemoteDb implements RemoteDb {
     }
   }
 
-  async send(batch: DbMutationBatch[]): Promise<{ succeeded: { id: string; server_timestamp_ms: number }[]; failed: string[] }> {
+  async send(batch: DbMutationBatch[]): Promise<{ succeeded: { id: string; server_timestamp_ms: number }[]; failed: string[]; duplicated: string[] }> {
     const succeeded: { id: string; server_timestamp_ms: number }[] = []
     const failed: string[] = []
+    const duplicated: string[] = []
 
     for (const mutationBatch of batch) {
       try {
+        // Check if this batch already exists (duplicate)
+        const existing = await this.driver.run({
+          query: 'SELECT id, server_timestamp_ms FROM _db_mutations_queue WHERE id = ?',
+          params: [mutationBatch.id],
+        })
+
+        if (existing.length > 0) {
+          // Duplicate - already processed
+          duplicated.push(mutationBatch.id)
+          succeeded.push({
+            id: mutationBatch.id,
+            server_timestamp_ms: existing[0].server_timestamp_ms,
+          })
+          continue
+        }
+
         const serverTimestampMs = Date.now()
 
         // Apply mutations to server db in a transaction
@@ -465,7 +482,7 @@ export class TestRemoteDb implements RemoteDb {
       }
     }
 
-    return { succeeded, failed }
+    return { succeeded, failed, duplicated }
   }
 
   async query(sql: string, params: any[]): Promise<any[]> {

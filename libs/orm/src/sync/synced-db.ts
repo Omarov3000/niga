@@ -94,6 +94,10 @@ export class SyncedDb extends Db {
 
     // BLOCKING: Sync mutations from server (make initial sync blocking)
     await this.syncMutationsFromServer()
+
+    // Resume sending any queued mutations that failed previously
+    await this.resumeQueuedMutations()
+
     this.syncState = 'synced'
   }
 
@@ -427,19 +431,52 @@ export class SyncedDb extends Db {
       params: [batch.id, JSON.stringify(batch)],
     })
 
-    // Send to remote server (fetch wrapper handles retries)
-    const result = await this.remoteDb.send([batch])
+    // Send to remote server in background (don't wait - fire and forget)
+    // The fetch wrapper will handle retries indefinitely
+    this.remoteDb.send([batch]).then(async (result) => {
+      // Update local queue with server timestamp for succeeded mutations
+      for (const succeeded of result.succeeded) {
+        await this.localDriver.run({
+          query: `
+            UPDATE _db_mutations_queue
+            SET server_timestamp_ms = ?
+            WHERE id = ?
+          `,
+          params: [succeeded.server_timestamp_ms, succeeded.id],
+        })
+      }
+    }).catch(() => {
+      // Ignore errors - will be retried on restart via resumeQueuedMutations
+    })
+  }
 
-    // Update local queue with server timestamp for succeeded mutations
-    for (const succeeded of result.succeeded) {
-      await this.localDriver.run({
-        query: `
-          UPDATE _db_mutations_queue
-          SET server_timestamp_ms = ?
-          WHERE id = ?
-        `,
-        params: [succeeded.server_timestamp_ms, succeeded.id],
-      })
+  private async resumeQueuedMutations(): Promise<void> {
+    // Get all mutations that haven't been synced to server (server_timestamp_ms = 0)
+    const queuedMutations = await this.localDriver.run({
+      query: 'SELECT id, value FROM _db_mutations_queue WHERE server_timestamp_ms = 0 ORDER BY id',
+      params: [],
+    })
+
+    if (queuedMutations.length === 0) return
+
+    // Retry sending each batch
+    for (const row of queuedMutations) {
+      const batch = JSON.parse(row.value) as DbMutationBatch
+
+      // Send to remote server (fetch wrapper handles retries)
+      const result = await this.remoteDb.send([batch])
+
+      // Update server timestamps for succeeded mutations
+      for (const succeeded of result.succeeded) {
+        await this.localDriver.run({
+          query: `
+            UPDATE _db_mutations_queue
+            SET server_timestamp_ms = ?
+            WHERE id = ?
+          `,
+          params: [succeeded.server_timestamp_ms, succeeded.id],
+        })
+      }
     }
   }
 }
