@@ -1020,6 +1020,111 @@ describe('conflict resolution', () => {
   })
 })
 
+it('clears all user and internal tables', async () => {
+  const users = o.table('users', {
+    id: o.id(),
+    name: o.text(),
+    email: o.text(),
+  })
+
+  const posts = o.table('posts', {
+    id: o.id(),
+    title: o.text(),
+  })
+
+  // Create server DB
+  const serverDriver = new OrmNodeDriver()
+  const serverDb = await o.testDb(
+    {
+      schema: {
+        users,
+        posts,
+        ...internalSyncTables,
+      },
+      origin: 'server',
+    },
+    serverDriver
+  )
+
+  // Add data to server
+  await serverDb.users.insertMany([
+    { name: 'Alice', email: 'alice@example.com' },
+    { name: 'Bob', email: 'bob@example.com' }
+  ])
+  await serverDb.posts.insertMany([
+    { title: 'Post 1' },
+    { title: 'Post 2' }
+  ])
+
+  const remoteDb = new TestRemoteDb(serverDb, serverDriver, { users, posts })
+
+  // Create client and sync data
+  const clientDriver = new OrmNodeDriver()
+  const client = await o.syncedDb({
+    schema: { users, posts },
+    driver: clientDriver,
+    remoteDb,
+  })
+
+  // Make mutations to populate internal tables
+  await client.users.insertWithUndo({ name: 'Charlie', email: 'charlie@example.com' })
+  await client.posts.insertWithUndo({ title: 'Post 3' })
+  await client.waitForSync()
+
+  // Verify data exists in user tables
+  const usersBefore = await client.users.select().execute()
+  const postsBefore = await client.posts.select().execute()
+  expect(usersBefore).toHaveLength(3)
+  expect(postsBefore).toHaveLength(3)
+
+  // Verify data exists in internal tables
+  const mutationQueueBefore = await clientDriver.run({
+    query: 'SELECT * FROM _db_mutations_queue',
+    params: [],
+  })
+  expect(mutationQueueBefore.length).toBeGreaterThan(0)
+
+  const pullProgressBefore = await clientDriver.run({
+    query: 'SELECT * FROM _sync_pull_progress',
+    params: [],
+  })
+  expect(pullProgressBefore).toHaveLength(2) // users and posts
+
+  const syncNodeBefore = await clientDriver.run({
+    query: 'SELECT * FROM _sync_node',
+    params: [],
+  })
+  expect(syncNodeBefore).toHaveLength(1)
+
+  // Clear the database
+  await client._clear()
+
+  // Verify user tables are empty
+  const usersAfter = await client.users.select().execute()
+  const postsAfter = await client.posts.select().execute()
+  expect(usersAfter).toHaveLength(0)
+  expect(postsAfter).toHaveLength(0)
+
+  // Verify internal tables are empty
+  const mutationQueueAfter = await clientDriver.run({
+    query: 'SELECT * FROM _db_mutations_queue',
+    params: [],
+  })
+  expect(mutationQueueAfter).toHaveLength(0)
+
+  const pullProgressAfter = await clientDriver.run({
+    query: 'SELECT * FROM _sync_pull_progress',
+    params: [],
+  })
+  expect(pullProgressAfter).toHaveLength(0)
+
+  const syncNodeAfter = await clientDriver.run({
+    query: 'SELECT * FROM _sync_node',
+    params: [],
+  })
+  expect(syncNodeAfter).toHaveLength(0)
+})
+
 describe('RemoteDbClient and RemoteDbServer', () => {
   it('syncs data through HTTP client/server', async () => {
     const users = o.table('users', {
