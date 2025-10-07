@@ -43,6 +43,7 @@ export class SyncedDb extends Db {
   public syncState: SyncState = 'pulling'
   private nodeInfo: { id: string; name: string }
   private ulid: ReturnType<typeof monotonicFactory>
+  private mutationsDuringSync: boolean = false
 
   constructor(opts: SyncedDbOptions) {
     // Merge user schema with internal tables
@@ -113,6 +114,12 @@ export class SyncedDb extends Db {
     await this.resumeQueuedMutations()
 
     this.syncState = 'synced'
+
+    // If mutations were made during sync, we need to pull them back from server
+    if (this.mutationsDuringSync) {
+      this.mutationsDuringSync = false
+      await this.syncMutationsFromServer()
+    }
   }
 
   private async initializeNodeInfo(): Promise<void> {
@@ -428,7 +435,7 @@ export class SyncedDb extends Db {
     }
   }
 
-  private async enqueueMutation(mutation: DbMutation): Promise<void> {
+  private async enqueueMutation(mutation: DbMutation): Promise<boolean> {
     const batch: DbMutationBatch = {
       id: this.ulid(Date.now()),
       dbName: this.options.name ?? 'synced',
@@ -436,7 +443,21 @@ export class SyncedDb extends Db {
       node: this.nodeInfo,
     }
 
-    // Store in local queue
+    // During sync, send directly to remote but DON'T queue/apply locally
+    if (this.syncState !== 'synced') {
+      // Mark that we made mutations during sync - need to re-sync after initialization
+      this.mutationsDuringSync = true
+
+      // Send to remote server - don't block
+      // The fetch wrapper will retry indefinitely on network errors
+      // Errors will propagate to caller
+      this.remoteDb.send([batch])
+
+      // Return false to indicate: don't apply locally
+      return false
+    }
+
+    // After sync is complete, store in local queue
     await this.localDriver.run({
       query: `
         INSERT INTO _db_mutations_queue (id, value, server_timestamp_ms)
@@ -459,9 +480,10 @@ export class SyncedDb extends Db {
           params: [succeeded.server_timestamp_ms, succeeded.id],
         })
       }
-    }).catch(() => {
-      // Ignore errors - will be retried on restart via resumeQueuedMutations
     })
+
+    // Return true to indicate: apply locally
+    return true
   }
 
   private async resumeQueuedMutations(): Promise<void> {

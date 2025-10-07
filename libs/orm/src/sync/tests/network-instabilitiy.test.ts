@@ -1,5 +1,5 @@
 import { ulid } from 'ulidx'
-import { describe, it, vi, expect } from 'vitest'
+import { describe, it, vi, expect, beforeEach, afterEach } from 'vitest'
 import { o } from '../../schema/builder'
 import { _makeHttpRemoteDb, UnstableNetworkFetch } from '../test-helpers'
 import { AlwaysOnlineDetector } from '../test-online-detector'
@@ -7,8 +7,15 @@ import { DbMutationBatch } from '../types'
 import { OrmNodeDriver } from '../../orm-node-driver'
 
 describe('network instability', () => {
-  it('retries pull when network fails initially', async () => {
+  beforeEach(() => {
     vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('retries pull when network fails initially', async () => {
 
     const users = o.table('users', {
       id: o.id(),
@@ -50,12 +57,9 @@ describe('network instability', () => {
       { name: 'Alice' },
       { name: 'Bob' },
     ])
-
-    vi.useRealTimers()
   })
 
   it('retries getting latest mutations when network fails', async () => {
-    vi.useFakeTimers()
 
     const users = o.table('users', {
       id: o.id(),
@@ -124,12 +128,9 @@ describe('network instability', () => {
       { name: 'Alice' },
       { name: 'Bob' },
     ])
-
-    vi.useRealTimers()
   })
 
   it('resumes sending queued mutations after restart', async () => {
-    vi.useFakeTimers()
     const users = o.table('users', {
       id: o.id(),
       name: o.text(),
@@ -215,7 +216,5 @@ describe('network instability', () => {
     const serverUsers = await serverDb.users.select().execute()
     expect(serverUsers).toHaveLength(1)
     expect(serverUsers).toMatchObject([{ name: 'Alice' }])
-
-    vi.useRealTimers()
   })
 })

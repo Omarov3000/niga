@@ -7,11 +7,11 @@ import type { DbMutation } from './types'
  * Read methods (select, as, make) are inherited from BaseTable
  */
 export class SyncedTable<Name extends string, TCols extends Record<string, Column<any, any, any>>> extends BaseTable<Name, TCols> {
-  private onMutation: (mutation: DbMutation) => Promise<void>
+  private onMutation: (mutation: DbMutation) => Promise<boolean>
 
   constructor(
     options: TableConstructorOptions<Name, TCols>,
-    onMutation: (mutation: DbMutation) => Promise<void>
+    onMutation: (mutation: DbMutation) => Promise<boolean>
   ) {
     super(options)
     this.onMutation = onMutation
@@ -24,28 +24,6 @@ export class SyncedTable<Name extends string, TCols extends Record<string, Colum
     // Build full object using make
     const fullData = this.make(data) as SelectableForCols<TSelfCols>
 
-    // Perform the insert using driver directly
-    const driver = this.__db__.getDriver()
-    const colsMeta = this.__meta__.columns
-    const columnNames: string[] = []
-    const params: any[] = []
-
-    for (const [key] of Object.entries(colsMeta)) {
-      const col = (this as any)[key]
-      if (!col || col.__meta__.insertType === 'virtual') continue
-
-      const value = (fullData as any)[key]
-      if (value === undefined) continue
-      const encoded = col.__meta__.encode ? col.__meta__.encode(value) : value
-      columnNames.push(col.__meta__.dbName)
-      params.push(encoded)
-    }
-
-    const placeholders = params.map(() => '?').join(', ')
-    const query = `INSERT INTO ${this.__meta__.dbName} (${columnNames.join(', ')}) VALUES (${placeholders})`
-
-    await driver.run({ query, params })
-
     // Create mutation with undo
     const mutation: DbMutation = {
       table: this.__meta__.name,
@@ -57,8 +35,32 @@ export class SyncedTable<Name extends string, TCols extends Record<string, Colum
       },
     }
 
-    // Enqueue mutation for sync
-    await this.onMutation(mutation)
+    // Enqueue mutation for sync - returns true if we should apply locally
+    const applyLocally = await this.onMutation(mutation)
+
+    // Only apply locally if synced (not during sync)
+    if (applyLocally) {
+      const driver = this.__db__.getDriver()
+      const colsMeta = this.__meta__.columns
+      const columnNames: string[] = []
+      const params: any[] = []
+
+      for (const [key] of Object.entries(colsMeta)) {
+        const col = (this as any)[key]
+        if (!col || col.__meta__.insertType === 'virtual') continue
+
+        const value = (fullData as any)[key]
+        if (value === undefined) continue
+        const encoded = col.__meta__.encode ? col.__meta__.encode(value) : value
+        columnNames.push(col.__meta__.dbName)
+        params.push(encoded)
+      }
+
+      const placeholders = params.map(() => '?').join(', ')
+      const query = `INSERT INTO ${this.__meta__.dbName} (${columnNames.join(', ')}) VALUES (${placeholders})`
+
+      await driver.run({ query, params })
+    }
 
     return fullData
   }
