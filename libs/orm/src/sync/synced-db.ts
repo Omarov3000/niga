@@ -10,7 +10,6 @@ import { tableFromIPC } from 'apache-arrow'
 import { ulid, monotonicFactory } from 'ulidx'
 import { sql } from '../utils/sql'
 import { OrmMigratingDriver } from '../schema/orm-migrating-driver'
-import { retryWithBackoff, NetworkError } from './retry-utils'
 
 export interface SyncedDbOptions {
   schema: Record<string, Table<any, any>>
@@ -31,7 +30,7 @@ type SyncedDbBatch = Record<string, Table<any, any>> & {
   _sync_node: typeof internalSyncTables._sync_node
 }
 
-export type SyncState = 'pulling' | 'gettingLatest' | 'synced' | 'offline'
+export type SyncState = 'pulling' | 'gettingLatest' | 'synced'
 
 export class SyncedDb extends Db {
   private remoteDb: RemoteDb
@@ -41,7 +40,6 @@ export class SyncedDb extends Db {
   public syncState: SyncState = 'pulling'
   private nodeInfo: { id: string; name: string }
   private ulid: ReturnType<typeof monotonicFactory>
-  private onlineDetector: OnlineDetector
 
   constructor(opts: SyncedDbOptions) {
     // Merge user schema with internal tables
@@ -57,19 +55,9 @@ export class SyncedDb extends Db {
 
     this.userSchema = opts.schema
     this.remoteDb = opts.remoteDb
-    this.onlineDetector = opts.onlineDetector
     this.skipPull = opts.skipPull ?? false
     this.ulid = monotonicFactory()
     this.nodeInfo = { id: ulid(), name: '' }
-
-    // Listen for online/offline changes
-    this.onlineDetector.onOnlineChange((online) => {
-      if (online) {
-        this.handleOnline()
-      } else {
-        this.handleOffline()
-      }
-    })
 
     // Wrap driver with migration support - use minimal mode to skip FK constraints for offline support
     const migratingDriver = new OrmMigratingDriver(opts.driver, this, opts.logging, 'minimal')
@@ -96,15 +84,7 @@ export class SyncedDb extends Db {
       if (!pullCompleted) {
         // Pull not complete - either first time or interrupted
         this.syncState = 'pulling'
-        try {
-          await retryWithBackoff(() => this.pullAll(), this.onlineDetector)
-        } catch (error) {
-          if (error instanceof NetworkError) {
-            this.syncState = 'offline'
-            throw error
-          }
-          throw error
-        }
+        await this.pullAll()
       }
       this.syncState = 'gettingLatest'
     }
@@ -113,20 +93,8 @@ export class SyncedDb extends Db {
     this.wrapTablesAsSynced()
 
     // BLOCKING: Sync mutations from server (make initial sync blocking)
-    try {
-      await retryWithBackoff(() => this.syncMutationsFromServer(), this.onlineDetector)
-      this.syncState = 'synced'
-    } catch (error) {
-      if (error instanceof NetworkError) {
-        this.syncState = 'offline'
-        // Don't throw - allow offline usage
-      } else {
-        throw error
-      }
-    }
-
-    // Continue syncing in background
-    this.syncMutationsFromServerInBackground()
+    await this.syncMutationsFromServer()
+    this.syncState = 'synced'
   }
 
   private async initializeNodeInfo(): Promise<void> {
@@ -151,29 +119,6 @@ export class SyncedDb extends Db {
       }
     } catch (error) {
       // Table doesn't exist or error - keep in-memory nodeInfo
-    }
-  }
-
-  private syncPromise?: Promise<void>
-
-  private syncMutationsFromServerInBackground(): void {
-    // Fire and forget - sync mutations in background
-    this.syncPromise = retryWithBackoff(() => this.syncMutationsFromServer(), this.onlineDetector)
-      .then(() => {
-        this.syncState = 'synced'
-      })
-      .catch((error) => {
-        if (error instanceof NetworkError) {
-          this.syncState = 'offline'
-        } else {
-          this.syncState = 'synced' // Still mark as synced for other errors
-        }
-      })
-  }
-
-  async waitForSync(): Promise<void> {
-    if (this.syncPromise) {
-      await this.syncPromise
     }
   }
 
@@ -482,86 +427,19 @@ export class SyncedDb extends Db {
       params: [batch.id, JSON.stringify(batch)],
     })
 
-    // Try to send to remote server with retry
-    try {
-      const result = await retryWithBackoff(() => this.remoteDb.send([batch]), this.onlineDetector)
+    // Send to remote server (fetch wrapper handles retries)
+    const result = await this.remoteDb.send([batch])
 
-      // Update local queue with server timestamp for succeeded mutations
-      for (const succeeded of result.succeeded) {
-        await this.localDriver.run({
-          query: `
-            UPDATE _db_mutations_queue
-            SET server_timestamp_ms = ?
-            WHERE id = ?
-          `,
-          params: [succeeded.server_timestamp_ms, succeeded.id],
-        })
-      }
-
-      // Handle failures (mutations remain in local queue for retry)
-    } catch (error) {
-      if (error instanceof NetworkError) {
-        // Network failed - mark offline, mutation stays in queue
-        this.syncState = 'offline'
-      }
-      // Don't throw - allow local mutation to succeed even if sync failed
-    }
-  }
-
-  private handleOnline(): void {
-    if (this.syncState === 'offline') {
-      this.syncState = 'gettingLatest'
-      // Retry sending queued mutations that failed while offline (async, fire and forget)
-      this.retryQueuedMutations().then(() => {
-        // Resume background sync after mutations are sent
-        this.syncMutationsFromServerInBackground()
-      }).catch(() => {
-        // Ignore errors - will retry on next online event
+    // Update local queue with server timestamp for succeeded mutations
+    for (const succeeded of result.succeeded) {
+      await this.localDriver.run({
+        query: `
+          UPDATE _db_mutations_queue
+          SET server_timestamp_ms = ?
+          WHERE id = ?
+        `,
+        params: [succeeded.server_timestamp_ms, succeeded.id],
       })
-    }
-  }
-
-  private handleOffline(): void {
-    this.syncState = 'offline'
-  }
-
-  private async retryQueuedMutations(): Promise<void> {
-    try {
-      // Get all mutations that haven't been synced to server (server_timestamp_ms = 0)
-      const queuedMutations = await this.localDriver.run({
-        query: 'SELECT id, value FROM _db_mutations_queue WHERE server_timestamp_ms = 0 ORDER BY id',
-        params: [],
-      })
-
-      if (queuedMutations.length === 0) return
-
-      // Retry sending each batch
-      for (const row of queuedMutations) {
-        const batch = JSON.parse(row.value) as DbMutationBatch
-        try {
-          const result = await retryWithBackoff(() => this.remoteDb.send([batch]), this.onlineDetector)
-
-          // Update local queue with server timestamp for succeeded mutations
-          for (const succeeded of result.succeeded) {
-            await this.localDriver.run({
-              query: `
-                UPDATE _db_mutations_queue
-                SET server_timestamp_ms = ?
-                WHERE id = ?
-              `,
-              params: [succeeded.server_timestamp_ms, succeeded.id],
-            })
-          }
-        } catch (error) {
-          // If retry fails, keep it in queue for next retry
-          if (error instanceof NetworkError) {
-            this.syncState = 'offline'
-            return
-          }
-        }
-      }
-    } catch (error) {
-      // Ignore errors - will retry later
     }
   }
 }
