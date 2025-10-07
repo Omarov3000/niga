@@ -46,4 +46,5 @@ export interface DbMutationBatch {
 export interface OnlineDetector {
   online: boolean
   onOnlineChange: (callback: (online: boolean) => void) => void
+  waitForOnline: () => Promise<void>
 }

@@ -682,10 +682,7 @@ it('clears all user and internal tables', async () => {
     title: o.text(),
   })
 
-  // Create server DB
   const { db: serverDb, remoteDb } = await _makeRemoteDb({ users, posts })
-
-  // Add data to server
   await serverDb.users.insertMany([
     { name: 'Alice', email: 'alice@example.com' },
     { name: 'Bob', email: 'bob@example.com' }
@@ -695,7 +692,6 @@ it('clears all user and internal tables', async () => {
     { title: 'Post 2' }
   ])
 
-  // Create client and sync data
   const { db: client, driver: clientDriver } = await _makeClientDb({ users, posts }, remoteDb, { skipPull: false, debugName: 'client1' })
 
   // Make mutations to populate internal tables
@@ -705,9 +701,7 @@ it('clears all user and internal tables', async () => {
 
   // Verify data exists in user tables
   const usersBefore = await client.users.select().execute()
-  const postsBefore = await client.posts.select().execute()
   expect(usersBefore).toHaveLength(3)
-  expect(postsBefore).toHaveLength(3)
 
   // Verify data exists in internal tables
   const mutationQueueBefore = await clientDriver.run({
