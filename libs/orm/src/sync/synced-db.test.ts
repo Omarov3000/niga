@@ -808,7 +808,7 @@ describe('conflict resolution', () => {
 })
 
 describe('network instability', () => {
-  it('retries and eventually syncs when network fails initially', async () => {
+  it('retries pull when network fails initially', async () => {
     vi.useFakeTimers()
 
     const users = o.table('users', {
@@ -841,6 +841,70 @@ describe('network instability', () => {
     const { db } = await clientPromise
 
     const result = await db.users.select().execute()
+    expect(result).toMatchObject([
+      { name: 'Alice' },
+      { name: 'Bob' },
+    ])
+
+    vi.useRealTimers()
+  })
+
+  it('retries getting latest mutations when network fails', async () => {
+    vi.useFakeTimers()
+
+    const users = o.table('users', {
+      id: o.id(),
+      name: o.text(),
+    })
+
+    // Setup: server with mutations already in the mutations queue
+    const { db: serverDb, server, remoteDb: serverRemoteDb } = await _makeHttpRemoteDb({ users })
+
+    // Directly insert data into server (bypassing sync)
+    await serverDb.users.insertMany([
+      { name: 'Alice' },
+      { name: 'Bob' },
+    ])
+
+    // Create a mutation batch on the server side
+    const batch: DbMutationBatch = {
+      id: ulid(),
+      dbName: 'synced',
+      mutation: [{
+        table: 'users',
+        type: 'insert',
+        data: [{ name: 'Alice' }, { name: 'Bob' }],
+        undo: { type: 'delete', ids: [] }
+      }],
+      node: { id: ulid(), name: 'server' }
+    }
+
+    // Send mutation to server's queue
+    await serverRemoteDb.send([batch])
+
+    // Now create unstable network for client
+    const unstableNetwork = new UnstableNetworkFetch(server, {
+      failPattern: [0, 0, 1], // Fail twice, succeed third time
+    })
+
+    const detector = new AlwaysOnlineDetector()
+    const wrappedFetch = createFetchWrapper(unstableNetwork.fetch.bind(unstableNetwork), detector)
+    const remoteDb = new RemoteDbClient(wrappedFetch)
+
+    // Client initializes - pull will fail/retry, then get() will fail/retry
+    const clientPromise = _makeClientDb({ users }, remoteDb, {
+      skipPull: false,
+      onlineDetector: detector,
+      debugName: 'client1'
+    })
+
+    await vi.runAllTimersAsync()
+
+    const { db } = await clientPromise
+
+    // Verify client received the data through retried get()
+    const result = await db.users.select().execute()
+    expect(result).toHaveLength(2)
     expect(result).toMatchObject([
       { name: 'Alice' },
       { name: 'Bob' },
