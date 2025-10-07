@@ -2,7 +2,7 @@
 import type { Database } from '@sqlite.org/sqlite-wasm'
 import type { RawSql, TxDriver, TableSnapshot } from '@w/orm'
 import type { OrmBrowserDriver } from '../orm-browser-driver'
-import { migrateDB, sortedJSONStringify } from '../migrate-db'
+import { sortedJSONStringify } from '@w/orm'
 
 interface WorkerMessage {
   id: string
@@ -35,8 +35,9 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
       case 'init': {
         const { dbPath, snapshot, migrationSql, snapshotHash, logging } = payload
 
-        // Lazy load SQLite only when needed
+        // Lazy load SQLite and migrateDB only when needed
         const { makeBrowserSQLite, OrmBrowserDriver } = await import('../orm-browser-driver')
+        const { migrateDB } = await import('../migrate-db')
 
         const dbInstance = makeBrowserSQLite(dbPath || ':memory:')
 

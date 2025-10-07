@@ -6,3 +6,6 @@ export * from './schema/table';
 export * from './schema/db';
 export { o } from './schema/builder';
 export { extractTables } from './true-sql/extract-tables';
+export { OrmMigratingDriver } from './schema/orm-migrating-driver';
+export { migrateDB, sortedJSONStringify } from './schema/migrate-db';
+export { hashString128 } from './utils/hash-string';

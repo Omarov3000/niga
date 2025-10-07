@@ -9,6 +9,7 @@ import { BinaryStreamParser } from './stream'
 import { tableFromIPC } from 'apache-arrow'
 import { ulid, monotonicFactory } from 'ulidx'
 import { sql } from '../utils/sql'
+import { OrmMigratingDriver } from '../schema/orm-migrating-driver'
 
 export interface SyncedDbOptions {
   schema: Record<string, Table<any, any>>
@@ -53,30 +54,20 @@ export class SyncedDb extends Db {
 
     this.userSchema = opts.schema
     this.remoteDb = opts.remoteDb
-    this.localDriver = opts.driver
     this.skipPull = opts.skipPull ?? false
     this.ulid = monotonicFactory()
     this.nodeInfo = { id: ulid(), name: '' }
 
-    // Connect driver
-    this._connectDriver(opts.driver)
+    // Wrap driver with migration support - use minimal mode to skip FK constraints for offline support
+    const migratingDriver = new OrmMigratingDriver(opts.driver, this, opts.logging, 'minimal')
+    this.localDriver = migratingDriver
+    this._connectDriver(migratingDriver)
 
     // Initialize will be called separately since constructor can't be async
   }
-  // TODO: we need to use migrateDb from orm-browser-driver-fe
+
   async initialize(): Promise<void> {
-    // Run migrations to create all tables (user + internal)
-    // Use 'minimal' mode to skip FK constraints for offline support
-    const snapshot = this._prepareSnapshot()
-    if (snapshot.hasChanges) {
-      try {
-        // Create tables without FK constraints (minimal mode)
-        await this.localDriver.exec(this.getSchemaDefinition('minimal'))
-      } catch (error) {
-        // Tables may already exist if reusing the same driver
-        // This is expected when creating multiple SyncedDb instances with the same driver
-      }
-    }
+    // Migration is handled automatically by OrmMigratingDriver on first database access
 
     // Initialize node info (load from DB or create new)
     await this.initializeNodeInfo()
