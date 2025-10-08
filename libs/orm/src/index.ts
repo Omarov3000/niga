@@ -9,3 +9,6 @@ export { extractTables } from './true-sql/extract-tables';
 export { OrmMigratingDriver } from './schema/orm-migrating-driver';
 export { migrateDB, sortedJSONStringify } from './schema/migrate-db';
 export { hashString128 } from './utils/hash-string';
+export { AlwaysOnlineDetector, ControllableOnlineDetector } from './sync/test-online-detector';
+export { TestRemoteDb, RemoteDbClient, RemoteDbServer, type RemoteDb } from './sync/remote-db';
+export { internalSyncTables } from './sync/internal-tables';
