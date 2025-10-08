@@ -715,6 +715,45 @@ describe('select', () => {
         toys: { id: 1, name: 'Ball', petId: 1 }
       });
     });
+
+    it('selects with nested joins', async () => {
+      const users = o.table('users', {
+        id: o.id(),
+        name: o.text().notNull(),
+      });
+
+      const pets = o.table('pets', {
+        id: o.id(),
+        name: o.text().notNull(),
+        ownerId: o.idFk().notNull(),
+      });
+
+      const db = await o.testDb({ schema: { users, pets } }, driver, clearRef);
+
+      // Insert test data
+      await db.users.insert({ id: 'user-1', name: 'Alice' });
+      await db.pets.insert({ id: 'pet-1', name: 'Fluffy', ownerId: 'user-1' });
+
+      const result = await db.users.select({
+        columns: {
+          userId: db.users.id,
+          userName: db.users.name,
+          pet: {
+            id: db.pets.id,
+            name: db.pets.name,
+          }
+        }
+      }).join(db.pets, db.users.id.eq(db.pets.ownerId)).execute()
+
+      expect(result).toEqual([
+        {
+          userId: 'user-1',
+          userName: 'Alice',
+          pet: { id: 'pet-1', name: 'Fluffy' },
+        },
+      ]);
+    });
+
   })
 
   describe('encode/decode and snake casing', () => {

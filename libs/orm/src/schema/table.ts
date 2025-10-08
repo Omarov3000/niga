@@ -41,7 +41,20 @@ type OptionalInsertFields<T> = {
 export type SelectableForCols<T> = OmitNever<RawSelectable<T>>;
 export type InsertableForCols<T> = OmitNever<RequiredInsertFields<T>> & Partial<OmitNever<OptionalInsertFields<T>>>;
 
-type SelectColumnMap = Record<string, Column<any, any, any>>;
+// Nested column map support with depth limiting to prevent infinite recursion
+type NestedColumnMapValue<Depth extends number = 3> =
+  Depth extends 0
+    ? Column<any, any, any>
+    : Column<any, any, any> | NestedColumnMap<Prev<Depth>>;
+
+type NestedColumnMap<Depth extends number = 3> = {
+  [key: string]: NestedColumnMapValue<Depth>;
+};
+
+// Utility type to decrement depth counter
+type Prev<N extends number> = N extends 0 ? 0 : N extends 1 ? 0 : N extends 2 ? 1 : N extends 3 ? 2 : N extends 4 ? 3 : 0;
+
+type SelectColumnMap = NestedColumnMap;
 
 type ColumnSelectableValue<TCol extends Column<any, any, any>> =
   TCol extends Column<any, infer TValue, infer InsertType>
@@ -50,10 +63,15 @@ type ColumnSelectableValue<TCol extends Column<any, any, any>> =
       : TValue
     : never;
 
-type ColumnsSelectionResult<TColumns extends SelectColumnMap> = {
+// Updated to handle nested objects
+type ColumnsSelectionResult<TColumns extends SelectColumnMap, Depth extends number = 3> = {
   [K in keyof TColumns]: TColumns[K] extends Column<any, any, any>
     ? ColumnSelectableValue<TColumns[K]>
-    : never;
+    : TColumns[K] extends NestedColumnMap
+      ? Depth extends 0
+        ? never
+        : ColumnsSelectionResult<TColumns[K], Prev<Depth>>
+      : never;
 };
 
 type SelectArgs<TColumnMap extends SelectColumnMap | undefined = undefined> = {
@@ -670,16 +688,31 @@ export class SelectQueryBuilder<
     // SELECT clause
     if (this.selectArgs?.columns) {
       const columnParts: string[] = [];
-      Object.entries(this.selectArgs.columns).forEach(([alias, column]) => {
-        if (column.__meta__.definition) {
-          columnParts.push(`${column.__meta__.definition} AS ${alias}`);
-        } else {
-          const table = column.__table__;
-          if (table) {
-            columnParts.push(`${table.getDbName()}.${column.__meta__.dbName} AS ${alias}`);
+
+      // Flatten nested column structures
+      const flattenColumns = (obj: any, prefix: string = ''): void => {
+        Object.entries(obj).forEach(([key, value]) => {
+          const fullKey = prefix ? `${prefix}_${key}` : key;
+
+          if (value && typeof value === 'object' && '__meta__' in value) {
+            // It's a Column
+            const column = value as Column<any, any, any>;
+            if (column.__meta__.definition) {
+              columnParts.push(`${column.__meta__.definition} AS ${fullKey}`);
+            } else {
+              const table = column.__table__;
+              if (table) {
+                columnParts.push(`${table.getDbName()}.${column.__meta__.dbName} AS ${fullKey}`);
+              }
+            }
+          } else if (value && typeof value === 'object') {
+            // It's a nested object
+            flattenColumns(value, fullKey);
           }
-        }
-      });
+        });
+      };
+
+      flattenColumns(this.selectArgs.columns);
       parts.push(`SELECT ${columnParts.join(', ')}`);
     } else {
       // Select all columns from source table and joined tables
@@ -772,16 +805,31 @@ export class SelectQueryBuilder<
 
   private processResults(rawResults: any[]): any[] {
     if (this.selectArgs?.columns) {
-      // For explicit column selection, return flat objects
+      // For explicit column selection, handle nested structures
       return rawResults.map(row => {
         const result: any = {};
-        Object.entries(this.selectArgs!.columns!).forEach(([alias, column]) => {
-          let value = row[alias];
-          if (column.__meta__.decode && value !== null && value !== undefined) {
-            value = column.__meta__.decode(value);
-          }
-          result[alias] = value;
-        });
+
+        const processNested = (obj: any, target: any, prefix: string = ''): void => {
+          Object.entries(obj).forEach(([key, value]) => {
+            const fullKey = prefix ? `${prefix}_${key}` : key;
+
+            if (value && typeof value === 'object' && '__meta__' in value) {
+              // It's a Column
+              const column = value as Column<any, any, any>;
+              let cellValue = row[fullKey];
+              if (column.__meta__.decode && cellValue !== null && cellValue !== undefined) {
+                cellValue = column.__meta__.decode(cellValue);
+              }
+              target[key] = cellValue;
+            } else if (value && typeof value === 'object') {
+              // It's a nested object
+              target[key] = {};
+              processNested(value, target[key], fullKey);
+            }
+          });
+        };
+
+        processNested(this.selectArgs!.columns!, result);
         return result;
       });
     } else if (this.joinClauses.length > 0) {

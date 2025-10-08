@@ -235,5 +235,40 @@ describe('select', () => {
       type Expected = { users: { id: string; name: string }; pets: { id: string; name: string; ownerId: string }; toys: { id: string; name: string; petId: string } };
       expectTypeOf(result).toEqualTypeOf<Expected[]>();
     });
+
+    it('selects with nested joins', async () => {
+      const users = o.table('users', {
+        id: o.id(),
+        name: o.text().notNull(),
+      });
+
+      const pets = o.table('pets', {
+        id: o.id(),
+        name: o.text().notNull(),
+        ownerId: o.idFk().notNull(),
+      });
+
+      const db = await o.testDb({ schema: { users, pets } }, driver, clearRef);
+
+      // Insert test data
+      await db.users.insert({ id: 'user-1', name: 'Alice' });
+      await db.pets.insert({ id: 'pet-1', name: 'Fluffy', ownerId: 'user-1' });
+
+      const result = await db.users.select({
+        columns: {
+          userId: db.users.id,
+          userName: db.users.name,
+          pet: {
+            id: db.pets.id,
+            name: db.pets.name,
+          }
+        }
+      }).join(db.pets, db.users.id.eq(db.pets.ownerId)).execute()
+
+      type _Received = ShallowPrettify<(typeof result)[number]>;
+      type Expected = { userId: string; userName: string; pet: { id: string; name: string } };
+      expectTypeOf(result).toEqualTypeOf<Expected[]>();
+    });
+
   });
 });
