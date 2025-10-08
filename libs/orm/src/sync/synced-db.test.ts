@@ -454,7 +454,7 @@ it('derived tables work with synced db - full and incremental revalidation', asy
           // Upsert the total
           const existing = await db.states.select().execute().then(states => states.filter(s => s.entityId === entityId))
           if (existing.length > 0) {
-            await db.states.update({ data: { total }, where: sql`entity_id = ${entityId}` })
+            await db.states.update({ data: { total }, where: db.states.entityId.eq(entityId) })
           } else {
             await db.states.insert({ entityId, total })
           }
