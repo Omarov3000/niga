@@ -162,9 +162,3 @@ Example:
 - Before A’s insert reaches B, B’s insert Y arrives at server → FK violation.
 
 Solution: enforce constrains server side only. Reject mutations that violate them.
-
-
-
-# TODO
-
-integrate synced-db with orm-browser-driver-fe

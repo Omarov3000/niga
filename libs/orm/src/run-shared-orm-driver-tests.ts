@@ -799,7 +799,7 @@ describe('update', () => {
     // Update user-1's age and name
     await db.users.update({
       data: { name: 'Johnny Doe', age: 26 },
-      where: users.id.eq('user-1'),
+      where: db.users.id.eq('user-1'),
     });
 
     // Verify user-1 was updated
@@ -834,7 +834,7 @@ describe('update', () => {
     // Update to publish the post
     await db.posts.update({
       data: { title: 'Published Post', published: true, views: 100 },
-      where: posts.id.eq('post-1'),
+      where: db.posts.id.eq('post-1'),
     });
 
     // Verify update (boolean stored as integer)
@@ -871,7 +871,7 @@ describe('update', () => {
     // Update user
     await db.users.update({
       data: { name: 'Johnny Doe' },
-      where: users.id.eq('user-1'),
+      where: db.users.id.eq('user-1'),
     });
 
     // Verify onUpdate function was called
@@ -903,8 +903,8 @@ describe('update', () => {
     });
 
     await db.accounts.update({
-      data: { balance: accounts.balance.set`+ ${50}` },
-      where: accounts.userId.eq('user-1'),
+      data: { balance: db.accounts.balance.set`+ ${50}` },
+      where: db.accounts.userId.eq('user-1'),
     });
 
     const updatedAccountResults = await driver.run({ query: 'SELECT balance FROM accounts WHERE user_id = ?', params: ['user-1'] });
@@ -932,7 +932,7 @@ describe('update', () => {
     // Update all active users older than 28
     await db.users.update({
       data: { status: 'senior' },
-      where: sql`${users.age.gte(28)} AND ${users.status.eq('active')}`,
+      where: sql`${db.users.age.gte(28)} AND ${db.users.status.eq('active')}`,
     });
 
     // Verify only user-2 was updated
@@ -960,7 +960,7 @@ describe('update', () => {
     // Try to update with no data
     await expect(db.users.update({
       data: {},
-      where: sql`${users.id.eq('user-1')}`,
+      where: db.users.id.eq('user-1'),
     })).rejects.toThrow('No columns to update');
   });
 
@@ -982,7 +982,7 @@ describe('update', () => {
     // This should not throw - security parsing should succeed for valid UPDATE
     await expect(db.users.update({
       data: { name: 'Johnny', age: 26 },
-      where: sql`${users.id.eq('user-1')}`,
+      where: db.users.id.eq('user-1'),
     })).resolves.not.toThrow();
 
     // Verify the update actually worked
@@ -1006,7 +1006,7 @@ describe('update', () => {
     };
 
     // The security parsing should catch malformed SQL
-    await expect(users.update({
+    await expect(db.users.update({
       data: { name: 'test' },
       where: malformedSql,
     })).rejects.toThrow();
@@ -1032,7 +1032,7 @@ describe('delete', () => {
 
     // Delete user-2
     await db.users.delete({
-      where: sql`${users.id.eq('user-2')}`,
+      where: db.users.id.eq('user-2'),
     });
 
     // Verify user-2 was deleted
@@ -1063,7 +1063,7 @@ describe('delete', () => {
 
     // Delete all inactive users
     await db.users.delete({
-      where: sql`${users.status.eq('inactive')}`,
+      where: db.users.status.eq('inactive'),
     });
 
     // Verify only active users remain
@@ -1094,7 +1094,7 @@ describe('delete', () => {
 
     // Delete unpublished posts with low views
     await db.posts.delete({
-      where: sql`${posts.published.eq(false)} AND ${posts.views.lt(10)}`,
+      where: sql`${db.posts.published.eq(false)} AND ${db.posts.views.lt(10)}`,
     });
 
     // Verify only published posts and high-view drafts remain
@@ -1123,7 +1123,7 @@ describe('delete', () => {
 
     // Delete specific users by ID
     await db.users.delete({
-      where: sql`${users.id.inArray(['user-1', 'user-3'])}`,
+      where: db.users.id.inArray(['user-1', 'user-3']),
     });
 
     // Verify only user-2 and user-4 remain
@@ -1149,7 +1149,7 @@ describe('delete', () => {
 
     // This should not throw - security parsing should succeed for valid DELETE
     await expect(db.users.delete({
-      where: sql`${users.id.eq('user-1')}`,
+      where: db.users.id.eq('user-1'),
     })).resolves.not.toThrow();
 
     // Verify the delete actually worked
@@ -1172,7 +1172,7 @@ describe('delete', () => {
     };
 
     // The security parsing should catch malformed SQL
-    await expect(users.delete({
+    await expect(db.users.delete({
       where: malformedSql,
     })).rejects.toThrow();
   });
@@ -1192,7 +1192,7 @@ describe('delete', () => {
 
     // Delete non-existent user
     await db.users.delete({
-      where: sql`${users.id.eq('user-999')}`,
+      where: db.users.id.eq('user-999'),
     });
 
     // Verify no users were deleted

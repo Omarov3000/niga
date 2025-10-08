@@ -55,7 +55,7 @@ describe('security rules end-to-end', () => {
       db._connectUser(admin);
 
       await expect(db.posts.delete({
-        where: sql`id = 'post123'`
+        where: db.posts.id.eq('post123')
       })).resolves.not.toThrow();
 
       // Regular user should not be able to delete
@@ -63,7 +63,7 @@ describe('security rules end-to-end', () => {
       db._connectUser(user);
 
       await expect(db.posts.delete({
-        where: sql`id = 'post123'`
+        where: db.posts.id.eq('post123')
       })).rejects.toThrow('RBAC: delete requires admin role');
 
       // But regular user should be able to insert and update
@@ -137,7 +137,7 @@ describe('security rules end-to-end', () => {
       // Should reject update if WHERE clause is missing ownership filter
       await expect(db.documents.update({
         data: { title: 'No ownership filter' },
-        where: sql`title = 'My Document'`
+        where: db.documents.title.eq('My Document')
       })).rejects.toThrow('ABAC: only owner can update document (table: documents)');
 
       // Should reject update if attempting to change ownerId
@@ -153,7 +153,7 @@ describe('security rules end-to-end', () => {
 
       // Should reject delete without ownership filter
       await expect(db.documents.delete({
-        where: sql`title = 'My Document'`
+        where: db.documents.title.eq('My Document')
       })).rejects.toThrow('ABAC: only owner can delete document (table: documents)');
     });
   });
