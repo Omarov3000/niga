@@ -1,5 +1,5 @@
 import { ulid } from 'ulidx'
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { o } from '../../schema/builder'
 import { _makeRemoteDb, _makeClientDb } from '../test-helpers'
 import { DbMutationBatch } from '../types'
@@ -24,14 +24,12 @@ describe('conflict resolution', () => {
     const { db: client2 } = await _makeClientDb({ users }, remoteDb, { debugName: 'client2' })
 
     // Client1 updates name (lower timestamp - sent first)
-    await new Promise(resolve => setTimeout(resolve, 5))
     await client1.users.updateWithUndo({
       data: { name: 'Alice' },
       where: { id: userId }
     })
 
     // Client2 updates email (higher timestamp - sent second)
-    await new Promise(resolve => setTimeout(resolve, 5))
     await client2.users.updateWithUndo({
       data: { email: 'alice@new.com' },
       where: { id: userId }
@@ -65,14 +63,12 @@ describe('conflict resolution', () => {
     const { db: client2 } = await _makeClientDb({ users }, remoteDb, { debugName: 'client2' })
 
     // Client1 updates email to v1 (lower timestamp)
-    await new Promise(resolve => setTimeout(resolve, 5))
     await client1.users.updateWithUndo({
       data: { email: 'v1@example.com' },
       where: { id: userId }
     })
 
     // Client2 updates email to v2 (higher timestamp - sent second)
-    await new Promise(resolve => setTimeout(resolve, 5))
     await client2.users.updateWithUndo({
       data: { email: 'v2@example.com' },
       where: { id: userId }
@@ -106,11 +102,9 @@ describe('conflict resolution', () => {
     const { db: client2, driver: client2Driver } = await _makeClientDb({ users }, remoteDb, { debugName: 'client2' })
 
     // Client1 deletes row (lower timestamp)
-    await new Promise(resolve => setTimeout(resolve, 5))
     await client1.users.deleteWithUndo({ where: { id: userId } })
 
     // Client2 updates same row (higher timestamp - should be rejected)
-    await new Promise(resolve => setTimeout(resolve, 5))
     await client2.users.updateWithUndo({
       data: { email: 'updated@example.com' },
       where: { id: userId }
@@ -149,14 +143,12 @@ describe('conflict resolution', () => {
     const { db: client2, driver: client2Driver } = await _makeClientDb({ users }, remoteDb, { debugName: 'client2' })
 
     // Client1 updates row (lower timestamp)
-    await new Promise(resolve => setTimeout(resolve, 5))
     await client1.users.updateWithUndo({
       data: { email: 'updated@example.com' },
       where: { id: userId }
     })
 
     // Client2 deletes same row (higher timestamp - should be rejected)
-    await new Promise(resolve => setTimeout(resolve, 5))
     await client2.users.deleteWithUndo({ where: { id: userId } })
 
     // Check that client2's delete mutation failed
@@ -194,11 +186,9 @@ describe('conflict resolution', () => {
     const { db: client2, driver: client2Driver } = await _makeClientDb({ users }, remoteDb, { debugName: 'client2' })
 
     // Client1 deletes row (lower timestamp)
-    await new Promise(resolve => setTimeout(resolve, 5))
     await client1.users.deleteWithUndo({ where: { id: userId } })
 
     // Client2 also deletes same row (higher timestamp - should be rejected)
-    await new Promise(resolve => setTimeout(resolve, 5))
     await client2.users.deleteWithUndo({ where: { id: userId } })
 
     // Check that client2's delete mutation failed
@@ -233,7 +223,6 @@ describe('conflict resolution', () => {
     // Client2: try to insert different user with same ID
     const { db: client2 } = await _makeClientDb({ users }, remoteDb, { debugName: 'client2' })
 
-    await new Promise(resolve => setTimeout(resolve, 5))
 
     // Try to insert with same ID - should fail locally due to UNIQUE constraint
     // This is expected - with ULIDs this shouldn't happen in practice
@@ -266,7 +255,7 @@ describe('conflict resolution', () => {
     const { remoteDb, driver: serverDriver } = await _makeRemoteDb({ users })
 
     // Client1: insert and make two updates
-    const { db: client1 } = await _makeClientDb({ users }, remoteDb, { debugName: 'client1' })
+    const { db: client1, driver: client1Driver } = await _makeClientDb({ users }, remoteDb, { debugName: 'client1' })
 
     const userId = ulid()
     await client1.users.insertWithUndo({ id: userId, name: 'Alice', email: 'v0@example.com' })
@@ -277,16 +266,24 @@ describe('conflict resolution', () => {
     const { db: client1b, driver: client1bDriver } = await _makeClientDb({ users }, remoteDb, { debugName: 'client1b' })
 
     // Update 1: email to v1 (lower timestamp) - don't sync yet
-    await new Promise(resolve => setTimeout(resolve, 5))
-    const update1Time = Date.now()
+    // Use an explicitly older timestamp to ensure update1 has lower timestamp than update2
+    const update1Time = Date.now() - 1000
     await client1bDriver.run({
       query: 'UPDATE users SET email = ? WHERE id = ?',
       params: ['v1@example.com', userId],
     })
 
     // Update 2: email to v2 (higher timestamp) from client1 - sync immediately
-    await new Promise(resolve => setTimeout(resolve, 5))
     await client1.users.updateWithUndo({ data: { email: 'v2@example.com' }, where: { id: userId } })
+
+    // Wait for update2 to sync to server
+    await vi.waitFor(async () => {
+      const queue = await client1Driver.run({
+        query: 'SELECT * FROM _db_mutations_queue WHERE server_timestamp_ms > 0',
+        params: []
+      })
+      expect(queue.length).toBeGreaterThan(0)
+    })
 
     // Now manually send update1 (older update that arrives after newer update2)
     const update1Batch: DbMutationBatch = {

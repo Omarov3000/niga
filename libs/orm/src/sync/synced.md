@@ -168,4 +168,3 @@ Solution: enforce constrains server side only. Reject mutations that violate the
 # TODO
 
 integrate synced-db with orm-browser-driver-fe
-derived tables

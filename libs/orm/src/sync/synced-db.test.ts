@@ -6,6 +6,8 @@ import { AlwaysOnlineDetector, ControllableOnlineDetector } from './test-online-
 import { _makeClientDb, _makeHttpRemoteDb, _makeRemoteDb, UnstableNetworkFetch } from './test-helpers'
 import { RemoteDbClient } from './remote-db'
 import { createFetchWrapper } from './fetch-wrapper'
+import type { DerivationContext } from '../schema/types'
+import { sql } from '../utils/sql'
 
 it('syncs data from remote on initialization', async () => {
   const users = o.table('users', {
@@ -353,4 +355,160 @@ it('clears all user and internal tables', async () => {
     params: [],
   })
   expect(syncNodeAfter).toHaveLength(0)
+})
+
+it('derived tables work with synced db - full and incremental revalidation', async () => {
+  const mutations = o.table('mutations', {
+    id: o.id(),
+    entityId: o.text().notNull(),
+    delta: o.integer().notNull()
+  })
+
+  const states = o.derivedTable('states', {
+    entityId: o.text().notNull().primaryKey(),
+    total: o.integer().notNull()
+  })
+
+  // Server only has mutations table (states is client-only)
+  const { db: serverDb, remoteDb } = await _makeRemoteDb({ mutations })
+
+  // Insert initial mutations on server
+  const entityId1 = 'entity1'
+  const entityId2 = 'entity2'
+  await serverDb.mutations.insertMany([
+    { entityId: entityId1, delta: 10 },
+    { entityId: entityId1, delta: 5 },
+    { entityId: entityId2, delta: 20 }
+  ])
+
+  // Create client with derived table
+  const { db } = await _makeClientDb({ mutations, states }, remoteDb, {
+    skipPull: false,
+    debugName: 'client1'
+  })
+
+  // Track derivation calls
+  let fullCalls = 0
+  let incrementalCalls: Array<{ type: 'insert' | 'update' | 'delete', ids: string[] }> = []
+
+  // Define derivation logic
+  db.states.derive(async (context: DerivationContext) => {
+    if (context.type === 'full') {
+      fullCalls++
+      await db.states.deleteAll()
+
+      const allMutations = await db.mutations.select().execute()
+      const totals = new Map<string, number>()
+
+      for (const mut of allMutations) {
+        const current = totals.get(mut.entityId) ?? 0
+        totals.set(mut.entityId, current + mut.delta)
+      }
+
+      for (const [entityId, total] of totals) {
+        await db.states.insert({ entityId, total })
+      }
+    } else {
+      incrementalCalls.push({ type: context.mutationType, ids: context.ids })
+
+      // For delete operations, we need to handle differently since the deleted mutations
+      // are already gone. For simplicity in this test, we'll do a full recomputation.
+      // In production, you'd want to track entity IDs before deletion.
+      if (context.mutationType === 'delete') {
+        // Full recomputation for deletes
+        await db.states.deleteAll()
+
+        const allMutations = await db.mutations.select().execute()
+        const totals = new Map<string, number>()
+
+        for (const mut of allMutations) {
+          const current = totals.get(mut.entityId) ?? 0
+          totals.set(mut.entityId, current + mut.delta)
+        }
+
+        for (const [entityId, total] of totals) {
+          await db.states.insert({ entityId, total })
+        }
+      } else {
+        // For insert/update: recalculate only affected entities
+        const affectedMuts = await db.mutations
+          .select()
+          .execute()
+
+        // Find affected entity IDs from the mutations
+        const affectedEntityIds = new Set<string>()
+        for (const mut of affectedMuts) {
+          if (context.ids.includes(mut.id)) {
+            affectedEntityIds.add(mut.entityId)
+          }
+        }
+
+        for (const entityId of affectedEntityIds) {
+          const entityMuts = await db.mutations
+            .select()
+            .execute()
+            .then(muts => muts.filter(m => m.entityId === entityId))
+
+          const total = entityMuts.reduce((sum, m) => sum + m.delta, 0)
+
+          // Upsert the total
+          const existing = await db.states.select().execute().then(states => states.filter(s => s.entityId === entityId))
+          if (existing.length > 0) {
+            await db.states.update({ data: { total }, where: sql`entity_id = ${entityId}` })
+          } else {
+            await db.states.insert({ entityId, total })
+          }
+        }
+      }
+    }
+  }, [db.mutations])
+
+  // Manually trigger initial revalidation now that derive() is set up
+  await db.revalidateDerivedTables(undefined, { type: 'full' })
+
+  // Check initial state after full sync
+  expect(fullCalls).toBe(1)
+  expect(incrementalCalls).toHaveLength(0)
+
+  const initialStates = await db.states.select().execute()
+  expect(initialStates).toHaveLength(2)
+  expect(initialStates.find(s => s.entityId === entityId1)?.total).toBe(15) // 10 + 5
+  expect(initialStates.find(s => s.entityId === entityId2)?.total).toBe(20)
+
+  // Now add a new mutation locally - this should trigger incremental revalidation
+  const inserted = await db.mutations.insertWithUndo({ entityId: entityId1, delta: 7 })
+  const insertedId = inserted.id
+
+  // Wait for incremental revalidation to complete and state to update
+  await vi.waitFor(async () => {
+    const updatedStates = await db.states.select().execute()
+    expect(updatedStates.find(s => s.entityId === entityId1)?.total).toBe(22) // 10 + 5 + 7
+  })
+
+  // Check incremental revalidation was called
+  expect(incrementalCalls.length).toBeGreaterThan(0)
+  expect(incrementalCalls[incrementalCalls.length - 1].type).toBe('insert')
+  expect(incrementalCalls[incrementalCalls.length - 1].ids).toContain(insertedId)
+
+  // Update a mutation - should trigger incremental update
+  const allMuts = await db.mutations.select().execute()
+  const mutToUpdate = allMuts.find(m => m.entityId === entityId2)!
+  await db.mutations.updateWithUndo({
+    data: { delta: 25 },
+    where: { id: mutToUpdate.id }
+  })
+
+  await vi.waitFor(async () => {
+    const afterUpdateStates = await db.states.select().execute()
+    expect(afterUpdateStates.find(s => s.entityId === entityId2)?.total).toBe(25)
+  })
+
+  // Delete a mutation - should trigger incremental delete
+  await db.mutations.deleteWithUndo({ where: { id: mutToUpdate.id } })
+
+  await vi.waitFor(async () => {
+    const afterDeleteStates = await db.states.select().execute()
+    // After deleting all mutations for entityId2, there should be no state row for it
+    expect(afterDeleteStates.find(s => s.entityId === entityId2)).toBeUndefined()
+  })
 })

@@ -26,10 +26,13 @@ describe('blocking getLatestMutation behavior', () => {
     // Track when get() is called and completed
     let getStarted = false
     let getCompleted = false
+    let resolveGet: (() => void) | null = null
+    const getPromise = new Promise<void>(resolve => { resolveGet = resolve })
+
     const trackingFetch = async (url: string, options: RequestInit) => {
       if (url.includes('/sync/get')) {
         getStarted = true
-        await new Promise(resolve => setTimeout(resolve, 100)) // Simulate delay
+        await getPromise
         const response = await server.handleRequest(url, options.method || 'GET', options.body as string | undefined)
         getCompleted = true
         return response
@@ -54,7 +57,7 @@ describe('blocking getLatestMutation behavior', () => {
     let initCompleted = false
     clientPromise.then(() => { initCompleted = true })
 
-    // Advance time to start get() but not complete it
+    // Advance time to start get()
     await vi.advanceTimersByTimeAsync(50)
 
     // Verify get() started but initialization hasn't completed yet
@@ -62,7 +65,8 @@ describe('blocking getLatestMutation behavior', () => {
     expect(getCompleted).toBe(false)
     expect(initCompleted).toBe(false)
 
-    // Advance time to complete the delay
+    // Manually resolve the get() request
+    resolveGet!()
     await vi.runAllTimersAsync()
 
     // Wait for initialization to complete
