@@ -300,9 +300,19 @@ export class SyncedDb extends Db {
           const arrowTable = tableFromIPC(item.data)
           const batchRows: Record<string, any>[] = []
 
+          // Extract column data (don't use toJSON as it converts Uint8Arrays to objects)
+          const fields = arrowTable.schema.fields
+          const columns = fields.map(field => ({
+            name: field.name,
+            vector: arrowTable.getChild(field.name)
+          }))
+
           for (let i = 0; i < arrowTable.numRows; i++) {
-            const row = arrowTable.get(i)?.toJSON()
-            if (row) batchRows.push(row)
+            const row: Record<string, any> = {}
+            for (const { name, vector } of columns) {
+              row[name] = vector?.get(i)
+            }
+            batchRows.push(row)
           }
 
           currentTableRows.push(...batchRows)
@@ -323,24 +333,24 @@ export class SyncedDb extends Db {
     const table = this.userSchema[tableName]
     if (!table) return
 
-    // Convert snake_case column names to camelCase
-    const convertedRows = rows.map(row => {
-      const converted: Record<string, any> = {}
-      for (const [key, value] of Object.entries(row)) {
-        const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
-        converted[camelKey] = value
-      }
-      return converted
+    if (rows.length === 0) return
+
+    // Use raw SQL INSERT to avoid encode/decode round-trip
+    // The data from remote is already in database format (Uint8Arrays)
+    const dbTableName = table.__meta__.dbName
+    const columnNames = Object.keys(rows[0])
+    const dbColumnNames = columnNames.map(camelKey => {
+      // Convert camelCase back to snake_case
+      return camelKey.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`)
     })
 
-    // Insert rows and update progress in transaction
-    await this.batch(async (batch: SyncedDbBatch) => {
-      // as any: Dynamic table access by name - TS can't infer specific table type from string variable
-      const batchTable = batch[tableName] as any
-      if (!batchTable) return
+    const placeholders = dbColumnNames.map(() => '?').join(', ')
+    const query = `INSERT INTO ${dbTableName} (${dbColumnNames.join(', ')}) VALUES (${placeholders})`
 
-      for (const row of convertedRows) {
-        await batchTable.insert(row)
+    await this.batch(async () => {
+      for (const row of rows) {
+        const params = columnNames.map(key => row[key])
+        await this.localDriver.run({ query, params })
       }
     })
   }

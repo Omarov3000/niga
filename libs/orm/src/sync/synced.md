@@ -167,9 +167,5 @@ Solution: enforce constrains server side only. Reject mutations that violate the
 
 # TODO
 
-@libs/orm/src/sync/synced-db.test.ts you need to remove // authorId is binary data, just verify it exists and properly verify that it is
-
-✅ getLatestMutation is now blocking during initialization. Writes can be queued immediately (non-blocking) while reads wait for initial sync to complete. This implements Option B from network-failure-management.md: "Non-Blocking Init, Block on First Read" with the modification that writes are available immediately.
-
 integrate synced-db with orm-browser-driver-fe
 derived tables

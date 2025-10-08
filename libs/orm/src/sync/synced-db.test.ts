@@ -77,10 +77,10 @@ it('syncs multiple tables', async () => {
   const postResult = await db.posts.select().execute()
 
   expect(userResult).toHaveLength(2)
-  expect(postResult).toHaveLength(2)
-  expect(postResult[0].title).toBe('First Post')
-  // authorId is binary data, just verify it exists
-  expect(postResult[0].authorId).toBeDefined()
+  expect(postResult).toMatchObject([
+    { title: 'First Post', authorId: userId1 },
+    { title: 'Second Post', authorId: userId2 }
+  ])
 })
 
 it('resumes pull from last synced offset', async () => {

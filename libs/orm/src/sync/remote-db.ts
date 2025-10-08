@@ -1,6 +1,6 @@
 import type { DbMutationBatch } from './types'
 import { tableToIPC } from 'apache-arrow'
-import { tableFromArrays } from 'apache-arrow'
+import { tableFromArrays, vectorFromArray, Binary } from 'apache-arrow'
 import type { Db } from '../schema/db'
 import type { OrmDriver } from '../schema/types'
 import { BinaryStreamGenerator } from './stream'
@@ -209,6 +209,18 @@ export class TestRemoteDb implements RemoteDb {
     // Start with 1000 rows, will adjust based on actual memory usage
     let currentBatchSize = 1000
 
+    // Determine which columns need Binary type based on schema
+    const table = this.schema[tableName]
+    const binaryColumns = new Set<string>()
+    if (table?.__meta__?.columns) {
+      for (const [key, meta] of Object.entries(table.__meta__.columns)) {
+        // Columns with encode function store binary data (like id, idFk)
+        if ((meta as any).encode) {
+          binaryColumns.add((meta as any).dbName)
+        }
+      }
+    }
+
     while (true) {
       // Fetch batch
       const rows = await this.driver.run({
@@ -222,10 +234,17 @@ export class TestRemoteDb implements RemoteDb {
 
       // Convert rows to Arrow and serialize
       const columnNames = Object.keys(rows[0])
-      const columnArrays: Record<string, any[]> = {}
+      const columnArrays: Record<string, any> = {}
 
       for (const colName of columnNames) {
-        columnArrays[colName] = rows.map((row: any) => row[colName])
+        const columnValues = rows.map((row: any) => row[colName])
+
+        // Use Binary type for columns that have an encode function in the schema
+        if (binaryColumns.has(colName) && columnValues.length > 0) {
+          columnArrays[colName] = vectorFromArray(columnValues, new Binary())
+        } else {
+          columnArrays[colName] = columnValues
+        }
       }
 
       const arrowTable = tableFromArrays(columnArrays)
