@@ -8,7 +8,8 @@ import type {
   PreparedSnapshot,
   TableSnapshot,
   IndexDefinition,
-  ConstraintDefinition
+  ConstraintDefinition,
+  DerivationContext
 } from './types';
 import { ColumnMutationNotSupportedError } from './types';
 import { deepEqual } from 'fast-equals';
@@ -21,7 +22,8 @@ import { normalizeQueryAnalysisToRuntime } from '../true-sql/normalize-analysis'
 import { analyze } from '../true-sql/analyze';
 import { rawQueryToAst } from '../true-sql/raw-query-to-ast';
 import { extractTables } from '../true-sql/extract-tables';
-import type { UseQueryOptions } from '../../../query-fe/src/use-query-types'
+import type { UseQueryOptions } from '../../../query-fe/src/use-query-types';
+import { DerivedTable } from '../sync/derived-table';
 
 export interface DbConstructorOptions {
   schema: Record<string, Table<any, any>>;
@@ -39,6 +41,9 @@ export class Db {
   readonly debugName: string;
   readonly origin?: 'client' | 'server';
   readonly logging: boolean;
+  private revalidationQueue: Array<{ sourceTableName?: string; context: DerivationContext }> = [];
+  private isProcessingQueue: boolean = false;
+  private currentRevalidationPromise?: Promise<void>;
 
   constructor(protected options: DbConstructorOptions) {
     this.name = options.name ?? 'orm';
@@ -59,6 +64,7 @@ export class Db {
         getCurrentUser: () => this.currentUser,
         getSchema: () => this.options.schema,
         isProd: () => this.options.isProd ? this.options.isProd() : false,
+        revalidateDerivedTables: this.revalidateDerivedTables.bind(this),
       };
 
       (this as any)[name] = clonedTable;
@@ -146,6 +152,11 @@ export class Db {
   getSchemaDefinition(mode: 'full' | 'minimal' = 'full'): string {
     const parts: string[] = [];
     Object.values(this.options.schema).forEach(({ __meta__ }) => {
+      // Skip derived tables on server - they're client-only
+      // But include them on client so they get created in local DB
+      const isDerived = __meta__.derivedFrom && __meta__.derivedFrom.length > 0
+      if (isDerived && this.origin !== 'client') return
+
       const tableSnapshot = tableMetaToSnapshot(__meta__);
       parts.push(serializeCreateTable(tableSnapshot, mode));
       const indexStatements = createIndexStatements(tableSnapshot);
@@ -173,7 +184,12 @@ export class Db {
   async _clear(): Promise<void> {
     if (!this.driver) throw new Error('No driver connected. Call _connectDriver first.');
     const driver = this.driver;
+    // Filter out derived tables when origin !== 'client'
     const tables = Object.values(this.options.schema)
+      .filter(table => {
+        const isDerived = table.__meta__.derivedFrom && table.__meta__.derivedFrom.length > 0
+        return !(isDerived && this.origin !== 'client')
+      })
       .map((table) => table.__meta__.dbName)
       .filter((name, index, all) => all.indexOf(name) === index);
 
@@ -268,6 +284,120 @@ export class Db {
     await this.driver.batch(statements);
     return result;
   }
+
+  async revalidateDerivedTables(
+    sourceTableName?: string,
+    context: DerivationContext = { type: 'full' }
+  ): Promise<void> {
+    // Add to queue
+    this.revalidationQueue.push({ sourceTableName, context });
+
+    // If already processing, the queued item will be picked up
+    if (this.isProcessingQueue) return this.currentRevalidationPromise!;
+
+    // Start processing queue
+    this.isProcessingQueue = true;
+    this.currentRevalidationPromise = this.processRevalidationQueue();
+    return this.currentRevalidationPromise;
+  }
+
+  private async processRevalidationQueue(): Promise<void> {
+    try {
+      while (this.revalidationQueue.length > 0) {
+        // Get all queued items and clear queue
+        const batch = this.revalidationQueue.splice(0);
+
+        // Group by source table and context type
+        const revalidationMap = new Map<string, { full: boolean; incremental: DerivationContext[] }>();
+
+        for (const item of batch) {
+          const key = item.sourceTableName || '__all__';
+          if (!revalidationMap.has(key)) {
+            revalidationMap.set(key, { full: false, incremental: [] });
+          }
+          const entry = revalidationMap.get(key)!;
+
+          if (item.context.type === 'full' || !item.sourceTableName) {
+            entry.full = true;
+          } else {
+            entry.incremental.push(item.context);
+          }
+        }
+
+        // Get derived tables from the db instance (not options.schema) because they've been cloned
+        const derivedTables = Object.keys(this.options.schema)
+          .map(name => (this as any)[name] as Table<any, any>)
+          .filter(table => table && table.__meta__.derivedFrom && table.__meta__.derivedFrom.length > 0) as DerivedTable<any, any>[];
+
+        // Process each source table
+        for (const [sourceTableName, { full, incremental }] of revalidationMap) {
+          // Filter by source table
+          const tablesToRevalidate = sourceTableName === '__all__'
+            ? derivedTables
+            : derivedTables.filter(table => {
+                const dependencies = table.__meta__.derivedFrom ?? [];
+                return dependencies.includes(sourceTableName);
+              });
+
+          if (tablesToRevalidate.length === 0) continue;
+
+          // Topologically sort to handle dependencies
+          const sorted = topologicalSort(tablesToRevalidate);
+
+          // Choose context: full if any full revalidation, otherwise use first incremental
+          const revalidationContext: DerivationContext = full
+            ? { type: 'full' }
+            : incremental[0] || { type: 'full' };
+
+          // Revalidate in dependency order
+          for (const derivedTable of sorted) {
+            try {
+              await this.transaction(async () => {
+                await derivedTable._revalidate(revalidationContext);
+              });
+            } catch (error) {
+              console.error(`Failed to revalidate derived table ${derivedTable.__meta__.name}:`, error);
+              // Continue with other tables
+            }
+          }
+        }
+      }
+    } finally {
+      this.isProcessingQueue = false;
+    }
+  }
+}
+
+function topologicalSort(derivedTables: DerivedTable<any, any>[]): DerivedTable<any, any>[] {
+  const sorted: DerivedTable<any, any>[] = []
+  const visiting = new Set<string>()
+  const visited = new Set<string>()
+  const tableMap = new Map(derivedTables.map(t => [t.__meta__.name, t]))
+
+  function visit(table: DerivedTable<any, any>) {
+    if (visited.has(table.__meta__.name)) return
+    if (visiting.has(table.__meta__.name)) {
+      throw new Error(`Circular dependency detected involving ${table.__meta__.name}`)
+    }
+
+    visiting.add(table.__meta__.name)
+
+    const deps = table.__meta__.derivedFrom ?? []
+    for (const depName of deps) {
+      const depTable = tableMap.get(depName)
+      if (depTable) visit(depTable)
+    }
+
+    visiting.delete(table.__meta__.name)
+    visited.add(table.__meta__.name)
+    sorted.push(table)
+  }
+
+  for (const table of derivedTables) {
+    visit(table)
+  }
+
+  return sorted
 }
 
 function quoteIdentifier(name: string): string {
@@ -303,6 +433,7 @@ function tableMetaToSnapshot(meta: TableMetadata): TableSnapshot {
 
 function buildSnapshotFromSchema(schema: Record<string, Table<any, any>>): TableSnapshot[] {
   return Object.values(schema)
+    .filter(table => !(table.__meta__.derivedFrom && table.__meta__.derivedFrom.length > 0)) // Exclude derived tables
     .map((table) => tableMetaToSnapshot(table.__meta__))
     .sort((a, b) => a.dbName.localeCompare(b.dbName));
 }

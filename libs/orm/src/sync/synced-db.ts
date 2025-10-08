@@ -1,7 +1,8 @@
 import { Db } from '../schema/db'
 import type { Table } from '../schema/table'
-import type { OrmDriver } from '../schema/types'
+import type { OrmDriver, DerivationContext } from '../schema/types'
 import type { RemoteDb, PullResumeState } from './remote-db'
+import { DerivedTable } from './derived-table'
 import { RemoteDbClient } from './remote-db'
 import { internalSyncTables } from './internal-tables'
 import { SyncedTable } from './synced-table'
@@ -120,6 +121,9 @@ export class SyncedDb extends Db {
       this.mutationsDuringSync = false
       await this.syncMutationsFromServer()
     }
+
+    // Revalidate all derived tables after sync completes
+    await this.revalidateDerivedTables(undefined, { type: 'full' })
   }
 
   private async initializeNodeInfo(): Promise<void> {
@@ -224,6 +228,21 @@ export class SyncedDb extends Db {
         serverTimestampMs,
       })
     })
+
+    // Trigger incremental revalidation for affected derived tables
+    for (const mutation of batch.mutation) {
+      const context: DerivationContext = {
+        type: 'incremental',
+        mutationType: mutation.type,
+        ids: mutation.type === 'insert'
+          ? mutation.data.map((d: any) => d.id)
+          : mutation.type === 'update'
+          ? [mutation.data.id]
+          : mutation.ids
+      }
+
+      await this.revalidateDerivedTables(mutation.table, context)
+    }
   }
 
   private async isPullCompleted(): Promise<boolean> {
@@ -412,6 +431,17 @@ export class SyncedDb extends Db {
     for (const [name, table] of Object.entries(this.userSchema)) {
       const typedThis = this as unknown as Record<string, unknown>
 
+      // Get the cloned table from this (set by parent Db constructor)
+      const clonedTable = (this as any)[name] as Table<any, any>
+
+      // Skip derived tables - they keep regular Table methods
+      // Check if it's an instance of DerivedTable (not just metadata check)
+      if (clonedTable && clonedTable instanceof DerivedTable) {
+        // Derived table is already cloned and connected by parent Db constructor
+        // Just leave it as-is, don't wrap as SyncedTable
+        continue
+      }
+
       // Create SyncedTable with same options as the original table
       const syncedTable = new SyncedTable(
         {
@@ -492,6 +522,22 @@ export class SyncedDb extends Db {
       }
     })
 
+    // Trigger incremental revalidation for affected derived tables
+    const context: DerivationContext = {
+      type: 'incremental',
+      mutationType: mutation.type,
+      ids: mutation.type === 'insert'
+        ? mutation.data.map((d: any) => d.id)
+        : mutation.type === 'update'
+        ? [mutation.data.id]
+        : mutation.ids // For delete, IDs are in mutation.ids
+    }
+
+    // Don't await - run in background
+    this.revalidateDerivedTables(mutation.table, context).catch(err => {
+      console.error(`Failed to revalidate derived tables after local mutation:`, err)
+    })
+
     // Return true to indicate: apply locally
     return true
   }
@@ -530,9 +576,12 @@ export class SyncedDb extends Db {
 /**
  * Maps a schema of Tables to a schema where each table is a SyncedTable
  * SyncedTable extends BaseTable (same read methods) but has *WithUndo mutations instead
+ * DerivedTables are preserved as-is (not wrapped as SyncedTable)
  */
 type SyncedSchema<TSchema extends Record<string, Table<any, any>>> = {
-  [K in keyof TSchema]: TSchema[K] extends Table<infer Name, infer TCols>
+  [K in keyof TSchema]: TSchema[K] extends DerivedTable<infer Name, infer TCols>
+    ? DerivedTable<Name, TCols> & TCols
+    : TSchema[K] extends Table<infer Name, infer TCols>
     ? SyncedTable<Name, TCols> & TCols
     : never
 }
@@ -548,3 +597,4 @@ export async function syncedDb<TSchema extends Record<string, Table<any, any>>>(
 
   return instance as SyncedDb & SyncedSchema<TSchema>
 }
+

@@ -7,6 +7,7 @@ import { OrmDriver, type ConstraintDefinition, type ConstraintType } from './typ
 import { Column } from './column';
 import { Db } from './db';
 import { syncedDb } from '../sync/synced-db';
+import { DerivedTable } from '../sync/derived-table';
 
 const text = () => new Column<'text', string, 'optional'>({ kind: 'public', name: 'text', type: 'text' });
 const integer = () => new Column<'integer', number, 'optional'>({ kind: 'public', name: 'integer', type: 'integer' });
@@ -175,6 +176,39 @@ function table<Name extends string, TCols extends Record<string, Column<any, any
   return instance as Table<Name, TCols> & TCols;
 }
 
+function derivedTable<Name extends string, TCols extends Record<string, Column<any, any, any>>>(
+  name: Name,
+  columns: TCols,
+  indexesBuilder?: (t: { [K in keyof TCols]: TCols[K] }) => any[],
+  constrainsBuilder?: (t: { [K in keyof TCols]: TCols[K] }) => ConstraintDefinition[]
+): DerivedTable<Name, TCols> & TCols {
+  // Assign canonical column names on provided columns to match object keys
+  Object.entries(columns).forEach(([key, col]) => {
+    (col as any).__meta__.name = key as any;
+    (col as any).__meta__.dbName = toSnakeCase(key);
+  });
+
+  const indexes = (indexesBuilder ? indexesBuilder(columns as any) : []) as any[];
+  const normalizedIndexes = indexes.map((idx: any) => idx);
+  const constrains = constrainsBuilder ? constrainsBuilder(columns as any) : [];
+  const normalizedConstrains = constrains.map((constraint) => [...constraint]) as ConstraintDefinition[];
+
+  const instance = new DerivedTable<Name, TCols>({
+    name,
+    columns: columns as any,
+    indexes: normalizedIndexes,
+    constrains: normalizedConstrains,
+  }) as any;
+
+  // Don't set derivedFrom here - it will be set when derive() is called
+  // Until then, this table is NOT considered derived
+
+  Object.entries(columns).forEach(([key, col]) => {
+    instance[key] = col;
+  });
+  return instance as DerivedTable<Name, TCols> & TCols;
+}
+
 const index = () => new IndexBuilder();
 
 function db<TSchema extends Record<string, Table<any, any>>>(opts: { schema: TSchema; name?: string; debugName?: string; origin?: 'client' | 'server'; isProd?: () => boolean; logging?: boolean }): Db & TSchema {
@@ -305,6 +339,7 @@ export const o = {
   id,
   idFk,
   table,
+  derivedTable,
   index,
   db,
   testDb,

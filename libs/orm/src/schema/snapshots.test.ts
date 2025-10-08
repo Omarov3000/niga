@@ -10,7 +10,7 @@ const runScenario = async (
     assert: (prepared: PreparedSnapshot) => void;
   }>
 ) => {
-  const driverForSql = new OrmNodeDriver(':memory:');
+  const driverForSql = new OrmNodeDriver();
   let previous: TableSnapshot[] | undefined;
 
   for (const step of steps) {

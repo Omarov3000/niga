@@ -2,6 +2,14 @@ import type { Schema } from '@w/schema';
 import { RawSql } from '../utils/sql';
 import type { QueryAnalysis } from '../true-sql/analyze';
 
+export type DerivationContext =
+  | { type: 'full' }
+  | {
+      type: 'incremental';
+      mutationType: 'insert' | 'update' | 'delete';
+      ids: string[];
+    };
+
 export type ColumnType = 'integer' | 'real' | 'text' | 'blob';
 
 export type ApplicationType = 'json' | 'date' | 'boolean' | 'enum' | 'ulid' | undefined;
@@ -84,6 +92,7 @@ export interface TableMetadata {
   constrains?: ConstraintDefinition[];
   aliasedFrom?: string;
   renamedFrom?: string;
+  derivedFrom?: string[]; // If present and non-empty, this is a derived table
 }
 
 export interface OrmDriver {

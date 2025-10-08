@@ -6,7 +6,7 @@ import { normalizeQueryAnalysisToRuntime } from '../true-sql/normalize-analysis'
 import { analyze } from '../true-sql/analyze';
 import { rawQueryToAst } from '../true-sql/raw-query-to-ast';
 import { extractTables } from '../true-sql/extract-tables';
-import { IndexDefinition, ConstraintDefinition, SecurityRule, QueryContext, TableMetadata, OrmDriver, ColumnMetadata } from './types';
+import { IndexDefinition, ConstraintDefinition, SecurityRule, QueryContext, TableMetadata, OrmDriver, ColumnMetadata, DerivationContext } from './types';
 import type { UseQueryOptions } from '../../../query-fe/src/use-query-types'
 import type { UseMutationOptions } from '../../../query-fe/src/use-mutation-types'
 import { s } from '@w/schema';
@@ -75,7 +75,12 @@ export interface TableConstructorOptions<Name extends string, TCols extends Reco
 export abstract class BaseTable<Name extends string, TCols extends Record<string, Column<any, any, any>>> {
   readonly __meta__: TableMetadata;
   readonly __columns__: TCols;
-  readonly __db__!: { getDriver: () => OrmDriver; getCurrentUser: () => any; getSchema: () => Record<string, Table<any, any>>; isProd: () => boolean };
+  readonly __db__!: {
+    getDriver: () => OrmDriver;
+    getCurrentUser: () => any;
+    getSchema: () => Record<string, Table<any, any>>;
+    isProd: () => boolean;
+  };
   // type helpers exposed on instance for precise typing
   readonly __selectionType__!: SelectableForCols<TCols>;
   readonly __insertionType__!: InsertableForCols<TCols>;
@@ -463,6 +468,14 @@ export class Table<Name extends string, TCols extends Record<string, Column<any,
     await this.checkSecurity(fullQuery);
 
     await driver.run(fullQuery);
+  }
+
+  async deleteAll<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf>>(
+    this: TSelf
+  ): Promise<void> {
+    const driver = this.__db__.getDriver();
+    const query = `DELETE FROM ${this.__meta__.dbName}`;
+    await driver.run({ query, params: [] });
   }
 
   insertOptions<TSelf extends this, TSelfCols extends ColumnsOnly<TSelf>>(
